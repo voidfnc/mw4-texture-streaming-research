@@ -13,9 +13,11 @@ APPID = '{6B0F1F2E-7D3A-4C58-9E21-4A9D5C7B3E10}_is1'                       # ins
 APP = 'MW4 Texture Streaming'
 
 
-def check(ok, what):
+def check(ok, what, detail=''):
     print(('  ok   ' if ok else '  FAIL ') + what)
-    if not ok: raise SystemExit(f'installer test failed: {what}')
+    if not ok:
+        if detail: print('--- output ---\n' + detail.strip()[-3000:] + '\n--------------')
+        raise SystemExit(f'installer test failed: {what}')
 
 
 def uninstall_entry():
@@ -48,7 +50,7 @@ def main():
         check(os.path.isdir(menu) and os.path.exists(os.path.join(menu, APP + '.lnk')) and os.path.exists(os.path.join(menu, 'Restore hosts.lnk')), 'Start menu entries')
         check(os.path.exists(desk), 'desktop shortcut (the default task)')
         r = subprocess.run([cli, '--version'], capture_output=True, text=True, env=env, timeout=60); check(e['version'] in r.stdout, 'the installed program runs and reports the same version')
-        r = subprocess.run([cli, '--ccs-run', 'selfcheck'], capture_output=True, text=True, env=env, timeout=180); check(r.returncode == 0 and 'all fine' in r.stdout, 'the installed program starts its helpers (selfcheck)')
+        r = subprocess.run([cli, '--ccs-run', 'selfcheck'], capture_output=True, text=True, env=env, timeout=180); check(r.returncode == 0 and 'all fine' in r.stdout, 'the installed program starts its helpers (selfcheck)', r.stdout + r.stderr)
 
         print('upgrade over it while the hosts block is on')
         subprocess.run([cli, '--ccs-run', 'ccshosts', 'apply', '--no-flush'], env=env, timeout=60, capture_output=True); check('cod-assets' in open(hosts).read(), 'precondition: hosts block present')
