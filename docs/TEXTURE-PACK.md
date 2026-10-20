@@ -62,6 +62,25 @@ What decides how fast the mirror is, in order of importance:
 If you tell the tool your line speed (*My line speed*), it also watches itself: when the rate stays under 20 % of that for a minute it measures the edges again and
 switches if another one is clearly better.
 
+### Connections and requests per second: what to set
+
+Short version: leave *Max req/s* alone and use 8 connections if the default feels slow. More than that rarely helps and is harder on the CDN.
+
+| Your line | Connections | Max req/s | Why |
+|---|---|---|---|
+| up to about 300 Mbit/s | 4 (default), or 8 on a long route | 50 (default) | The edge you are connected to matters more than either number |
+| gigabit | 8 to 12 | 50 to 100 | In short tests on a gigabit line I saw about 63 MiB/s with 4 connections and about 94 MiB/s with 12 |
+| anything | do not go above 12 | do not go above 100 | no further gain, and the CDN may start answering 429 |
+
+Why `Max req/s` rarely matters: chunks average about 0.6 MiB (Standard) to 0.8 MiB (Ultra), so the default 50 requests a second is already roughly 230 to 340 Mbit/s.
+It only becomes the limit on a very fast line.
+
+Which setting wins: the *Texture pack* tab's *Connections* applies when it is not 0; if it is 0 the *Mirror* tab's *Workers* is used (4 while a *Download cap* is set).
+*Max req/s* always comes from the *Mirror* tab. Changes apply when a run starts, so Pause, wait for it to stop, and press Download again.
+
+If the log says `CDN asked to slow down (429/503)`, you have set it too high: every connection then waits, which is slower than a lower setting. Go back down a step.
+These figures are rules of thumb from my own tests, not guarantees for your line.
+
 ## For slow or metered connections
 
 - `--limit-mbps N` caps the total download rate (shared by all connections), so you can keep using the line.
