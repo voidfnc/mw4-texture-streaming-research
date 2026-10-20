@@ -1,13 +1,13 @@
 """uninstall.py - what the installer's uninstall (and an upgrade) needs before it removes files, kept in Python so it can be tested.
 
   ccs-cli.exe --ccs-run uninstall-prep status [--json]   exit code: 1 = our marked block is in the hosts file, 2 = a helper process is running (0 = nothing to do)
-  ccs-cli.exe --ccs-run uninstall-prep stop-helpers      stop the proxy, disk guard, mirror and watcher processes this tool started
+  ccs-cli.exe --ccs-run uninstall-prep stop-helpers      stop the proxy, disk guard, mirror and watcher processes this tool started (asks Windows for permission if the window that started them was elevated)
   ccs-cli.exe --ccs-run uninstall-prep remove-hosts      take our block out of the hosts file (UAC prompt unless already admin); exit 0 = done or nothing to do, 3 = declined, 1 = failed
 
 Nothing here deletes files: the uninstaller removes the program folder itself and asks before touching settings; the mirror and the game folder are never touched.
 """
 import argparse, glob, json, os, sys
-from . import hosts, paths, procs
+from . import hosts, launch, paths, procs
 
 HOSTS_PRESENT, HELPERS_RUNNING = 1, 2
 
@@ -31,7 +31,11 @@ def main(argv=None):
         s = state(); code = (HOSTS_PRESENT if s['hosts_present'] else 0) | (HELPERS_RUNNING if s['helpers_running'] else 0)
         print(json.dumps(s) if a.json else f"hosts: {s['hosts_state']}; helpers running: {', '.join(s['helpers_running']) or 'none'}; data: {s['data_dir']}"); return code
     if a.cmd == 'stop-helpers':
-        stopped = [n for n in helper_names() if procs.stop(n)]; print('stopped: ' + (', '.join(stopped) or 'nothing')); return 0
+        stopped = [n for n in helper_names() if procs.stop(n)]; left = [n for n in helper_names() if procs.status(n)['alive']]
+        if left and not procs.is_admin():                                                       # helpers started by the (elevated) window can only be ended by an elevated process
+            if procs.run_elevated(launch.argv_for('uninstall-prep', 'stop-helpers')) is None: print('stopped: ' + (', '.join(stopped) or 'nothing') + '; permission to stop ' + ', '.join(left) + ' was declined'); return 3
+            left = [n for n in helper_names() if procs.status(n)['alive']]
+        print('stopped: ' + (', '.join(stopped) or 'nothing') + ('; still running: ' + ', '.join(left) if left else '')); return 1 if left else 0
     from . import session                                             # remove-hosts
     if not state()['hosts_present']: print('hosts: nothing to remove'); return 0
     ok, res = session.hosts_cmd('remove', print)

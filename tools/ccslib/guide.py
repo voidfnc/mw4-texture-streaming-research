@@ -291,7 +291,7 @@ GLOSSARY = (
     ('Session', 'The time between "Start session" and "Stop session". While it runs, the helper is up and the hosts entry sends the game\'s texture requests to it.'),
     ('Helper (proxy)', 'A small program on this PC that answers the game\'s texture requests. It gets each piece from your copy on disk if you have one, otherwise from the internet.'),
     ('Hosts file', 'A Windows file that can override where a web address points. This tool adds one marked block to it so the game talks to the helper. "Restore hosts" takes the block out again, and a backup is made first.'),
-    ('UAC prompt', 'The Windows window that asks "Do you want to allow this app to make changes?". It appears because the hosts file is protected. Answer Yes to continue.'),
+    ('UAC prompt', 'The Windows window that asks "Do you want to allow this app to make changes?". The program shows it once, when it starts, because it edits the protected hosts file and the game folder. Answer Yes to continue.'),
     ('CDN', 'The servers the game downloads its textures from.'),
     ('Edge', 'One particular CDN server address. The tool measures a few and uses the fastest.'),
     ('Texture piece (chunk)', 'The game streams its textures in many small pieces. Each request from the game is for one piece.'),

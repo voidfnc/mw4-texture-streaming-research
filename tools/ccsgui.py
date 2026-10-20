@@ -3,7 +3,9 @@
 
   python tools/ccsgui.py            (or tools/ccs-gui.bat)         --selftest builds the window headless-ish, polls once and exits
 
-Runs UNELEVATED. Only hosts-file changes need admin; they go through tools/ccshosts.py with a UAC prompt.
+Runs as administrator by default (the packaged program asks for it in its manifest; from source it relaunches itself elevated once, see wants_elevation). Elevated, nothing
+else asks for permission: the hosts file, the game folder and a mirror inside Program Files are all writable. If the prompt is declined it carries on unelevated, as before:
+then hosts-file changes go through tools/ccshosts.py with a UAC prompt each time. CCS_NO_ELEVATE=1 or --no-elevate stays unelevated on purpose.
 Children (proxy, diskguard) are detached processes tracked by pid files, so closing/restarting the GUI does not lose them.
 See docs/USAGE.md.
 """
@@ -1367,8 +1369,18 @@ def hold_mutex():
     except Exception: _mutex = None
 
 
+ELEVATED_ONCE = '--elevated-once'                      # given to the relaunched copy so it never asks again, whatever Windows answers
+
+
+def wants_elevation(argv, admin=None, env=None):
+    """Should this start relaunch itself elevated? Not when it already is, when the user opted out, when this is the relaunched copy, or for the headless self-test."""
+    env = os.environ if env is None else env; admin = procs.is_admin() if admin is None else admin
+    return not (admin or env.get('CCS_NO_ELEVATE') or '--no-elevate' in argv or ELEVATED_ONCE in argv or '--selftest' in argv)
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
+    if wants_elevation(argv) and procs.relaunch_elevated(launch.gui_argv() + argv + [ELEVATED_ONCE]): return 0        # the elevated copy takes over; declined -> carry on unelevated
     if '--selftest' in argv:
         app = App(selftest=True)
         def done():

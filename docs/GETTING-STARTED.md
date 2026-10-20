@@ -14,8 +14,8 @@ also a short test to compare it on your own PC.
 
 Download from the [Releases page](https://github.com/voidfnc/mw4-texture-streaming-research/releases) and pick one:
 
-- **The installer** (`...-Setup.exe`, recommended): double-click, accept the notice, press Next and Install. It installs for you only, so Windows does not ask for an administrator
-  password; "for all users" is an option on its first screen. It adds a Start menu entry (and a desktop shortcut if you leave that ticked) and a normal uninstall entry in
+- **The installer** (`...-Setup.exe`, recommended): double-click, accept the notice, press Next and Install. It installs for you only, so setup itself does not ask for an administrator
+  password; "for all users" is an option on its first screen. The program asks for administrator permission each time it starts (the *UAC prompt*): answer Yes. It adds a Start menu entry (and a desktop shortcut if you leave that ticked) and a normal uninstall entry in
   *Apps & features*. It does not touch your hosts file or your game folder.
 - **The portable zip** (`...-portable.zip`): unzip it anywhere and double-click `MW4 Texture Streaming.exe`. Nothing is installed, and your settings stay in a `data` folder next to it.
 - **From source**, if you prefer to run the code yourself: see the README.
@@ -45,8 +45,8 @@ A checklist at the top of the Dashboard. Each step ticks itself when the real st
    *Doctor* button can fix most of it. If the game folder needs its one-time setup, press *Set up the game* and confirm (see [Game setup](USAGE.md#game-setup-online-mode-and-the-cache-link)); it
    keeps a copy of what it changes.
 4. **Texture pack** (offline copy only). Press *Download* in the Texture pack tab. You can pause and resume at any time, and carry on with the next steps while it runs, or skip it.
-5. **Start the session.** Press *Start session*. Windows shows a permission prompt (the *UAC prompt*) because the hosts file is protected: answer Yes. The tool adds one
-   marked block to that file and keeps a backup. *Restore hosts* takes the block out again.
+5. **Start the session.** Press *Start session*. The tool adds one marked block to the protected hosts file and keeps a backup (it can, because the program was started with
+   administrator rights). *Restore hosts* takes the block out again.
 6. **Play.** Launch the game and leave the tool window open. The step ticks when the game has been delivered its texture pieces.
 7. **When you are done.** Press *Stop session*. The tool writes a report (Report tab) and shows a short *What happened* summary.
 
@@ -66,7 +66,7 @@ The guide shows a short card with the likely cause and a button, plus the last p
 | What you see | What it means | What to do |
 |---|---|---|
 | "Windows refused to change the hosts file" | The hosts file is protected, and a security program or the read-only flag blocked the write. Nothing was changed. | Press *Try again* and answer Yes on the prompt. If it is refused again, allow the tool in your security software (or pause it briefly), and check the file is not read-only. |
-| "The Windows permission prompt was closed" | The UAC prompt was dismissed. | Press *Try again* and answer Yes. |
+| "The Windows permission prompt was closed" | The UAC prompt was dismissed (when the program started, or later if you declined it then and it asks per change). | Press *Try again* and answer Yes, or close the program and start it again. |
 | "Another program is using the port" | Something else listens on port 80, so the game would talk to it instead of the helper. | Open the *Doctor*: it names the program and can stop it. |
 | "The hosts entry is gone" | The helper runs, but the entry that sends the game to it was removed (security software sometimes does this). | *Put it back*, and allow the tool in the security software. |
 | "The game is running but nothing reached the helper" | The game was probably started before the session, or a VPN / secure-DNS setting bypasses the hosts file. | Close the game and launch it again after *Start session*, then open the *Doctor*. |
@@ -101,7 +101,7 @@ A small program on this PC that answers the game's texture requests. It gets eac
 A Windows file that can override where a web address points. This tool adds one marked block to it so the game talks to the helper. "Restore hosts" takes the block out again, and a backup is made first.
 
 **UAC prompt**  
-The Windows window that asks "Do you want to allow this app to make changes?". It appears because the hosts file is protected. Answer Yes to continue.
+The Windows window that asks "Do you want to allow this app to make changes?". The program shows it once, when it starts, because it edits the protected hosts file and the game folder. Answer Yes to continue.
 
 **CDN**  
 The servers the game downloads its textures from.

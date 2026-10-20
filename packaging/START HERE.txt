@@ -1,7 +1,8 @@
 MW4 Texture Streaming Toolkit - start here
 
 1. Close the game.
-2. Double-click "MW4 Texture Streaming.exe". The window offers a short guided setup: say yes.
+2. Double-click "MW4 Texture Streaming.exe". Windows asks for administrator permission (the program needs it for the hosts file and the game folder): answer Yes.
+   The window offers a short guided setup: say yes.
 3. Follow the checklist at the top. It finds your game folder (you confirm it), then you press Start session and start the game.
 4. When you are done: Stop session.
 

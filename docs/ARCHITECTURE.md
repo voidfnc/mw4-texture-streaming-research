@@ -34,7 +34,7 @@ These are on purpose and are the reason the project can be described as research
 | `tools/ccsreport.py`, `ccslib/report.py` | reads the proxy log and builds a per-run or per-launch report (tier demand, throughput, cache re-requests) |
 | `tools/ccslib/pack.py` | the "texture pack" model: packages, scope, detail level, size estimates |
 | `tools/ccslib/upstream.py` | how we talk to the CDN: edge lookup (system resolver, remembered answer, direct DNS query) and a timed pick between candidates, User-Agent, Retry-After parsing, back-off |
-| `tools/ccsgui.py` | tkinter control window (runs unelevated; children are detached processes tracked by pid files with creation-time checks) |
+| `tools/ccsgui.py` | tkinter control window (runs as administrator by default: the packaged program's manifest asks for it, a source run relaunches itself elevated once, see `wants_elevation`; children are detached processes tracked by pid files with creation-time checks and inherit its rights, so `uninstall-prep stop-helpers` elevates when it must) |
 | `tools/ccs.py`, `ccslib/launch.py` | the packaged app's one entry point and the single function (`argv_for`) that starts every helper: `python script.py` from source, `ccs-cli.exe --ccs-run <tool>` when packaged |
 | `ccslib/gamefix.py` | the game setup (online mode in the game's Steam emulator settings, `sp26\xpak_cache` junction to `xpak_cache`): pure text edit, status / apply / undo, tested on temp folders; run as `--ccs-run gamefix` |
 | `ccslib/uninstall.py`, `ccslib/selfcheck.py` | the installer's hooks (stop helpers, remove our hosts block, report state by exit code) and an end-to-end check of the helper start-up, both tested without touching the real hosts file |

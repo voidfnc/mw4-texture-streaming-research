@@ -69,6 +69,7 @@ def stop(name, wait=3.0):
     subprocess.run(['taskkill', '/PID', str(st['pid']), '/T', '/F'], capture_output=True, creationflags=CREATE_NO_WINDOW)
     t0 = time.time()
     while time.time() - t0 < wait and ctime(st['pid']) is not None: time.sleep(0.1)
+    if ctime(st['pid']) is not None: return False                     # still there (for example it runs elevated and this process does not): keep the record, it is still true
     _clear(name)
     return True
 
@@ -134,6 +135,12 @@ def run_elevated(argv, wait_s=120):
     _k32.WaitForSingleObject(s.hProcess, int(wait_s * 1000))
     code = wintypes.DWORD(); _k32.GetExitCodeProcess(s.hProcess, ctypes.byref(code)); _k32.CloseHandle(s.hProcess)
     return code.value
+
+
+def relaunch_elevated(argv):
+    """Start `argv` (list) elevated via UAC and do not wait for it. True = started, False = the user declined or Windows refused."""
+    try: return ctypes.windll.shell32.ShellExecuteW(None, 'runas', argv[0], subprocess.list2cmdline(argv[1:]), None, 1) > 32
+    except Exception: return False
 
 
 def tail_lines(path, n=200):
