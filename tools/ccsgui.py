@@ -192,7 +192,7 @@ class App(tk.Tk):
             ttk.Label(d, text=label).grid(row=r, column=0, sticky='e', padx=(10, 4), pady=3); v = tk.StringVar(value=str(self.cfg['pack'].get(key, 0))); ttk.Entry(d, textvariable=v, width=7).grid(row=r, column=1, sticky='w'); self.pk_num[key] = v
             ttk.Label(d, text=hint, style='Dim.TLabel').grid(row=r, column=2, sticky='w', padx=6)
         num(0, 'line_mbps', 'My line speed (Mbps)', 'only for the ETA'); num(1, 'limit_mbps', 'Download cap (Mbps)', '0 = unlimited; shared by all connections'); num(2, 'daily_gib', 'Daily limit (GiB)', '0 = none; pauses until local midnight')
-        num(3, 'workers', 'Connections', '0 = automatic (4 with a cap, else 12)'); num(4, 'link_wait_s', 'Give up after no link (s)', '0 = wait forever, chunks stay pending')
+        num(3, 'workers', 'Connections', '0 = automatic (4); 8 helps on long-distance links'); num(4, 'link_wait_s', 'Give up after no link (s)', '0 = wait forever, chunks stay pending')
         bt = ttk.Frame(f); bt.pack(fill='x', pady=4)
         ttk.Button(bt, text='Download / resume', style='Accent.TButton', command=self.do_pack_start).pack(side='left', padx=4)
         ttk.Button(bt, text='Pause (finish in-flight)', command=self.do_mirror_pause).pack(side='left', padx=4)
@@ -370,7 +370,10 @@ class App(tk.Tk):
             head = {'quota-wait': f"DAILY QUOTA REACHED ({(p.get('used_today_gib') or 0):.1f} GiB today) - resumes {time.strftime('%H:%M', time.localtime(p['resume_at'])) if p.get('resume_at') else 'at midnight'}; Pause to stop",
                     'offline-wait': 'NO CONNECTION to the CDN - waiting, chunks stay pending (Pause to stop)'}.get(st, st)
             lim = f"  cap {p['limit_mbps']:g} Mbps" if p.get('limit_mbps') else ''
-            return bar, f"{head}: {done:,}/{p['queued']:,} ({p['ok']:,} ok, {p['fail']} failed, {p['retry']} retries)  {p['bytes'] / 2**30:.2f}/{p['budget_gib']:.1f} GiB  {p['mibps']:.1f} MiB/s{lim}  ETA {eta}  free {p['free_gib']:.0f} GiB"
+            sp = p.get('mibps_now', p['mibps'])                                          # rolling 30 s when the run reports it; MiB/s x 8.39 = Mbit/s
+            via = f"  via {p['edge']}" if p.get('edge') else ''
+            warn = f"  [{p['edge_note']}]" if p.get('edge_note') else ''
+            return bar, f"{head}: {done:,}/{p['queued']:,} ({p['ok']:,} ok, {p['fail']} failed, {p['retry']} retries)  {p['bytes'] / 2**30:.2f}/{p['budget_gib']:.1f} GiB  {sp:.1f} MiB/s ({sp * 8.388608:.0f} Mbps){lim}{via}{warn}  ETA {eta}  free {p['free_gib']:.0f} GiB"
         if p:
             return (1000 * (p['ok'] + p['fail']) / max(1, p['queued']) if p['queued'] else 0), f"last run {p['state']}: {p['ok']:,} ok, {p['fail']} failed, {p['bytes'] / 2**30:.2f} GiB downloaded"
         return 0, 'no run in progress'

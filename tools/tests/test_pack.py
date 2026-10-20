@@ -211,6 +211,10 @@ class PoliteClientTests(MirrorCliBase):
 
 
 class UpstreamUnitTests(unittest.TestCase):
+    def setUp(self):
+        from ccslib import upstream
+        old = upstream._cache_path; upstream._cache_path = lambda: os.path.join(TMP, 'edge_cache_unit.json'); self.addCleanup(setattr, upstream, '_cache_path', old)      # never the real tools/work
+
     def test_retry_after_parsing_and_backoff_bounds(self):
         from ccslib import upstream
         self.assertEqual(upstream.retry_after({'Retry-After': '7'}), 7.0); self.assertIsNone(upstream.retry_after({})); self.assertIsNone(upstream.retry_after({'Retry-After': 'soon'}))
@@ -221,11 +225,105 @@ class UpstreamUnitTests(unittest.TestCase):
         from ccslib import upstream
         import socket as sk, subprocess as sp
         og, orun = sk.getaddrinfo, sp.run
+        odns = upstream.dns_a; seen = []
         sk.getaddrinfo = lambda *a, **k: [(2, 1, 6, '', ('127.0.0.1', 80))]                                                             # hosts override active: the name resolves to us
-        sp.run = lambda *a, **k: type('R', (), dict(stdout='Name: x\nAddresses: 203.0.113.9\n'))()                                       # a public resolver answers
-        try: c = upstream.candidates()
-        finally: sk.getaddrinfo, sp.run = og, orun
-        self.assertNotIn('127.0.0.1', c); self.assertEqual(c[0], '203.0.113.9'); self.assertEqual(c[-1], upstream.FALLBACK_IPS[-1])
+        upstream.dns_a = lambda name, server, **k: (seen.append(server), ['203.0.113.9'])[1]                                             # a public resolver answers
+        try:
+            if os.path.exists(upstream._cache_path()): os.remove(upstream._cache_path())
+            c = upstream.candidates()
+        finally: sk.getaddrinfo, sp.run, upstream.dns_a = og, orun, odns
+        self.assertNotIn('127.0.0.1', c); self.assertEqual(c[0], '203.0.113.9'); self.assertEqual(c[-1], upstream.FALLBACK_IPS[-1]); self.assertEqual(seen, list(upstream.PUBLIC_RESOLVERS))                                # every public resolver is asked: they map to different regions
+
+    def test_system_answer_is_remembered_and_beats_public_dns_once_the_override_hides_it(self):
+        from ccslib import upstream
+        import socket as sk
+        og, odns = sk.getaddrinfo, upstream.dns_a
+        if os.path.exists(upstream._cache_path()): os.remove(upstream._cache_path())
+        sk.getaddrinfo = lambda *a, **k: [(2, 1, 6, '', ('198.51.100.20', 80))]                                                          # override off: the ISP resolver gives the nearest edge
+        upstream.dns_a = lambda *a, **k: ['203.0.113.9']
+        try:
+            first = upstream.candidates_info()
+            sk.getaddrinfo = lambda *a, **k: [(2, 1, 6, '', ('127.0.0.1', 80))]                                                          # override on
+            later = upstream.candidates_info()
+        finally: sk.getaddrinfo, upstream.dns_a = og, odns
+        self.assertEqual(first[0], ('198.51.100.20', 'system')); self.assertEqual(later[0], ('198.51.100.20', 'cache')); self.assertEqual(later[1], ('203.0.113.9', 'dns:1.1.1.1'))
+        self.assertEqual(later[-1], (upstream.FALLBACK_IPS[-1], 'fallback')); self.assertTrue(upstream.is_fallback(upstream.FALLBACK_IPS[0]))
+
+    def test_stale_cache_is_ignored(self):
+        from ccslib import upstream
+        upstream.remember(['198.51.100.20']); self.assertEqual(upstream._cached(), ['198.51.100.20'])
+        with open(upstream._cache_path()) as f: d = json.load(f)
+        d['time'] -= upstream.CACHE_MAX_AGE_S + 5
+        with open(upstream._cache_path(), 'w') as f: json.dump(d, f)
+        self.assertEqual(upstream._cached(), [])
+
+    def test_dns_a_parses_cname_chain_ipv6_noise_and_compressed_names(self):
+        from ccslib import upstream
+        def name(n): return b''.join(bytes([len(p)]) + p.encode() for p in n.split('.')) + b'\x00'
+        q = name('cod-assets.cdn.callofduty.com') + struct.pack('>HH', 1, 1)
+        rr = lambda typ, data, nm=b'\xc0\x0c': nm + struct.pack('>HHIH', typ, 1, 60, len(data)) + data                                  # name = pointer to the question
+        msg = struct.pack('>HHHHHH', 7, 0x8180, 1, 4, 0, 0) + q + rr(5, name('a1991.dscv.akamai.net')) + rr(28, bytes(16)) + rr(1, bytes([104, 120, 129, 56])) + rr(1, bytes([104, 120, 129, 42]))
+        self.assertEqual(upstream.parse_dns_a(msg), ['104.120.129.56', '104.120.129.42'])                                                # AAAA ignored, order kept
+        self.assertEqual(upstream.parse_dns_a(struct.pack('>HHHHHH', 7, 0x8183, 1, 0, 0, 0) + q), [])                                   # NXDOMAIN
+        self.assertEqual(upstream.parse_dns_a(b'\x00' * 12), [])
+
+    def test_dns_a_round_trip_against_a_local_udp_server(self):
+        from ccslib import upstream
+        srv = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); srv.bind(('127.0.0.1', 0)); port = srv.getsockname()[1]
+        def serve():
+            req, addr = srv.recvfrom(512); i = 12
+            while req[i]: i += 1 + req[i]
+            q = req[12:i + 5]; ans = b'\xc0\x0c' + struct.pack('>HHIH', 1, 1, 60, 4) + bytes([192, 0, 2, 55])
+            srv.sendto(req[:2] + struct.pack('>HHHHH', 0x8180, 1, 1, 0, 0) + q + ans, addr)
+        threading.Thread(target=serve, daemon=True).start(); self.addCleanup(srv.close)
+        self.assertEqual(upstream.dns_a('cod-assets.cdn.callofduty.com', '127.0.0.1', timeout=3, port=port), ['192.0.2.55'])
+        self.assertEqual(upstream.dns_a('x.example', '127.0.0.1', timeout=0.3, port=free_port()), [])                                   # nobody answers -> [] instead of an exception
+
+    def test_measure_edge_accepts_only_a_correct_answer_and_pick_prefers_the_fastest(self):
+        from ccslib import upstream
+        class Slow(FakeCdn):
+            def do_GET(self): time.sleep(0.4); FakeCdn.do_GET(self)
+        class Deny(FakeCdn):
+            def do_GET(self): self.send_response(403); self.send_header('Content-Length', '0'); self.end_headers()
+        servers = {}
+        for k, h in (('fast', FakeCdn), ('slow', Slow), ('deny', Deny)):
+            servers[k] = ThreadingHTTPServer(('127.0.0.1', 0), h); threading.Thread(target=servers[k].serve_forever, daemon=True).start(); self.addCleanup(servers[k].shutdown)
+        tests = [(f'/pc/iw9_3/23/01/0000000000000101_{W(0x101):08x}_1', W(0x101))]
+        r = {k: upstream.measure_edge('127.0.0.1', s.server_address[1], tests) for k, s in servers.items()}
+        self.assertTrue(r['fast']['ok'] and r['slow']['ok']); self.assertFalse(r['deny']['ok']); self.assertIn('403', r['deny']['error']); self.assertGreater(r['slow']['secs'], r['fast']['secs'])
+        self.assertFalse(upstream.measure_edge('127.0.0.1', free_port(), tests)['ok'])                                                  # refused connection
+        self.assertFalse(upstream.measure_edge('127.0.0.1', servers['fast'].server_address[1], [(tests[0][0], W(0x101) + 1)])['ok'])   # wrong length is not a good edge
+        om = upstream.measure_edge
+        upstream.measure_edge = lambda ip, port, t, **k: dict(ip=ip, ok=ip != '10.0.0.3', secs=1.0, mbps={'10.0.0.1': 5.0, '10.0.0.2': 80.0, '10.0.0.3': 999.0, upstream.FALLBACK_IPS[0]: 80.0}[ip], status=200, error=None)
+        try:
+            self.assertEqual(upstream.pick(['10.0.0.1', '10.0.0.2', '10.0.0.3'], 80, tests)[0], '10.0.0.2')                              # fastest that is also valid
+            self.assertEqual(upstream.pick([upstream.FALLBACK_IPS[0], '10.0.0.2'], 80, tests)[0], '10.0.0.2')                            # tie: the built-in address loses
+            self.assertIsNone(upstream.pick(['10.0.0.3'], 80, tests)[0])
+        finally: upstream.measure_edge = om
+
+
+class EdgeSelectionCliTests(MirrorCliBase):
+    def test_run_measures_candidates_picks_a_working_one_and_logs_it(self):
+        self.env['CCS_EDGE_CANDIDATES'] = f'127.0.0.2,127.0.0.1'                                                                          # 127.0.0.2: nothing listens there -> rejected
+        args = [a for a in self.run_args('--scope', 'sp') if a not in ('--upstream-ip', '127.0.0.1')]
+        r = self.cli(*args); self.assertEqual(r.returncode, 0, r.stdout + r.stderr); self.assertEqual(len(self.stored_ids()), 7)
+        log = open(os.path.join(self.work, 'ccsmirror.log'), encoding='utf-8').read()
+        self.assertIn('edge test 127.0.0.2 (env): rejected', log); self.assertRegex(log, r'edge test 127\.0\.0\.1 \(env\): [\d.]+ Mbit/s'); self.assertIn('run: upstream=127.0.0.1 ', log)
+        p = json.load(open(self.pj)); self.assertEqual(p['edge'], '127.0.0.1'); self.assertEqual(p['edge_note'], ''); self.assertIn('mibps_now', p)
+
+    def test_run_says_so_when_only_the_fallback_edge_is_left(self):
+        self.env['CCS_EDGE_CANDIDATES'] = '127.0.0.2'
+        import ccslib.upstream as up; self.assertFalse(up.is_fallback('127.0.0.2'))
+        args = [a for a in self.run_args('--scope', 'sp', '--retries', '0', '--link-wait-s', '2') if a not in ('--upstream-ip', '127.0.0.1')]
+        r = self.cli(*args, timeout=90); log = open(os.path.join(self.work, 'ccsmirror.log'), encoding='utf-8').read()
+        self.assertIn('no edge address passed the test', json.load(open(self.pj)).get('edge_note', '')); self.assertIn('rejected', log)
+
+    def test_stall_watchdog_decision(self):
+        sys.path.insert(0, TOOLS); import ccsmirror
+        s = ccsmirror.stalled; base = dict(elapsed=200, since_check=400, line_mbps=100, limit_mbps=0, rate_mbps=5.0, throttled=False, state='running')
+        self.assertTrue(s(**base))                                                                                                        # 5 Mbit/s on a 100 Mbit/s line
+        for k, v in (('rate_mbps', 25.0), ('elapsed', 60), ('since_check', 30), ('line_mbps', 0), ('throttled', True), ('state', 'quota-wait'), ('limit_mbps', 10.0)):
+            self.assertFalse(s(**dict(base, **{k: v})), k)                                                                               # healthy, too early, just checked, unknown line, 429 pause, quota, user cap
 
 
 class QuotaUnitTests(unittest.TestCase):

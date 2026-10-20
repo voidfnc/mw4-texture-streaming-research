@@ -33,7 +33,7 @@ These are on purpose and are the reason the project can be described as research
 | `tools/diskguard.py` | watches the size of the engine cache and warns or ends the game process at a limit you set |
 | `tools/ccsreport.py`, `ccslib/report.py` | reads the proxy log and builds a per-run or per-launch report (tier demand, throughput, cache re-requests) |
 | `tools/ccslib/pack.py` | the "texture pack" model: packages, scope, detail level, size estimates |
-| `tools/ccslib/upstream.py` | how we talk to the CDN: edge lookup through a public resolver, User-Agent, Retry-After parsing, back-off |
+| `tools/ccslib/upstream.py` | how we talk to the CDN: edge lookup (system resolver, remembered answer, direct DNS query) and a timed pick between candidates, User-Agent, Retry-After parsing, back-off |
 | `tools/ccsgui.py` | tkinter control window (runs unelevated; children are detached processes tracked by pid files with creation-time checks) |
 | `tools/netwatch.py`, `tools/cachewatch.py` | read-only observers (DNS/TCP log of the game, install-tree snapshot) |
 | `tools/cdnxpak.py`, `tools/xpakrec.py` | parsers for the shipped chunk lists and for the engine's cache index |
