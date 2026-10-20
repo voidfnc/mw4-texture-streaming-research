@@ -81,8 +81,6 @@ each step off by itself. It is optional and never changes anything without a cli
 `tools\work\gui_settings.json`. Then use *Start session*, launch the game, and watch the Dashboard. [docs/USAGE.md](docs/USAGE.md) walks through each tab, and the command-line versions of everything are listed there too.
 To undo the hosts change at any time run `tools\restore-hosts.bat`.
 
-A download that needs no Python is planned; see [docs/ROADMAP.md](docs/ROADMAP.md).
-
 The tests don't need the game: `python -m unittest discover -s tools/tests` (168 tests, a couple of minutes).
 
 ## If something doesn't work

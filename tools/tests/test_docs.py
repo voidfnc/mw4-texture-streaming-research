@@ -65,7 +65,7 @@ class LinkTests(unittest.TestCase):
 
     def test_the_docs_that_are_linked_are_not_dropped_by_the_whitelist(self):
         ignore = read('.gitignore')
-        for name in ('GETTING-STARTED.md', 'ROADMAP.md'): self.assertIn(f'!/docs/{name}', ignore)
+        self.assertIn('!/docs/GETTING-STARTED.md', ignore)
         self.assertIn('!/docs/images/', ignore)
 
 

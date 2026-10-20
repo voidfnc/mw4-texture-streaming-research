@@ -25,7 +25,7 @@ Guided setup for first-time users, plus the fixes found while building it. Nothi
 - Fixes: the guide showed "Press Start session" on a finished session step, the panel was empty for the first second after start, a stray control character in the README
   (`tools\restore-hosts.bat` was printed wrong). `--selftest` no longer shows the first-run dialogs.
 - 30 new tests (168 in total).
-- README screenshots (`docs/images/`, regenerated with `tools/make_screenshots.py` for each release), a roadmap for a no-Python download (`docs/ROADMAP.md`), and a test that
+- README screenshots (`docs/images/`, regenerated with `tools/make_screenshots.py` for each release), and a test that
   keeps the README and this changelog in step with the version number.
 - The Proxy tab no longer prints the author's own test-run numbers under the size histogram.
 

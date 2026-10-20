@@ -24,4 +24,4 @@ endorsed.
 Warfare" and related names are trademarks of their owners and are used here for identification only.
 
 **No warranty.** The software is provided "as is", without warranty of any kind (see [LICENSE](LICENSE)). The license covers the code and notes in this
-repository only and grants no rights to any game, asset or trademark.
+repository only and grants no rights to any game, asset, binary, network content or trademark of Activision Publishing, Inc. or its affiliates.
