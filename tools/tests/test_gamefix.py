@@ -89,6 +89,19 @@ class Status(Quiet):
         root = make_game('s4')
         with mock.patch.object(procs, 'image_running', side_effect=AssertionError('tasklist was started')): self.assertEqual(gamefix.state(root), 'needed')
 
+    def test_a_cache_folder_setting_that_points_at_the_link_itself_is_not_this_layout(self):
+        root = make_game('s5'); link = gamefix.layout(root)['link']
+        with mock.patch.object(gamefix.paths, 'XPAK_CACHE', link):
+            s = gamefix.status(root); self.assertFalse(s['applicable']); self.assertIn('cache folder setting', s['why']); self.assertEqual(gamefix.state(root), 'na')
+            with self.assertRaises(gamefix.NotApplicable): gamefix.apply(root)
+        with mock.patch.object(gamefix.paths, 'XPAK_CACHE', os.path.join(root, 'xpak_cache')): self.assertTrue(gamefix.status(root)['applicable'])
+
+    def test_the_default_game_names_count_even_when_the_setting_was_edited(self):
+        root = make_game('s6'); seen = []
+        def fake(*exes): seen.extend(exes); return []
+        with mock.patch.object(gamefix.paths, 'GAME_EXES', ('mygame.exe',)), mock.patch.object(procs, 'image_running', side_effect=fake): gamefix.status(root)
+        self.assertEqual(sorted(seen), sorted(['mygame.exe', 'sp26-cod.exe', 'cod.exe']))
+
     def test_it_never_raises_on_a_broken_config(self):
         root = make_game('s3', config=None); self.assertEqual(gamefix.status(root)['keys'], {}); self.assertEqual(gamefix.state(root), 'needed')
 
@@ -119,7 +132,7 @@ class Apply(Quiet):
     def test_a_missing_cache_folder_is_created_and_a_missing_config_is_written(self):
         root = make_game('a4', config=None, cache=False); gamefix.apply(root); L = gamefix.layout(root)
         self.assertTrue(os.path.isdir(L['target'])); self.assertEqual(gamefix.read_keys(slurp(L['config'])), dict(offline='0', disable_lan_only='1'))
-        self.assertFalse(os.path.exists(L['backup']), 'there was nothing to back up')
+        self.assertEqual(slurp(L['backup'], 'rb'), b'', 'an empty backup records that there was no settings file')
 
     def test_an_empty_real_folder_is_replaced_and_one_with_files_is_moved_aside_not_deleted(self):
         root = make_game('a5', link='empty'); self.assertEqual(gamefix.apply(root)['aside'], ''); self.assertEqual(gamefix.state(root), 'ok')
@@ -185,6 +198,31 @@ class Undo(Quiet):
         self.assertFalse(os.path.lexists(L['link'])); self.assertTrue(os.path.exists(os.path.join(root, 'xpak_cache', 'cache_0_2.xpak')), 'the real cache is untouched')
         self.assertFalse(os.path.exists(L['backup'])); self.assertEqual(gamefix.undo(root)['done'], [])
 
+    def test_undo_puts_back_only_our_two_keys_and_keeps_edits_made_since(self):
+        root = make_game('u3', config='[main::connectivity]\noffline=1\n[other]\na=1\n'); L = gamefix.layout(root); gamefix.apply(root)
+        put(L['config'], slurp(L['config']) + '[mine]\nx=2\n'); gamefix.undo(root)
+        self.assertEqual(slurp(L['config']), '[main::connectivity]\noffline=1\n[other]\na=1\n[mine]\nx=2\n')
+
+    def test_undo_removes_a_key_that_was_not_there_before_and_a_file_that_was_not_there_before(self):
+        root = make_game('u4', config='[main::connectivity]\nfoo=1\n'); L = gamefix.layout(root); gamefix.apply(root); gamefix.undo(root)
+        self.assertEqual(slurp(L['config']), '[main::connectivity]\nfoo=1\n')
+        root = make_game('u5', config=None); L = gamefix.layout(root); gamefix.apply(root); self.assertTrue(os.path.exists(L['config'])); r = gamefix.undo(root)
+        self.assertFalse(os.path.exists(L['config'])); self.assertFalse(os.path.exists(L['backup'])); self.assertEqual(r['done'], ['configs.main.ini', 'sp26\\xpak_cache'])
+
+    def test_undo_refuses_a_read_only_file_and_changes_nothing(self):
+        root = make_game('u6'); L = gamefix.layout(root); gamefix.apply(root); os.chmod(L['config'], stat.S_IREAD); self.addCleanup(os.chmod, L['config'], stat.S_IWRITE)
+        with self.assertRaises(OSError) as c: gamefix.undo(root)
+        self.assertNotIsInstance(c.exception, PermissionError); self.assertTrue(os.path.exists(L['backup'])); self.assertTrue(gamefix.is_reparse(L['link']))
+
+    def test_undo_asks_for_rights_the_same_way_apply_does(self):
+        root = make_game('u7'); gamefix.apply(root); seen = []
+        def fake_elevated(argv, wait_s=120):
+            seen.append(argv); put(argv[argv.index('--result-file') + 1], json.dumps(dict(ok=True, message='restored: elevated'))); return 0
+        run = tempfile.mkdtemp(dir=TMP)
+        with mock.patch.object(gamefix.paths, 'RUN', run), mock.patch.object(gamefix, 'undo', side_effect=PermissionError('denied')), mock.patch.object(procs, 'run_elevated', side_effect=fake_elevated):
+            self.assertEqual(gamefix.undo_elevating(root, say=lambda *_: None), (True, 'restored: elevated'))
+        self.assertEqual(seen[0][seen[0].index('gamefix') + 1], 'undo')
+
     def test_undo_leaves_a_real_folder_alone(self):
         root = make_game('u2', link='dir'); r = gamefix.undo(root); self.assertTrue(os.path.isdir(gamefix.layout(root)['link'])); self.assertTrue(r['notes'])
 
@@ -215,6 +253,17 @@ class Command(Quiet):
         a = launch.argv_for('gamefix', 'apply', frozen=False, executable='py.exe'); self.assertEqual(a[0], 'py.exe'); self.assertTrue(a[1].endswith('ccs.py')); self.assertEqual(a[2:], ['--ccs-run', 'gamefix', 'apply'])
         self.assertTrue(os.path.exists(a[1]))
 
+    def test_the_elevated_command_line_keeps_a_path_with_spaces_and_brackets_in_one_piece(self):
+        root = os.path.join(TMP, 'Program Files (x86)', 'Call of Duty Modern Warfare 4'); os.makedirs(os.path.join(root, 'sp26', 'steam_settings'))
+        put(os.path.join(root, 'sp26', 'steam_settings', 'configs.main.ini'), '[main::connectivity]\noffline=1\n'); seen = []
+        def fake(argv, wait_s=120):
+            seen.append(argv); put(argv[argv.index('--result-file') + 1], json.dumps(dict(ok=True, message='x'))); return 0
+        with mock.patch.object(gamefix.paths, 'RUN', tempfile.mkdtemp(dir=TMP)), mock.patch.object(gamefix, 'apply', side_effect=PermissionError('denied')), mock.patch.object(procs, 'run_elevated', side_effect=fake):
+            gamefix.apply_elevating(root, say=lambda *_: None)
+        argv = seen[0]; self.assertEqual(argv[argv.index('--root') + 1], os.path.normpath(root))
+        import subprocess
+        self.assertIn('"' + os.path.normpath(root) + '"', subprocess.list2cmdline(argv[1:]), 'quoted as one argument for the elevated process')
+
     def test_the_elevated_path_reads_the_result_file(self):
         root = make_game('c3'); p = mock.patch.object(gamefix.paths, 'RUN', tempfile.mkdtemp(dir=TMP)); p.start(); self.addCleanup(p.stop)
         def fake_elevated(argv, wait_s=120):
@@ -231,7 +280,8 @@ class UsedByTheApp(Quiet):
         with mock.patch.object(gamefix.paths, 'GAME_ROOT', root):
             r = doctor.check_game_setup(); self.assertEqual((r['level'], r['fix']), ('warn', ('game_fix', None))); self.assertIn('offline mode', r['detail'])
             self.assertTrue(session.run_fix(copy.deepcopy(config.DEFAULTS), ('game_fix', None), lambda *_: None)[0])
-            r = doctor.check_game_setup(); self.assertEqual((r['level'], r['fix']), ('ok', None))
+            r = doctor.check_game_setup(); self.assertEqual((r['level'], r['fix']), ('ok', ('game_undo', None)))
+            self.assertTrue(session.run_fix(copy.deepcopy(config.DEFAULTS), ('game_undo', None), lambda *_: None)[0]); self.assertEqual(doctor.check_game_setup()['level'], 'warn')
         with mock.patch.object(gamefix.paths, 'GAME_ROOT', os.path.join(TMP, 'nowhere')): self.assertEqual(doctor.check_game_setup()['level'], 'info')
 
     def test_no_fix_button_while_the_game_runs(self):

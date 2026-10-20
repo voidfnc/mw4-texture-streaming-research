@@ -1,5 +1,5 @@
 """version.py - version, client identification and the short notice shown by the tools (CLI --help footer, GUI first run)."""
-__version__ = '0.2.1-beta'
+__version__ = '0.2.2-beta'
 REPO_URL = 'https://github.com/voidfnc/mw4-texture-streaming-research'
 USER_AGENT = f'mw4-texture-streaming-toolkit/{__version__} (+{REPO_URL})'
 

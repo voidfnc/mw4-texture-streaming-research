@@ -179,6 +179,19 @@ class GuiTests(unittest.TestCase):
             messagebox.askyesno = lambda *a, **k: False; os.rmdir(os.path.join(g, 'sp26', 'xpak_cache')); self.app.guide_do('game_setup'); self.pump(0.5)
             self.assertEqual(gamefix.state(g), 'needed', 'a No changes nothing')
 
+    def test_the_doctor_offers_to_undo_the_game_setup_after_a_yes(self):
+        from unittest import mock
+        from ccslib import gamefix
+        g = self.game_dir(); st = os.path.join(g, 'sp26', 'steam_settings'); os.makedirs(st); os.makedirs(os.path.join(g, 'xpak_cache'))
+        with open(os.path.join(st, 'configs.main.ini'), 'w') as f: f.write('[main::connectivity]\noffline=1\n')
+        c = config.load(); c['paths'].update(game_root=g); config.save(c); paths.reload(); self.app.cfg = c; self.app._gfc = None
+        with mock.patch.object(procs, 'image_running', return_value=[]):
+            gamefix.apply(g); res = doctor.run_all(config.load()); self.app._show_doctor(res); self.app.update()
+            self.assertTrue(any('undo the game setup' in b.cget('text') for b in walk(self.app.doc_frame) if b.winfo_class() == 'TButton'))
+            messagebox.askyesno = lambda *a, **k: False; self.app.do_game_undo(); self.pump(0.5); self.assertEqual(gamefix.state(g), 'ok', 'a No changes nothing')
+            messagebox.askyesno = lambda *a, **k: True; self.app.do_game_undo(); self.pump(1.5)
+            self.assertEqual(gamefix.state(g), 'needed'); self.assertTrue(any(k == 'info' and 'restored' in a[1] for k, a in self.calls))
+
     def test_report_generation_from_log_and_view(self):
         lg = os.path.join(paths.WORK, 'ccsproxy.log')
         open(lg, 'w', encoding='utf-8').write('09:00:00 START 2026-10-21 pid=1\n09:00:00 index: 1 chunk ids\n09:00:01 GET /pc/iw9_3/23/aa/00000000000000aa_00000010_1 -> 200 16B MIRROR\n')

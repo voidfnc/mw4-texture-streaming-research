@@ -131,7 +131,7 @@ def check_game_setup():
     from . import gamefix
     s = gamefix.status()
     if not s['applicable']: return _c('Game setup', 'info', gamefix.describe(s))
-    if s['ok']: return _c('Game setup', 'ok', gamefix.describe(s))
+    if s['ok']: return _c('Game setup', 'ok', gamefix.describe(s), ('game_undo', None) if os.path.exists(s['backup']) and not s['game_running'] else None)   # undo only where this tool made the change
     return _c('Game setup', 'warn', 'streamed textures may not be used by the game until this is set: ' + gamefix.describe(s), None if s['game_running'] else ('game_fix', None))
 
 
