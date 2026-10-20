@@ -31,7 +31,10 @@ def main(argv=None):
     try:
         lnk = shortcut.create(d, 'selfcheck'); ps = "(New-Object -ComObject WScript.Shell).CreateShortcut($env:L).TargetPath"
         target = subprocess.run(['powershell', '-NoProfile', '-Command', ps], capture_output=True, text=True, errors='replace', env=dict(os.environ, L=lnk), timeout=30, creationflags=procs.CREATE_NO_WINDOW).stdout.strip()
-        want = launch.gui_argv()[0]; check(os.path.normcase(target) == os.path.normcase(want), f'shortcut starts {os.path.basename(want)}')
+        want = launch.gui_argv()[0]
+        try: same = os.path.samefile(target, want)                          # the same file even when one path is the 8.3 short form (RUNNER~1) and the other the long one
+        except OSError: same = os.path.normcase(target) == os.path.normcase(want)
+        check(same, f'shortcut starts {os.path.basename(want)}')
     except Exception as e: check(False, f'shortcut: {e}')
     print('selfcheck: ' + ('all fine' if not fails else f'{len(fails)} problem(s)')); return 0 if not fails else 1
 
