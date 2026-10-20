@@ -6,7 +6,7 @@ from test_ccs import TMP, WIN_HOSTS, put
 import tkinter as tk
 from tkinter import messagebox, simpledialog, filedialog
 sys.path.insert(0, test_ccs.TOOLS)
-from ccslib import config, doctor, paths, procs, report, session, shortcut, proxyctl
+from ccslib import config, doctor, guide, paths, procs, report, session, shortcut, proxyctl
 import ccsgui
 
 
@@ -197,6 +197,141 @@ class GuiTests(unittest.TestCase):
         import inspect
         from ccslib import report as rp, doctor as dc
         for src in (inspect.getsource(rp), inspect.getsource(dc)): self.assertNotIn('runs 1-3 of', src); self.assertNotIn('in run 10', src)
+
+    # ---------------------------------------------------------------- guided setup
+    def _snap(self, **kw):
+        base = dict(t=time.time(), hosts='ABSENT', resolve=dict(ok=False), game=[], owners=[], free=200.0, pproc=dict(alive=False), gproc=dict(alive=False), pstat=None, mproc=dict(alive=False))
+        base.update(kw); self.app.snap = base
+
+    def _live(self, req=0, game=()):
+        return dict(hosts='OK', resolve=dict(ok=True), game=list(game), pproc=dict(alive=True, pid=7), pstat=dict(pid=7, stat=dict(req=req)))
+
+    def _freeze(self): self.app.stop_poll.set(); time.sleep(1.2)
+
+    def test_guide_is_offered_once_to_a_new_user_and_declining_is_remembered(self):
+        from ccslib import version
+        asked = []; messagebox.askyesno = lambda *a, **k: (asked.append(a), True)[1]
+        self.app.cfg['notice_ack'] = version.__version__; self.assertFalse(paths.CONFIGURED)
+        self.assertEqual(self.app.guide_frame.winfo_manager(), '')                                                      # hidden until someone says yes
+        self.app._first_run_notice(); self.assertEqual(len(asked), 1)
+        st = self.app._guide_state(); self.assertTrue(st['enabled']); self.assertEqual(st['offered'], version.__version__); self.assertEqual(self.app.guide_frame.winfo_manager(), 'pack')
+        self.assertTrue(json.load(open(paths.SETTINGS_FILE))['guide']['enabled']); self.app._first_run_notice(); self.assertEqual(len(asked), 1)           # never asked twice
+        self.app.guide_toggle(False); self.app.cfg['guide']['offered'] = ''; messagebox.askyesno = lambda *a, **k: (asked.append(a), False)[1]
+        self.app._offer_guide(); self.assertEqual(len(asked), 2); st = self.app._guide_state(); self.assertFalse(st['enabled']); self.assertTrue(st['offered']); self.assertEqual(self.app.guide_frame.winfo_manager(), '')
+
+    def test_guide_is_not_offered_to_someone_who_already_set_up_the_game_folder(self):
+        asked = []; messagebox.askyesno = lambda *a, **k: (asked.append(a), True)[1]
+        self.app.cfg['paths']['game_root'] = self.game_dir(); config.save(self.app.cfg); self.assertTrue(paths.CONFIGURED)
+        self.app._first_run_notice(); self.assertEqual(asked, []); self.assertFalse(self.app._guide_state()['enabled'])
+
+    def test_guide_panel_walks_through_the_first_run_and_persists(self):
+        from ccslib import guide
+        app = self.app; self._freeze(); app.guide_toggle(True); st = lambda: {r['id']: r['status'] for r in guide.evaluate(app._guide_state(), app._guide_facts())}
+        self._snap(); app._guide_tick(); self.assertEqual(list(app._guide_lbl), ['path', 'folder', 'preflight', 'session', 'game', 'after']); self.assertEqual(st()['path'], 'current')
+        app.guide_do('choose_offline'); self.assertEqual(list(app._guide_lbl), ['path', 'folder', 'preflight', 'pack', 'session', 'game', 'after']); self.assertEqual(app._guide_state()['path'], 'offline')
+        g = self.game_dir(); self.assertTrue(app._apply_game_folder(g)); self.assertEqual(os.path.normcase(paths.GAME_ROOT), os.path.normcase(os.path.normpath(g)))
+        self.assertEqual(st()['folder'], 'done'); self.assertEqual(json.load(open(paths.SETTINGS_FILE))['paths']['game_root'], os.path.normpath(g)); self.assertEqual(app.pv_loc['game_root'].get(), os.path.normpath(g))
+        app.guide_do('skip:pack'); self._snap(); app._guide_tick(); self.assertEqual(st()['session'], 'current')
+        self._snap(**self._live()); app._guide_tick(); self.assertEqual(app._guide_state()['ms'], ['session']); self.assertEqual(st()['game'], 'current')
+        self._snap(**self._live(req=120, game=['sp26-cod.exe'])); app._guide_tick(); self.assertEqual(app._guide_state()['ms'], ['session', 'game']); self.assertIn('120', app._guide_lbl['game'].cget('text'))
+        self._snap(); app._guide_tick(); self.assertEqual(app._guide_state()['ms'], ['session', 'game', 'after']); self.assertTrue(guide.all_passed(guide.evaluate(app._guide_state(), app._guide_facts())))
+        saved = json.load(open(paths.SETTINGS_FILE))['guide']; self.assertEqual((saved['path'], saved['ms'], saved['skipped'], saved['enabled']), ('offline', ['session', 'game', 'after'], ['pack'], True))   # survives a restart
+        app.guide_do('restart'); self.assertEqual((app._guide_state()['ms'], app._guide_state()['skipped'], app._guide_state()['path']), ([], [], 'offline'))
+
+    def test_guide_buttons_use_the_normal_handlers(self):
+        app = self.app; calls = []
+        app.do_start = lambda: calls.append('start'); app.do_stop = lambda: calls.append('stop'); app.do_doctor = lambda: calls.append('doctor')
+        for a in ('start_session', 'stop_session', 'doctor'): app.guide_do(a)
+        self.assertEqual(calls, ['start', 'stop', 'doctor']); self.assertEqual(app.nb.index('current'), app.nb.index(app.tabs['Doctor']))
+        app.guide_do('goto_pack'); self.assertEqual(app.nb.index('current'), app.nb.index(app.tabs['Texture pack'])); app.guide_do('goto_report'); self.assertEqual(app.nb.index('current'), app.nb.index(app.tabs['Report']))
+        app.guide_do('no_such_action')                                                                                    # unknown actions are ignored, not fatal
+
+    def test_find_game_folder_shows_what_was_found_and_sets_nothing_by_itself(self):
+        from unittest import mock
+        from ccslib import guide
+        g = self.game_dir(); got = []; self.app._guide_choose_folder = lambda found: got.append(found)
+        with mock.patch.object(guide, 'find_game_folders', return_value=[dict(path=g, score=3, source='test')]): self.app.guide_find_folder(); self.pump(1.2)
+        self.assertEqual(got, [[dict(path=g, score=3, source='test')]]); self.assertFalse(paths.CONFIGURED)                  # the chooser decides; nothing was applied
+        got.clear()
+        with mock.patch.object(guide, 'find_game_folders', side_effect=RuntimeError('disk gone')): self.app.guide_find_folder(); self.pump(1.2)
+        self.assertEqual(got, [[]])                                                                                       # a failing search shows the empty chooser (Browse still works)
+
+    def test_a_folder_that_does_not_look_like_the_game_is_used_only_after_a_yes(self):
+        from ccslib import guide
+        app = self.app; odd = tempfile.mkdtemp(prefix='oddfolder_', dir=TMP); asked = []
+        messagebox.askyesno = lambda *a, **k: (asked.append(a), False)[1]
+        self.assertFalse(app._apply_game_folder(odd)); self.assertEqual(len(asked), 1); self.assertFalse(paths.CONFIGURED)
+        messagebox.askyesno = lambda *a, **k: (asked.append(a), True)[1]
+        self.assertTrue(app._apply_game_folder(odd)); self.assertTrue(paths.CONFIGURED); st = app._guide_state(); self.assertEqual(st['confirmed_root'], os.path.normpath(odd))
+        f = app._guide_facts(); self.assertEqual(f['folder_score'], 0); self.assertTrue(guide.folder_ok(st, f))                  # accepted on the user's word
+        self.calls.clear(); self.assertFalse(app._apply_game_folder(os.path.join(TMP, 'does_not_exist'))); self.assertEqual([c[0] for c in self.calls], ['error'])
+        app.guide_do('choose_quick'); self.assertEqual(app._guide_state()['confirmed_root'], os.path.normpath(odd))          # other actions keep it
+
+    def test_confirm_anyway_button_marks_the_current_folder(self):
+        from ccslib import guide
+        app = self.app; odd = tempfile.mkdtemp(prefix='oddfolder_', dir=TMP); app.cfg['paths']['game_root'] = odd; config.save(app.cfg)
+        f = app._guide_facts(); self.assertFalse(guide.folder_ok(app._guide_state(), f)); app.guide_do('confirm_anyway'); self.assertTrue(guide.folder_ok(app._guide_state(), app._guide_facts()))
+
+    def test_panel_redraws_only_when_the_layout_changes(self):
+        app = self.app; app.guide_toggle(True)
+        row = lambda st, detail, acts=(): dict(id='game', n=1, title='Play', status=st, detail=detail, actions=list(acts), skippable=False, done=st == 'done', running=False, skipped=False)
+        s = app._guide_state(); app._guide_render(s, [row('current', 'Game detected. 1 texture pieces')]); first = app.guide_body.winfo_children()[0]
+        app._guide_render(s, [row('current', 'Game detected. 2 texture pieces')]); self.assertIs(app.guide_body.winfo_children()[0], first); self.assertIn('2 texture', app._guide_lbl['game'].cget('text'))   # text only
+        app._guide_render(s, [row('done', 'Done')]); self.assertIsNot(app.guide_body.winfo_children()[0], first)                  # status changed: rebuilt
+
+    def test_panel_shows_the_latest_problem_until_something_succeeds(self):
+        app = self.app; self._freeze(); app.guide_toggle(True); self._snap()
+        problem = lambda: [w.cget('text') for w in app.guide_body.winfo_children() if w.winfo_class() == 'Label' and w.cget('text').startswith('Last problem')]
+        app._guide_tick(); self.assertEqual(problem(), [])
+        app.say('Session NOT ready: hosts override not applied:   permission denied', 'ERR'); app._guide_tick()
+        self.assertEqual(len(problem()), 1); self.assertIn('Session NOT ready: hosts override not applied: permission denied', problem()[0])            # whitespace tidied
+        app.say('Session READY: session running', 'OK'); app._guide_tick(); self.assertEqual(problem(), [])                                           # a success clears it
+        app._guide_last = (time.time() - 700, 'old problem'); app._guide_tick(); self.assertEqual(problem(), [])                                      # and it expires
+
+    def test_folder_chooser_lists_candidates_and_uses_only_the_selected_one(self):
+        app = self.app; used = []; app._apply_game_folder = lambda p: used.append(p) or True
+        found = [dict(path='C:\\A\\One', score=3, source='x'), dict(path='D:\\B\\Two', score=1, source='y')]
+        def find(w, cls): return [w] if w.winfo_class() == cls else [x for c in w.winfo_children() for x in find(c, cls)]
+        def open_chooser(f):
+            before = set(app.winfo_children()); app._guide_choose_folder(f); app.update(); return [w for w in app.winfo_children() if w not in before and w.winfo_class() == 'Toplevel'][0]
+        dlg = open_chooser(found); lb = find(dlg, 'Listbox')[0]
+        self.assertEqual(lb.size(), 2); self.assertIn('C:\\A\\One', lb.get(0)); self.assertIn('looks complete', lb.get(0)); self.assertEqual(lb.curselection(), (0,))      # best one preselected
+        lb.selection_clear(0, 'end'); lb.selection_set(1); [b for b in find(dlg, 'TButton') if b.cget('text') == 'Use selected'][0].invoke(); app.update()
+        self.assertEqual(used, ['D:\\B\\Two']); self.assertFalse(dlg.winfo_exists())
+        dlg = open_chooser([]); use = [b for b in find(dlg, 'TButton') if b.cget('text') == 'Use selected'][0]
+        self.assertIn('disabled', use.state()); use.invoke(); self.assertEqual(used, ['D:\\B\\Two']); [b for b in find(dlg, 'TButton') if b.cget('text') == 'Cancel'][0].invoke(); self.assertEqual(used, ['D:\\B\\Two'])
+
+    def test_tooltip_survives_a_widget_that_was_rebuilt(self):
+        from tkinter import ttk
+        b = ttk.Button(self.app.tabs['Dashboard'], text='x'); tip = ccsgui.Tip(b, 'hello'); b.destroy(); tip._show(); self.assertIsNone(tip.win)                         # no exception in the Tk callback
+
+    def test_a_null_guide_setting_does_not_stop_the_window_opening(self):
+        data = json.load(open(paths.SETTINGS_FILE)) if os.path.exists(paths.SETTINGS_FILE) else {}
+        data['guide'] = None; json.dump(data, open(paths.SETTINGS_FILE, 'w'))
+        a = ccsgui.App(); a.withdraw(); a.update(); self.assertEqual(a.guide_frame.winfo_manager(), ''); self.assertEqual(a._guide_state(), guide.new_state()); a.stop_poll.set(); a.destroy()
+
+    def test_port_owner_names_in_the_facts(self):
+        app = self.app; self._freeze()
+        self._snap(owners=[dict(pid=5, name='?')]); self.assertEqual(app._guide_facts()['blocked_by'], 'another program')
+        self._snap(owners=[dict(pid=5, name='other.exe')]); self.assertEqual(app._guide_facts()['blocked_by'], 'other.exe')
+        self._snap(owners=[dict(pid=7, name='python.exe')], pproc=dict(alive=True, pid=7)); self.assertEqual(app._guide_facts()['blocked_by'], '')               # our own proxy is not a blocker
+        self._snap(owners=[dict(pid=7, name='python.exe'), dict(pid=9, name='x.exe')], pproc=dict(alive=True, pid=7)); self.assertEqual(app._guide_facts()['blocked_by'], 'python.exe')
+
+    def test_a_failing_guide_never_breaks_the_refresh_loop(self):
+        from unittest import mock
+        from ccslib import guide
+        app = self.app; self._freeze(); app.cfg['guide']['enabled'] = True; self._snap(hosts='OK', resolve=dict(ok=True))
+        with mock.patch.object(guide, 'evaluate', side_effect=RuntimeError('boom')):
+            app._refresh(); app._refresh()                                                                                  # raises nothing
+        self.assertEqual(app._guide_err, 'boom')
+
+    def test_guide_button_and_settings_checkbox_toggle_the_panel(self):
+        app = self.app
+        def buttons(w): return [w.cget('text')] if w.winfo_class() == 'TButton' else [t for c in w.winfo_children() for t in buttons(c)]
+        self.assertIn('Guide', buttons(app.tabs['Dashboard']))
+        app.guide_toggle(); self.assertEqual((app.guide_frame.winfo_manager(), app.sv_guide.get()), ('pack', True)); self.assertTrue(json.load(open(paths.SETTINGS_FILE))['guide']['enabled'])
+        app.guide_toggle(); self.assertEqual((app.guide_frame.winfo_manager(), app.sv_guide.get()), ('', False))
+        app.guide_toggle(True); app.guide_toggle(True); self.assertEqual(app.guide_frame.winfo_manager(), 'pack')
 
     def test_game_launch_window_reports_and_run_list(self):
         import datetime

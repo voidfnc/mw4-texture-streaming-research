@@ -6,6 +6,16 @@
   against your own history and were not.
 - Pressing *Stop session* right after the game exited no longer writes a second copy of the report when the first one already covers the whole launch.
 - Two new tests (101 in total).
+- **Guided setup (optional).** A checklist on the Dashboard for first-time users, offered once on the first start and available any time from the *Guide* button or
+  *Settings -> Help*. It follows the real state of the PC (game folder, port, disk, session, requests) and ticks each step off by itself. *Find my game folder* looks in
+  the folder around the tool, Steam libraries and the usual places on every fixed drive, judges folders by what is inside rather than by name, and always asks you to
+  confirm; any folder can be chosen by hand.
+- First-run fixes found while building it: the proxy no longer crashes at start when there is no mirror yet (it used to die on the missing `index.sqlite`), and the
+  Doctor reports a missing mirror as information instead of a failure unless the profile needs the mirror.
+- The red *SETUP NEEDED* bar on the Dashboard is hidden once setup is complete (it used to stay as an empty red strip).
+- A game folder without the `*_cdn.xpak` chunk lists no longer blocks *Start session*: the Doctor and the folder check warn instead (the proxy works without them; the
+  mirror and the detail-level cap need them).
+- Tooltip and layout hardening. 37 new tests (138 in total).
 
 ## 0.1.2-beta
 Fixes for slow mirror downloads (a user on a 100 Mbit/s line saw about 1 Mbit/s).

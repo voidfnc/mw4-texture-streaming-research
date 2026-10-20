@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ccslib import cachectl, config, doctor, hosts, logtail, mirrorctl, pack, paths, procs, proxyctl, report, session, version
+from ccslib import cachectl, config, doctor, guide, hosts, logtail, mirrorctl, pack, paths, procs, proxyctl, report, session, version
 
 BG, PANEL, FG, DIM, ACC = '#16181d', '#1e2128', '#d7dae0', '#8b93a1', '#4c8dff'
 OK, WARN, BAD, OFF = '#3ecf6e', '#e8b43a', '#ec5b5b', '#555b66'
@@ -33,9 +33,11 @@ class Tip:
     def _enter(self, _e=None): self._hide(); self.job = self.w.after(self.delay, self._show)
 
     def _show(self):
-        self.win = tk.Toplevel(self.w); self.win.wm_overrideredirect(True)
-        self.win.wm_geometry(f'+{self.w.winfo_rootx() + 12}+{self.w.winfo_rooty() + self.w.winfo_height() + 6}')
-        tk.Label(self.win, text=self.text, justify='left', wraplength=self.wrap, bg=PANEL, fg=FG, relief='solid', borderwidth=1, padx=8, pady=6, font=('Segoe UI', 9)).pack()
+        try:
+            self.win = tk.Toplevel(self.w); self.win.wm_overrideredirect(True)
+            self.win.wm_geometry(f'+{self.w.winfo_rootx() + 12}+{self.w.winfo_rooty() + self.w.winfo_height() + 6}')
+            tk.Label(self.win, text=self.text, justify='left', wraplength=self.wrap, bg=PANEL, fg=FG, relief='solid', borderwidth=1, padx=8, pady=6, font=('Segoe UI', 9)).pack()
+        except tk.TclError: self.win = None
 
     def _hide(self, _e=None):
         if self.job: self.w.after_cancel(self.job); self.job = None
@@ -52,7 +54,7 @@ class App(tk.Tk):
         paths.ensure_dirs()
         self.title(f'MW4 Texture Streaming Toolkit {version.__version__}'); self.geometry('1180x760'); self.minsize(980, 620); self.configure(bg=BG)
         self.cfg = config.load(); self.snap = {}; self.q = queue.Queue(); self.busy = False
-        self.rate = collections.deque(maxlen=12); self.series = collections.deque(maxlen=180); self._game_prev = False; self.game_start = None; self.tails = {n: logtail.Tail(p, 150) for n, p in LOG_SOURCES}
+        self.rate = collections.deque(maxlen=12); self.series = collections.deque(maxlen=180); self._game_prev = False; self._guide_game_seen = False; self._guide_last = None; self._gfc = None; self._guide_sig = None; self._guide_lbl = {}; self.game_start = None; self.tails = {n: logtail.Tail(p, 150) for n, p in LOG_SOURCES}
         self.log_lines = collections.deque(maxlen=6000); self.gui_log_path = dict(LOG_SOURCES)['gui']
         self._style(); self._build()
         self.protocol('WM_DELETE_WINDOW', self.on_close)
@@ -62,8 +64,9 @@ class App(tk.Tk):
 
     def _first_run_notice(self):
         """Show the research / responsibility notice once per version."""
-        if self.cfg.get('notice_ack') == version.__version__: return
-        messagebox.showinfo('Before you start', version.NOTICE, parent=self); self.cfg['notice_ack'] = version.__version__; config.save(self.cfg)
+        if self.cfg.get('notice_ack') != version.__version__:
+            messagebox.showinfo('Before you start', version.NOTICE, parent=self); self.cfg['notice_ack'] = version.__version__; config.save(self.cfg)
+        self._offer_guide()
 
     # ---------------------------------------------------------------- theme / widgets
     def _style(self):
@@ -120,7 +123,13 @@ class App(tk.Tk):
 
     # ---------------------------------------------------------------- tabs
     def _tab_dash(self, f):
-        self.setup_banner = tk.Label(f, text='', fg='white', bg='#7a2e32', anchor='w', padx=10, font=('Segoe UI', 10, 'bold')); self.setup_banner.pack(fill='x', pady=(8, 0))
+        slot_banner = ttk.Frame(f); slot_banner.pack(fill='x'); slot_guide = ttk.Frame(f); slot_guide.pack(fill='x')          # fixed places, so either can come and go without moving the other
+        self.setup_banner = tk.Label(slot_banner, text='', fg='white', bg='#7a2e32', anchor='w', padx=10, font=('Segoe UI', 10, 'bold'))      # packed only while something needs setting up
+        gh = ttk.Frame(slot_guide); ttk.Label(gh, text='Guided setup (optional)').pack(side='left', padx=(0, 14))
+        ttk.Button(gh, text='Start over', command=lambda: self.guide_do('restart')).pack(side='left', padx=2); ttk.Button(gh, text='Hide', command=lambda: self.guide_toggle(False)).pack(side='left', padx=2)
+        self.guide_frame = ttk.LabelFrame(slot_guide, labelwidget=gh); self.guide_body = ttk.Frame(self.guide_frame); self.guide_body.pack(fill='x', padx=10, pady=(4, 6)); self.guide_body.bind('<Configure>', self._guide_wrap)
+        self.sv_guide = tk.BooleanVar(value=guide.clean_state(self.cfg.get('guide'))['enabled'])
+        if self.sv_guide.get(): self.guide_frame.pack(fill='x', pady=(8, 0))
         row = ttk.Frame(f); row.pack(fill='x', pady=10)
         ttk.Label(row, text='Profile').pack(side='left'); self.profile = tk.StringVar(value=self.cfg['profile'])
         self.prof_cb = ttk.Combobox(row, textvariable=self.profile, values=list(config.all_profiles(self.cfg)), state='readonly', width=16); self.prof_cb.pack(side='left', padx=(6, 2)); self.prof_cb.bind('<<ComboboxSelected>>', self._profile_changed)
@@ -129,6 +138,7 @@ class App(tk.Tk):
         self.btn_stop = ttk.Button(row, text='Stop session', command=self.do_stop); self.btn_stop.pack(side='left', padx=4)
         ttk.Button(row, text='Restore hosts (remove override)', style='Danger.TButton', command=self.do_hosts_remove).pack(side='left', padx=4)
         ttk.Button(row, text='Doctor', command=self.do_doctor).pack(side='left', padx=4)
+        ttk.Button(row, text='Guide', command=self.guide_toggle).pack(side='left', padx=4)
         self.prof_desc = ttk.Label(f, text='', style='Dim.TLabel'); self.prof_desc.pack(anchor='w'); self._profile_changed()
         g = ttk.LabelFrame(f, text='Live (proxy)'); g.pack(fill='x', pady=10); self.cnt = {}
         for i, (k, lab) in enumerate((('req', 'Requests'), ('mirror', 'From mirror'), ('upok', 'Upstream OK'), ('err', 'Errors'), ('retry', 'Retries'), ('cliabort', 'Client aborts'),
@@ -529,6 +539,8 @@ class App(tk.Tk):
     def _update_setup_banner(self):
         bad = [r for r in paths.validate() if r['level'] == 'fail']
         self.setup_banner.configure(text=('SETUP NEEDED: ' + '; '.join(r['name'] for r in bad) + ' - open the Game tab and set the game folder.') if bad else '')
+        if bad: self.setup_banner.pack(fill='x', pady=(8, 0))
+        else: self.setup_banner.pack_forget()
 
     def _tab_doctor(self, f):
         row = ttk.Frame(f); row.pack(fill='x', pady=10)
@@ -592,9 +604,155 @@ class App(tk.Tk):
         ttk.Label(g, text='checked at session start; 3 older copies are kept (.1 .2 .3)', style='Dim.TLabel').grid(row=7, column=2, sticky='w')
         bt = ttk.Frame(g); bt.grid(row=8, column=1, columnspan=2, sticky='w', pady=10)
         ttk.Button(bt, text='Save settings', style='Accent.TButton', command=self.save_settings).pack(side='left'); ttk.Button(bt, text='Create desktop shortcut', command=self.make_shortcut).pack(side='left', padx=10)
+        h = ttk.LabelFrame(f, text='Help'); h.pack(fill='x', pady=6)
+        ttk.Checkbutton(h, text='Show the guided setup on the Dashboard', variable=self.sv_guide, command=lambda: self.guide_toggle(self.sv_guide.get())).pack(anchor='w', padx=12, pady=6)
         i = ttk.LabelFrame(f, text='Where things are (game/cache/mirror/player-config locations: Game tab)'); i.pack(fill='x', pady=6)
         for k, v in (('Tools / scripts', paths.TOOLS), ('Work dir (logs, reports, settings)', paths.WORK), ('Hosts file', paths.hosts_path()), ('Python', paths.PY)):
             r = ttk.Frame(i); r.pack(fill='x', padx=10, pady=2); ttk.Label(r, text=k, width=32, style='Dim.TLabel').pack(side='left'); ttk.Label(r, text=v).pack(side='left')
+
+    # ---------------------------------------------------------------- guided setup (optional; logic in ccslib/guide.py)
+    def _guide_state(self): return guide.clean_state(self.cfg.get('guide'))
+
+    def _guide_save(self, st):
+        self.cfg['guide'] = st; config.save(self.cfg); self._guide_sig = None
+
+    def _guide_facts(self):
+        """The real state of the PC as the checklist needs it (from the poller's snapshot; nothing is probed here beyond a cheap folder check every few seconds)."""
+        s = self.snap or {}; ps = s.get('pstat'); pp = s.get('pproc') or {}; own = s.get('owners') or []; port = config.effective_proxy(self.cfg)['port']
+        blocked = ''
+        if own and not (pp.get('alive') and all(o['pid'] == pp['pid'] for o in own)): blocked = own[0].get('name') if own[0].get('name') not in (None, '', '?') else 'another program'
+        now = time.time(); root = paths.GAME_ROOT; fc = self._gfc
+        if not fc or fc[1] != root or now - fc[0] > 5:
+            ex = os.path.isdir(root); fc = (now, root, ex, guide.score_folder(root) if ex else 0); self._gfc = fc
+        tot = (getattr(self, '_pack_plan', None) or {}).get('total') or {}; rs = s.get('resolve') or {}
+        return dict(configured=paths.CONFIGURED, folder_root=root, folder_exists=fc[2], folder_score=fc[3], blocked_by=blocked, port=port, free_gib=s.get('free'),
+                    game_running=bool(s.get('game')), proxy_ready=bool(ps), proxy_alive=bool(pp.get('alive')), hosts_ok=s.get('hosts') in ('OK', 'FOREIGN', 'MIXED'),
+                    resolve_ok=bool(rs.get('ok')), hosts_state=s.get('hosts', '?'), requests=int(ps['stat']['req']) if ps and ps.get('stat') else 0,
+                    pack_total=tot.get('chunks'), pack_stored=tot.get('stored'), mirror_alive=bool((s.get('mproc') or {}).get('alive')),
+                    pack_run_done=((s.get('mprog') or {}).get('ok', 0) + (s.get('mprog') or {}).get('fail', 0)), pack_run_total=(s.get('mprog') or {}).get('queued'))
+
+    def _guide_tick(self):
+        """Once a second from _refresh: advance the milestones the facts prove and redraw the panel when something changed."""
+        st0 = self._guide_state()
+        if not st0['enabled']: return
+        f = self._guide_facts()
+        if f['game_running'] and f['proxy_ready']: self._guide_game_seen = True
+        if not f['proxy_alive']: self._guide_game_seen = False
+        f['game_seen'] = self._guide_game_seen
+        st = guide.advance(st0, f)
+        if st != st0: self._guide_save(st)
+        self._guide_render(st, guide.evaluate(st, f))
+
+    def _guide_visibility(self):
+        on = self._guide_state()['enabled']
+        if on: self.guide_frame.pack(fill='x', pady=(8, 0))
+        else: self.guide_frame.pack_forget()
+        self.sv_guide.set(on); self._guide_sig = None
+
+    def guide_toggle(self, on=None):
+        st = self._guide_state(); st['enabled'] = (not st['enabled']) if on is None else bool(on); st['offered'] = st['offered'] or version.__version__
+        self._guide_save(st); self._guide_visibility(); self._guide_tick()
+
+    def _guide_render(self, st, rows):
+        """Compact checklist: every step is one line; only the step you are on (and a running one) spells out what to do."""
+        shown = lambda r: '' if r['status'] == 'todo' else r['detail']
+        wl = self._guide_wraplength()
+        last = self._guide_last; note = last[1] if last and time.time() - last[0] < 600 else ''
+        sig = json.dumps([[r['id'], r['n'], r['status'], r['actions'], r['skippable']] for r in rows]) + st['path'] + str(guide.all_passed(rows)) + note
+        if sig == self._guide_sig:                                                    # same layout: only refresh the texts (the request counter changes every second)
+            for r in rows:
+                lab = self._guide_lbl.get(r['id'])
+                if lab is not None and lab.cget('text') != shown(r): lab.configure(text=shown(r))
+            return
+        self._guide_sig = sig; self._guide_lbl = {}
+        for w in self.guide_body.winfo_children(): w.destroy()
+        col = dict(done=OK, running=WARN, skipped=DIM, current=ACC, todo=OFF); mark = dict(done='\u2713', running='\u2026', skipped='-', current='\u25cf', todo='\u25cb')
+        for r in rows:
+            fr = ttk.Frame(self.guide_body); fr.pack(fill='x', pady=1); cur = r['status'] == 'current'
+            tk.Label(fr, text=mark[r['status']], fg=col[r['status']], bg=BG, width=2, font=('Segoe UI', 11, 'bold')).pack(side='left', anchor='n')
+            tf = tk.Frame(fr, width=230, height=22, bg=BG); tf.pack(side='left', anchor='n'); tf.pack_propagate(False)                       # fixed cell: the texts line up whatever the font
+            ttk.Label(tf, text=f"{r['n']}. {r['title']}", style='H.TLabel' if cur else 'TLabel').pack(side='left', anchor='w')
+            bt = ttk.Frame(fr); bt.pack(side='right', anchor='n', padx=(8, 0))
+            dl = ttk.Label(fr, text=shown(r), wraplength=wl, justify='left', style='TLabel' if r['status'] in ('current', 'running') else 'Dim.TLabel'); dl.pack(side='left', fill='x', expand=True, anchor='n'); self._guide_lbl[r['id']] = dl
+            if r['status'] != 'todo':
+                for k, (act, lab) in enumerate(r['actions']):
+                    b = ttk.Button(bt, text=lab, style='Accent.TButton' if cur and k == 0 else 'TButton', command=lambda a=act: self.guide_do(a)); b.pack(side='left', padx=2)
+                    if act in ('choose_quick', 'choose_offline'): Tip(b, guide.PATH_TEXT[act.split('_', 1)[1]])                    # what each choice means, on hover
+                if r['skippable'] and r['status'] in ('current', 'running'): ttk.Button(bt, text='Skip', command=lambda i=r['id']: self.guide_do('skip:' + i)).pack(side='left', padx=2)
+        if rows and guide.all_passed(rows):
+            ttk.Label(self.guide_body, text='All set. Next time: Start session, play, Stop session. "Start over" runs this checklist again.', style='H.TLabel').pack(anchor='w', pady=(4, 0))
+        if note: tk.Label(self.guide_body, text='Last problem: ' + note + '   (details: Activity log below, or the Doctor)', fg=BAD, bg=BG, anchor='w', justify='left', wraplength=self._guide_wraplength() + 330).pack(fill='x', pady=(4, 0))
+
+    def _guide_wraplength(self):
+        w = self.guide_body.winfo_width()
+        return max(260, w - 560) if w > 200 else 620                       # the room left of the title column and the buttons
+
+    def _guide_wrap(self, e=None):
+        wl = self._guide_wraplength()
+        for l in self._guide_lbl.values(): l.configure(wraplength=wl)
+
+    def guide_do(self, a):
+        try:
+            st = self._guide_state()
+            if a in ('choose_quick', 'choose_offline'): st['path'] = a.split('_', 1)[1]; self._guide_save(st)
+            elif a == 'find_folder': self.guide_find_folder()
+            elif a == 'confirm_anyway': st['confirmed_root'] = paths.GAME_ROOT; self._guide_save(st)
+            elif a.startswith('skip:'): self._guide_save(guide.skip(st, a[5:]))
+            elif a == 'restart': self._guide_game_seen = False; self._guide_save(guide.restart(st))
+            elif a == 'goto_pack': self.nb.select(self.tabs['Texture pack'])
+            elif a == 'goto_report': self.nb.select(self.tabs['Report'])
+            elif a == 'doctor': self.nb.select(self.tabs['Doctor']); self.do_doctor()
+            elif a == 'start_session': self.do_start()
+            elif a == 'stop_session': self.do_stop()
+        except Exception as e: self.say(f'guide: {e}', 'WARN')
+        self._guide_tick()
+
+    def guide_find_folder(self):
+        self.say('guide: looking for the game folder in the usual places...')
+        def work():
+            try: found = guide.find_game_folders()
+            except Exception as e: found = []; self.say(f'guide: folder search failed: {e}', 'WARN')
+            self.q.put(('ask', lambda: self._guide_choose_folder(found)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def _guide_choose_folder(self, found):
+        """Show what was found (or nothing); the user picks one, browses to another, or cancels. Nothing is set without a click."""
+        dlg = tk.Toplevel(self); dlg.title('Find my game folder'); dlg.configure(bg=BG); dlg.transient(self); dlg.geometry('760x330')
+        ttk.Label(dlg, text=('I found these. Pick yours, or browse to another folder.' if found else 'I could not find it in the usual places. Browse to the folder that contains the game files.'), wraplength=720).pack(anchor='w', padx=12, pady=(12, 6))
+        lb = tk.Listbox(dlg, bg=PANEL, fg=FG, selectbackground='#31507f', activestyle='none', height=9, font=('Segoe UI', 9)); lb.pack(fill='both', expand=True, padx=12)
+        for c in found: lb.insert('end', guide.describe_candidate(c))
+        if found: lb.selection_set(0)
+        def use():
+            sel = lb.curselection()
+            if sel: dlg.destroy(); self._apply_game_folder(found[sel[0]]['path'])
+        def browse():
+            from tkinter import filedialog
+            p = filedialog.askdirectory(parent=dlg, title='Select the game folder', initialdir=paths.GAME_ROOT if os.path.isdir(paths.GAME_ROOT) else None)
+            if p: dlg.destroy(); self._apply_game_folder(p)
+        bt = ttk.Frame(dlg); bt.pack(fill='x', padx=12, pady=10)
+        b = ttk.Button(bt, text='Use selected', style='Accent.TButton', command=use); b.pack(side='left'); b.state(['!disabled'] if found else ['disabled'])
+        ttk.Button(bt, text='Browse...', command=browse).pack(side='left', padx=6); ttk.Button(bt, text='Cancel', command=dlg.destroy).pack(side='right')
+        lb.bind('<Double-Button-1>', lambda e: use())
+
+    def _apply_game_folder(self, path):
+        """Set the game folder (the same setting as Game tab -> Locations). A folder that does not look like the game is accepted only after an explicit yes."""
+        path = os.path.normpath(path)
+        if not os.path.isdir(path): messagebox.showerror('Game folder', 'That folder does not exist.', parent=self); return False
+        sc = guide.score_folder(path)
+        if sc == 0 and not messagebox.askyesno('Game folder', f'This folder does not look like the game folder (no cod26 or sp26 inside, no known game program):\n\n{path}\n\nUse it anyway?', parent=self): return False
+        self.cfg['paths']['game_root'] = path; st = self._guide_state()
+        if sc == 0: st['confirmed_root'] = path
+        self.cfg['guide'] = st; self.pv_loc['game_root'].set(path); config.save(self.cfg); self._gfc = None; self._guide_sig = None
+        self.say(f'game folder set to {path}', 'OK'); self.show_validation(); self.show_player_cfg(); self.refresh_cache(); self.refresh_mirror(); self._refresh_runs(); self.pack_refresh()
+        return True
+
+    def _offer_guide(self):
+        """First start with no game folder configured: offer the guide once (never again, and never to someone who has already set things up)."""
+        st = self._guide_state()
+        if st['offered'] or paths.CONFIGURED: return
+        yes = messagebox.askyesno('Guided setup', 'New here? The guided setup is a short checklist on the Dashboard that walks you through the first run and ticks each step off by itself.\n\n'
+                                                  'It never changes anything without a click, and you can turn it on or off any time with the Guide button.\n\nShow it?', parent=self)
+        st['offered'] = version.__version__; st['enabled'] = bool(yes); self._guide_save(st); self._guide_visibility(); self._guide_tick()
 
     # ---------------------------------------------------------------- thread plumbing
     def say(self, msg, tag=None):
@@ -603,6 +761,8 @@ class App(tk.Tk):
             with open(self.gui_log_path, 'a', encoding='utf-8') as fh: fh.write(line + '\n')
         except OSError: pass
         self.q.put(('say', line, tag))
+        if tag in ('ERR', 'WARN'): self._guide_last = (time.time(), ' '.join(str(msg).split())[:400])
+        elif tag == 'OK': self._guide_last = None
 
     def bg(self, label, fn, *args):
         if self.busy: self.say(f'busy - wait for the current action to finish', 'WARN'); return
@@ -685,6 +845,9 @@ class App(tk.Tk):
             fr = s.get('free');
             if fr is not None: self.light('disk', 'fail' if fr < 20 else 'warn' if fr < 60 else 'ok', f'{fr:.0f} GiB free')
             self._refresh_counters(ps, s); self._refresh_hosts_tab(h); self._refresh_mirror_live(s)
+            try: self._guide_tick()
+            except Exception as e:                                                      # the checklist must never break the refresh loop (and logs a given problem once)
+                if str(e) != getattr(self, '_guide_err', None): self._guide_err = str(e); self.say(f'guide: {e}', 'WARN')
             self.c_warn.configure(text='Game is running: the cache may be mid-write (read-only view; backup/restore/install are blocked).' if g else '')
         self.after(1000, self._refresh)
 

@@ -47,7 +47,9 @@ def check_mirror(cfg):
     if not cfg['proxy']['origin'] and 'Capture' == cfg.get('profile'): return _c('Mirror', 'info', 'not used by the Capture profile')
     try: total, rows = _mirror_rows()
     except Exception as e: return _c('Mirror', 'fail', f'index unreadable: {e}')
-    if total is None: return _c('Mirror', 'fail', f'{paths.MIRROR}\\index.sqlite missing (run tools/ccsmirror.py init/run)')
+    if total is None:
+        if config.effective_proxy(cfg).get('offline'): return _c('Mirror', 'fail', f'{paths.MIRROR}\\index.sqlite missing - this profile serves from the mirror only (build it in the Texture pack tab)')
+        return _c('Mirror', 'info', 'no mirror yet - every chunk is fetched from the CDN while you play (fine for a first try); build one later in the Texture pack tab')
     bad = 0
     for sid, wire, flag in rows:
         i = sid & (2**64 - 1); p = os.path.join(paths.MIRROR, 'objects', f'{i & 0xff:02x}', f'{i:016x}_{wire:08x}_{flag}')

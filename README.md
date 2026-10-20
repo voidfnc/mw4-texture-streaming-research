@@ -52,11 +52,12 @@ cd mw4-texture-streaming-research
 python tools\ccsgui.py
 ```
 
-On first start the window asks where your game folder is. Nothing is assumed, and the settings live in `tools\work\gui_settings.json`. Then use *Start session*,
-launch the game, and watch the Dashboard. [docs/USAGE.md](docs/USAGE.md) walks through each tab, and the command-line versions of everything are listed there too.
+On first start the window offers a short guided setup: a checklist on the Dashboard that finds your game folder (you confirm what it finds), checks the PC, and ticks
+each step off by itself. It is optional and never changes anything without a click; the *Guide* button turns it on or off. Nothing is assumed, and the settings live in
+`tools\work\gui_settings.json`. Then use *Start session*, launch the game, and watch the Dashboard. [docs/USAGE.md](docs/USAGE.md) walks through each tab, and the command-line versions of everything are listed there too.
 To undo the hosts change at any time run `tools\restore-hosts.bat`.
 
-The tests don't need the game: `python -m unittest discover -s tools/tests` (99 tests, about two minutes).
+The tests don't need the game: `python -m unittest discover -s tools/tests` (138 tests, about two minutes).
 
 ## If something doesn't work
 

@@ -195,6 +195,16 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(json.load(open(st))['stat']['req'], 2)                                                  # --stats-json snapshot
         self.assertNotIn('/__ccs', open(log, encoding='utf-8').read())                                           # status polls are not logged as chunk traffic
 
+    def test_proxy_starts_and_fetches_from_the_cdn_when_there_is_no_mirror_yet(self):
+        # a first-time user has no mirror: a missing folder and an empty one must both start fine (this used to crash on index.sqlite) and serve from the upstream
+        empty = os.path.join(TMP, 'empty_mirror'); os.makedirs(empty, exist_ok=True)
+        for origin in (os.path.join(TMP, 'no_such_mirror'), empty):
+            port, st, log = self.run_proxy('--origin', origin)
+            self.assertIn('no index in', open(log, encoding='utf-8').read())
+            s, b, _ = self.get(port, f'/pc/iw9_3/23/aa/{0xaa:016x}_00000020_1'); self.assertEqual((s, len(b)), (200, 32))
+            self.assertEqual(json.loads(self.get(port, '/__ccs/stats')[1])['mirror_ids'], 0)
+            self.assertFalse(os.path.exists(os.path.join(origin, 'index.sqlite')))                                   # nothing was created in the user's folder
+
     def test_offline_mode_404s_misses_but_serves_mirror(self):
         port, st, log = self.run_proxy('--offline')
         self.assertEqual(self.get(port, f'/pc/iw9_3/23/{self.cid & 0xff:02x}/{self.cid:016x}_{self.wire:08x}_1')[0], 200)
