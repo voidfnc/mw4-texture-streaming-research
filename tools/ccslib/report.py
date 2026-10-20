@@ -269,7 +269,7 @@ def to_markdown(rep, prev=None):
     if 'throughput_mibps_10s' in rep: x = rep['throughput_mibps_10s']; L += ['', f"Sustained throughput (10 s windows): median {x['p50']} / p90 {x['p90']} / max {x['max']} MiB/s"]
     L += ['', '## Tier demand (unique ids requested vs catalogue)', '', '| tier | requested | catalogue | % |', '|---|---:|---:|---:|']
     for t in TIER_NAMES: x = rep['tiers'][t]; L.append(f"| {t} | {x['requested']:,} | {x['catalogue']:,} | {x['pct']} |")
-    ob = rep['over_4mib']; L += ['', f"**>4 MiB ids requested: {ob['ids']}** (4K-class demand indicator; runs 1-3 of 2026-10-19/20: 9 / 4 / 1)"]
+    ob = rep['over_4mib']; L += ['', f"**>4 MiB ids requested: {ob['ids']}** (4K-class demand indicator)"]
     for x in ob['top'][:10]: L.append(f"- `{x['id']}` {x['raw_mib']} MiB x{x['requests']}")
     if rep.get('unknown_ids'): L.append(f"\nIds not in the CDN catalogue: {rep['unknown_ids']}")
     if rep.get('timeline'):

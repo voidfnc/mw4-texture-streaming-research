@@ -87,7 +87,7 @@ def check_pack(cfg):
             off = bool(e['proxy'].get('offline')); lvl = 'warn' if off else 'info'
             out.append(_c('Texture pack', lvl, base + f"; {t['pending']:,} chunks ({t['pending_gib']:.1f} GiB) not mirrored yet" + (' - OFFLINE profile: these will 404' if off else ' - they come from the internet until the mirror is complete')))
             if not pl['fits']: out.append(_c('Texture pack disk', 'fail', f"needs ~{pl['need_gib']:.0f} GiB, only {pl['free_gib']:.0f} GiB free on the mirror drive"))
-        if pk['level'] == 'ultra' and pl['levels']['ultra']['gib'] > 64: out.append(_c('Texture pack vs engine cache', 'info', f"the full set is {pl['levels']['ultra']['gib']:.0f} GiB; the engine cache is capped by its in-game size setting (64 GB in run 10), so it cannot keep it all - Standard HD fits"))
+        if pk['level'] == 'ultra' and pl['levels']['ultra']['gib'] > 64: out.append(_c('Texture pack vs engine cache', 'info', f"the full set is {pl['levels']['ultra']['gib']:.0f} GiB; the engine cache is capped by the in-game 'Allocated texture cache size' setting, so it may not keep it all - Standard HD fits more easily"))
         s = proxyctl.fetch_stats(e['proxy']['port'])
         if s:
             cap = s.get('args', {}).get('max_raw_mib')

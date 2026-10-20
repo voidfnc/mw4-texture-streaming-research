@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Session reports and the Doctor no longer print numbers from the author's own test runs ("runs 1-3 of 2026-10-19/20", "64 GB in run 10"). They looked like a comparison
+  against your own history and were not.
+- Pressing *Stop session* right after the game exited no longer writes a second copy of the report when the first one already covers the whole launch.
+- Two new tests (101 in total).
+
 ## 0.1.2-beta
 Fixes for slow mirror downloads (a user on a 100 Mbit/s line saw about 1 Mbit/s).
 
