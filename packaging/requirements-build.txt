@@ -1,6 +1,6 @@
 # Build-time dependencies for packaging/build.py (never needed to run the program). Exact versions and hashes: pip refuses anything else.
 #   python -m pip install --require-hashes -r packaging/requirements-build.txt
-# To update: install the new versions in a throw-away venv, `pip freeze`, download the wheels and recompute the hashes (the CI workflow fails on a mismatch).
+# To update: install the new versions in a throw-away venv, `pip freeze`, download the wheels and recompute the hashes (pip refuses a mismatch).
 altgraph==0.17.5 \
     --hash=sha256:f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597
 packaging==26.3 \

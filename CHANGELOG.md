@@ -11,13 +11,13 @@
 - **Portable zip**: unzip anywhere, nothing is installed, settings stay in a `data` folder next to the program.
 - **Same program inside**: `MW4 Texture Streaming.exe` (the window) and `ccs-cli.exe` (the helpers and every command-line tool: `ccs-cli.exe --ccs-run ccsproxy ...`). The helpers
   are started through one function (`ccslib/launch.py`), so running from source behaves exactly as before.
-- **Release pipeline**: `packaging/build.py` builds the program, the zip and the installer and smoke-tests the result; `packaging/test_installer.py` installs, upgrades (with the hosts
-  block on) and uninstalls it. A GitHub Actions workflow does the same on every pull request that touches the code or packaging, and on a version tag it creates a draft release
-  with checksums and a build attestation. The version is read from `tools/ccslib/version.py` only, and a tag that does not match it stops the build.
+- **Releases are one command**: `packaging\build.bat` builds the program, the zip and the installer, smoke-tests the result and installs, upgrades (with the hosts block on) and
+  uninstalls the Setup.exe on the build PC; `python packaging/release.py` then makes a draft GitHub release (files, checksums, notes from this changelog). There is no CI pipeline.
+  The version is read from `tools/ccslib/version.py` only, and the release script refuses files from another version.
 - New: `ccs-cli.exe --ccs-run selfcheck` (starts and stops the proxy and disk guard and makes a shortcut, without touching the hosts file) and `uninstall-prep` (what the installer calls).
 - The window has an icon, and holds a named mutex so the installer knows it is open.
 - Fixed: a Python warning in `netwatch.py`.
-- 27 new tests (195 in total): launcher and dispatcher, uninstall hooks, selfcheck, version and packaging consistency (the installer script, build script, spec, workflow and requirements must agree with the code and the version).
+- 28 new tests (196 in total): launcher and dispatcher, uninstall hooks, selfcheck, version and packaging consistency (the installer script, build script, spec, workflow and requirements must agree with the code and the version).
 
 ## 0.1.3-beta
 Guided setup for first-time users, plus the fixes found while building it. Nothing changes for people who already have it running; the guide is optional.

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """test_installer.py - installs the built Setup.exe silently (per user, into a temp folder), checks the result, upgrades over it with the hosts block switched on, uninstalls,
-and checks that nothing is left behind. Used by CI and by hand:
+and checks that nothing is left behind. build.bat runs it after the build; by hand:
 
   python packaging/test_installer.py packaging/out/MW4-Texture-Streaming-<version>-Setup.exe
 

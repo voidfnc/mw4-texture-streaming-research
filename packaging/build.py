@@ -5,8 +5,8 @@
   python packaging/build.py --no-installer    program folder + zip
   python packaging/build.py --skip-smoke      skip the checks of the built program (not recommended)
 
-Needs PyInstaller in the Python that runs this (CI installs the pinned one from packaging/requirements-build.txt; locally use a throw-away venv, never your main Python):
-  python -m venv %TEMP%\\ccs-build-venv  &&  %TEMP%\\ccs-build-venv\\Scripts\\pip install -r packaging\\requirements-build.txt
+Needs PyInstaller in the Python that runs this. Use packaging\\build.bat, which makes a throw-away environment in %TEMP% with the pinned, hash-checked versions
+(your own Python is not changed), runs this, and then runs test_installer.py.
 The version comes from tools/ccslib/version.py and nowhere else: file names, the exe's version resource and the installer all read it from there.
 Output goes to packaging/out/ (not tracked).
 """
@@ -144,7 +144,7 @@ def release_notes(v):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter); ap.add_argument('--out', default=os.path.join(HERE, 'out'))
     ap.add_argument('--no-installer', action='store_true'); ap.add_argument('--skip-smoke', action='store_true')
-    ap.add_argument('--expect-tag', help='stop unless this git tag is "v" + the version in version.py (CI uses it so a tag can never ship another version)')
+    ap.add_argument('--expect-tag', help='stop unless this git tag is "v" + the version in version.py (release.py relies on the same rule: a release is always the version in version.py)')
     ap.add_argument('--notes', help='also write the release notes (the CHANGELOG section of this version) to this file'); a = ap.parse_args(argv)
     v = read_version(); out = os.path.abspath(a.out); os.makedirs(out, exist_ok=True); print('version', v)
     if a.expect_tag and a.expect_tag != 'v' + v: sys.exit(f'tag {a.expect_tag} does not match the version in tools/ccslib/version.py ({v}): expected v{v}')

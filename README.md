@@ -54,8 +54,7 @@ Pick one. The files are on the [Releases page](https://github.com/voidfnc/mw4-te
 | **From source** | Clone this repository and run `python tools\ccsgui.py` (Python 3.10+, standard library only). See [Running from source](#running-from-source). | Developers and advanced users. Everything is in this repository. |
 
 Windows may say "Windows protected your PC" (SmartScreen) because the files are not code-signed yet: choose *More info*, then *Run anyway*. You can check a download against
-`SHA256SUMS.txt` on the release page (`certutil -hashfile <file> SHA256`). Release files are built by GitHub Actions from the tagged source, with a build attestation
-(`gh attestation verify <file> --repo voidfnc/mw4-texture-streaming-research`). The installer changes nothing in your hosts file; the program does that only when you press *Start session*.
+`SHA256SUMS.txt` on the release page (`certutil -hashfile <file> SHA256`). Release files are built from the tagged source with `packaging\build.bat` (see CONTRIBUTING). The installer changes nothing in your hosts file; the program does that only when you press *Start session*.
 
 ## What it looks like
 
@@ -103,7 +102,7 @@ each step off by itself. It is optional and never changes anything without a cli
 `tools\work\gui_settings.json`. Then use *Start session*, launch the game, and watch the Dashboard. [docs/USAGE.md](docs/USAGE.md) walks through each tab, and the command-line versions of everything are listed there too.
 To undo the hosts change at any time run `tools\restore-hosts.bat`.
 
-The tests don't need the game: `python -m unittest discover -s tools/tests` (195 tests, a couple of minutes).
+The tests don't need the game: `python -m unittest discover -s tools/tests` (196 tests, a couple of minutes).
 
 ## If something doesn't work
 

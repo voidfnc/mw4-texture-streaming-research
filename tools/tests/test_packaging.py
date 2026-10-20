@@ -1,6 +1,6 @@
 """Tests that keep the packaging files consistent with the code and with the version: the version lives in tools/ccslib/version.py only, and the installer script, the build
-script, the exe names, the mutex, the workflow and the build requirements must agree with it and with each other. File checks only: nothing is built or installed here
-(packaging/build.py and packaging/test_installer.py do that, in CI and by hand)."""
+script, the exe names, the mutex, the release script and the build requirements must agree with it and with each other. File checks only: nothing is built or installed here
+(packaging/build.bat does that, by hand, in about three minutes)."""
 import importlib.util, os, re, subprocess, sys, tempfile, unittest
 
 TOOLS = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -74,11 +74,19 @@ class ConsistencyTests(unittest.TestCase):
         for l in names: self.assertRegex(l, r'^[A-Za-z0-9_.-]+==\d[\w.]* \\$')
         for l in hashes: self.assertRegex(l.strip(), r'^--hash=sha256:[0-9a-f]{64}$')
 
-    def test_the_workflow_pins_every_action_to_a_commit_and_checks_the_tag(self):
-        wf = read('.github', 'workflows', 'release.yml')
-        for line in re.findall(r'uses:\s*(\S+)', wf): self.assertRegex(line, r'@[0-9a-f]{40}$', line)
-        self.assertIn('--require-hashes -r packaging/requirements-build.txt', wf); self.assertIn('--expect-tag', wf); self.assertIn('--draft', wf)     # tags make a draft, never a published release
-        self.assertIn('test_installer.py', wf)
+    def test_building_and_releasing_are_one_command_each_and_never_publish(self):
+        bat = read('packaging', 'build.bat'); self.assertIn('--require-hashes', bat); self.assertIn('requirements-build.txt', bat); self.assertIn('build.py', bat); self.assertIn('test_installer.py', bat)
+        rel = read('packaging', 'release.py'); self.assertIn('draft=True', rel); self.assertNotIn('draft=False', rel)                         # the release is a draft; publishing is a click on GitHub
+        self.assertFalse(os.path.exists(os.path.join(REPO, '.github', 'workflows')), 'releases are built locally, not by a pipeline')
+
+    def test_release_script_refuses_files_from_another_version(self):
+        rel = load('ccs_release', 'packaging', 'release.py'); d = tempfile.mkdtemp(prefix='ccsrel_')
+        with self.assertRaises(SystemExit): rel.collect(d, version.__version__)                                     # nothing built
+        for n in (f'MW4-Texture-Streaming-{version.__version__}-Setup.exe', f'MW4-Texture-Streaming-{version.__version__}-win64-portable.zip'): open(os.path.join(d, n), 'w').write('x')
+        open(os.path.join(d, 'SHA256SUMS.txt'), 'w').write('abc  MW4-Texture-Streaming-0.0.1-Setup.exe\n')
+        with self.assertRaises(SystemExit): rel.collect(d, version.__version__)                                     # checksums of an older build
+        open(os.path.join(d, 'SHA256SUMS.txt'), 'w').write(''.join(f'abc  {n}\n' for n in os.listdir(d) if n != 'SHA256SUMS.txt'))
+        self.assertEqual([os.path.basename(f) for f in rel.collect(d, version.__version__)], [f'MW4-Texture-Streaming-{version.__version__}-Setup.exe', f'MW4-Texture-Streaming-{version.__version__}-win64-portable.zip', 'SHA256SUMS.txt'])
 
     def test_only_published_docs_are_packed_next_to_the_program(self):
         build = load('ccs_build2', 'packaging', 'build.py')
