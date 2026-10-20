@@ -182,7 +182,7 @@ class App(tk.Tk):
         mid = ttk.Frame(f); mid.pack(fill='both', expand=True)
         left = ttk.LabelFrame(mid, text='Requested chunk size tier (decoded size)'); left.pack(side='left', fill='y', padx=(0, 10))
         self.hist = tk.Canvas(left, width=360, height=250, bg=PANEL, highlightthickness=0); self.hist.pack(padx=8, pady=8)
-        ttk.Label(left, text='8M / 16M bars = 4K-class demand. Runs 1-3 requested: 9 / 4 / 1 ids > 4 MiB.', style='Dim.TLabel', wraplength=340).pack(padx=8, pady=(0, 8))
+        ttk.Label(left, text='The 8M / 16M bars are the largest pieces, the ones a 4K-class texture setting asks for.', style='Dim.TLabel', wraplength=340).pack(padx=8, pady=(0, 8))
         right = ttk.LabelFrame(mid, text='Recent requests'); right.pack(side='left', fill='both', expand=True)
         cols = ('time', 'id', 'raw', 'tier', 'src', 'status', 'bytes'); self.recent = ttk.Treeview(right, columns=cols, show='headings', height=12)
         for c, w in zip(cols, (70, 150, 80, 60, 90, 60, 80)): self.recent.heading(c, text=c); self.recent.column(c, width=w, anchor='w')
