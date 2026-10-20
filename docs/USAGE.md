@@ -124,6 +124,8 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 | *'NoneType' object has no attribute 'splitlines'* | Fixed in 0.1.1-beta (a non-English Windows printed text the old code could not decode). Update, or open an issue with the support bundle |
 | Mirror downloads are far below your line speed | Look at the `edge test` / `run: upstream=` lines in `tools\work\ccsmirror.log` and at the speed line on the Texture pack tab (it shows MiB/s **and** Mbps and the edge in use). Set *My line speed* so the tool re-checks the edge by itself, try 8 connections, and see [docs/TEXTURE-PACK.md](TEXTURE-PACK.md#download-speed) |
 | First start with no mirror: the proxy would not start, or the Doctor failed on the mirror | Fixed: a missing or empty mirror is normal now (every chunk comes from the CDN until you build one). Update to the latest version |
+| Windows says "Windows protected your PC" when you run the installer or the program | The files are not code-signed yet. *More info*, then *Run anyway*; compare the file with `SHA256SUMS.txt` on the release page (`certutil -hashfile <file> SHA256`) if you want to be sure |
+| Update or uninstall shows a Windows permission prompt | Normal when a session is on: setup/uninstall first stops the helpers and takes the hosts override out, which needs your permission. If you decline, it asks whether to go on anyway; *Restore hosts* in the Start menu fixes it later |
 | Port 80 is taken | The Doctor names the owner; the fix asks before ending it |
 | Proxy not answering | Doctor, Fix: restart proxy. The traceback is in `tools\work\run\proxy.out` |
 | Report missing | Reports are written when the game process exits; if you stopped the session first, press *Generate report* in the Report tab |
@@ -136,7 +138,7 @@ a refused write leaves it untouched (the message says so and names the backup). 
 
 1. **Read-only attribute.** In an admin Command Prompt: `attrib -r "%SystemRoot%\System32\drivers\etc\hosts"`, then try again.
 2. **Security software with hosts-file protection** (several antivirus suites have it, Windows Security can too). Pause that protection for a moment, or allow
-   `python.exe`, apply the override, and turn it back on.
+   `MW4 Texture Streaming.exe` and `ccs-cli.exe` (`python.exe` when running from source), apply the override, and turn it back on.
 3. **A changed ACL** on the file (rare). Check the Security tab of the file's properties.
 
 The toolkit never switches off security software and never changes permissions on system files for you; that stays your decision. If you would rather not touch the
