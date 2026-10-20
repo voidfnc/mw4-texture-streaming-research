@@ -18,6 +18,9 @@
 !/docs/TEXTURE-PACK.md
 !/docs/GETTING-STARTED.md
 !/docs/images/
+!/packaging/
+/packaging/out/
+/packaging/out-notes.md
 !/docs/ISSUE-ipv6-cdn-lookup.md
 !/tools/
 /tools/*

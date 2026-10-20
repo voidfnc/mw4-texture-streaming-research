@@ -1,0 +1,62 @@
+name: build and release
+
+# Pull requests that touch the code or packaging: build everything, run the tests and the installer test, keep the files as an artifact (nothing is published).
+# A tag like v0.2.0-beta: the same, then a DRAFT release is created with the files, checksums and notes. A person reviews and publishes it.
+on:
+  pull_request:
+    paths: ['tools/**', 'packaging/**', '.github/workflows/release.yml', 'CHANGELOG.md']
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    permissions:
+      contents: write          # create the draft release (tags only)
+      id-token: write          # build provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5.6.0
+        with:
+          python-version: '3.12'
+      - name: Build tools (exact versions, hashes checked)
+        run: python -m pip install --require-hashes -r packaging/requirements-build.txt
+      - name: Inno Setup
+        run: choco install innosetup --version=6.7.1 -y --no-progress
+      - name: Tests
+        run: python -m unittest discover -s tools/tests
+      - name: Build program, zip and installer (with the smoke tests)
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then python packaging/build.py --expect-tag "${GITHUB_REF_NAME}" --notes packaging/out-notes.md; else python packaging/build.py --notes packaging/out-notes.md; fi
+      - name: Install, upgrade and uninstall the Setup.exe
+        shell: bash
+        run: python packaging/test_installer.py packaging/out/*-Setup.exe
+      - name: Provenance attestation
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be  # v2.4.0
+        with:
+          subject-path: |
+            packaging/out/*-Setup.exe
+            packaging/out/*-portable.zip
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: mw4-texture-streaming-${{ github.sha }}
+          path: |
+            packaging/out/*-Setup.exe
+            packaging/out/*-portable.zip
+            packaging/out/SHA256SUMS.txt
+            packaging/out-notes.md
+      - name: Draft release
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" --draft --title "${GITHUB_REF_NAME}" --notes-file packaging/out-notes.md \
+            packaging/out/*-Setup.exe packaging/out/*-portable.zip packaging/out/SHA256SUMS.txt

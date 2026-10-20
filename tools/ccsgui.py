@@ -7,12 +7,12 @@ Runs UNELEVATED. Only hosts-file changes need admin; they go through tools/ccsho
 Children (proxy, diskguard) are detached processes tracked by pid files, so closing/restarting the GUI does not lose them.
 See docs/USAGE.md.
 """
-import collections, json, os, queue, re, subprocess, sys, threading, time
+import collections, ctypes, json, os, queue, re, subprocess, sys, threading, time
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ccslib import cachectl, config, doctor, guide, hosts, logtail, mirrorctl, pack, paths, procs, proxyctl, report, session, version
+from ccslib import cachectl, config, doctor, guide, hosts, launch, logtail, mirrorctl, pack, paths, procs, proxyctl, report, session, version
 
 BG, PANEL, FG, DIM, ACC = '#16181d', '#1e2128', '#d7dae0', '#8b93a1', '#4c8dff'
 OK, WARN, BAD, OFF = '#3ecf6e', '#e8b43a', '#ec5b5b', '#555b66'
@@ -54,7 +54,7 @@ class App(tk.Tk):
     def __init__(self, selftest=False):                                      # selftest: no first-run dialogs (nobody is there to answer them)
         super().__init__()
         paths.ensure_dirs()
-        self.title(f'MW4 Texture Streaming Toolkit {version.__version__}'); self.geometry('1180x760'); self.minsize(980, 620); self.configure(bg=BG)
+        self._set_icon(); self.title(f'MW4 Texture Streaming Toolkit {version.__version__}'); self.geometry('1180x760'); self.minsize(980, 620); self.configure(bg=BG)
         self.cfg = config.load(); self.snap = {}; self.q = queue.Queue(); self.busy = False
         self.rate = collections.deque(maxlen=12); self.series = collections.deque(maxlen=180); self._game_prev = False; self._guide_game_seen = False; self._guide_last = None; self._gfc = None; self._guide_sig = None; self._guide_lbl = {}; self._guide_peak = None; self._spot_key = None; self.game_start = None; self.tails = {n: logtail.Tail(p, 150) for n, p in LOG_SOURCES}
         self.log_lines = collections.deque(maxlen=6000); self.gui_log_path = dict(LOG_SOURCES)['gui']
@@ -64,6 +64,12 @@ class App(tk.Tk):
         self.after(300, self._drain); self.after(700, self._refresh); self.after(500, self._tail_logs); self.after(250, self._guide_tick_safe)
         if not selftest: self.after(1200, self._first_run_notice)
         self.say('CCS Control started' + ('  (running as admin)' if procs.is_admin() else '  (unelevated; hosts changes use UAC)'))
+
+    def _set_icon(self):
+        p = launch.resource('app.ico')
+        if p:
+            try: self.iconbitmap(default=p)
+            except tk.TclError: pass
 
     def _first_run_notice(self):
         """Show the research / responsibility notice once per version."""
@@ -315,7 +321,7 @@ class App(tk.Tk):
         if mib >= 4096: messagebox.showinfo('Texture pack', 'Ultra has no size cap - nothing is above the level.', parent=self); return
         if procs.status('mirror')['alive']: self.say('pause the download first', 'WARN'); return
         def go():
-            r = subprocess.run([paths.PY, mirrorctl.SCRIPT, 'prune', '--above-tier', str(mib), '--json'], capture_output=True, text=True, timeout=300, creationflags=procs.CREATE_NO_WINDOW)
+            r = subprocess.run(launch.argv_for('ccsmirror', 'prune', '--above-tier', str(mib), '--json'), capture_output=True, text=True, timeout=300, creationflags=procs.CREATE_NO_WINDOW)
             try: d = json.loads(r.stdout.strip().splitlines()[-1])
             except Exception: self.say('prune check failed: ' + (r.stderr or r.stdout)[-200:], 'ERR'); return
             if not d['chunks']: self.say(f'nothing stored above {mib:g} MiB', 'OK'); return
@@ -624,7 +630,7 @@ class App(tk.Tk):
         hb = ttk.Frame(h); hb.pack(anchor='w', padx=12, pady=(2, 6))
         ttk.Button(hb, text='What do these words mean?', command=self.show_glossary).pack(side='left'); ttk.Button(hb, text='Before/after test', command=self.show_abtest).pack(side='left', padx=8)
         i = ttk.LabelFrame(f, text='Where things are (game/cache/mirror/player-config locations: Game tab)'); i.pack(fill='x', pady=6)
-        for k, v in (('Tools / scripts', paths.TOOLS), ('Work dir (logs, reports, settings)', paths.WORK), ('Hosts file', paths.hosts_path()), ('Python', paths.PY)):
+        for k, v in (('Tools / scripts', paths.TOOLS), ('Work dir (logs, reports, settings)', paths.WORK), ('Hosts file', paths.hosts_path()), ('Runtime', 'built in, no Python needed' if paths.FROZEN else 'Python: ' + paths.PY)):
             r = ttk.Frame(i); r.pack(fill='x', padx=10, pady=2); ttk.Label(r, text=k, width=32, style='Dim.TLabel').pack(side='left'); ttk.Label(r, text=v).pack(side='left')
 
     # ---------------------------------------------------------------- guided setup (optional; logic in ccslib/guide.py)
@@ -1314,12 +1320,31 @@ def single_instance():
     json.dump(dict(pid=os.getpid(), ctime=procs.ctime(os.getpid())), open(lock, 'w')); return True
 
 
-if __name__ == '__main__':
-    if '--selftest' in sys.argv:
-        app = App(selftest=True); app.after(2500, lambda: (print(json.dumps({k: v for k, v in app.snap.items() if k in ('hosts', 'resolve', 'pstat', 'game', 'free')}, default=str)), app.destroy())); app.mainloop(); sys.exit(0)
+MUTEX_NAME = 'MW4TextureStreamingToolkit-Running'      # the installer looks for this to know the window is open (AppMutex)
+_mutex = None
+
+
+def hold_mutex():
+    global _mutex
+    try: _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
+    except Exception: _mutex = None
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if '--selftest' in argv:
+        app = App(selftest=True)
+        def done():
+            if sys.stdout is not None: print(json.dumps({k: v for k, v in app.snap.items() if k in ('hosts', 'resolve', 'pstat', 'game', 'free')}, default=str))
+            app.destroy()
+        app.after(2500, done); app.mainloop(); return 0
     if not single_instance():
-        import tkinter.messagebox as mb; r = tk.Tk(); r.withdraw(); mb.showinfo('CCS Control', 'CCS Control is already running.'); sys.exit(0)
-    app = App()
-    if '--tab' in sys.argv: app.after(300, lambda: app.nb.select(app.tabs[sys.argv[sys.argv.index('--tab') + 1]]))
-    if '--doctor' in sys.argv: app.after(1500, app.do_doctor)
-    app.mainloop()
+        import tkinter.messagebox as mb; r = tk.Tk(); r.withdraw(); mb.showinfo('CCS Control', 'CCS Control is already running.'); return 0
+    hold_mutex(); app = App()
+    if '--tab' in argv: app.after(300, lambda: app.nb.select(app.tabs[argv[argv.index('--tab') + 1]]))
+    if '--doctor' in argv: app.after(1500, app.do_doctor)
+    app.mainloop(); return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

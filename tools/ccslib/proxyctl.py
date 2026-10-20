@@ -1,6 +1,6 @@
 """proxyctl.py - build argv for / talk to the ccsproxy and diskguard child processes."""
 import json, http.client, os
-from . import paths, procs, config
+from . import config, launch, paths, procs
 
 PROXY_LOG = os.path.join(paths.WORK, 'ccsproxy.log')
 GUARD_LOG = os.path.join(paths.WORK, 'diskguard.log')
@@ -11,7 +11,7 @@ MIRROR_LOG = os.path.join(paths.WORK, 'ccsmirror.log')
 
 def proxy_argv(cfg):
     p = config.effective_proxy(cfg)
-    a = [paths.PY, os.path.join(paths.TOOLS, 'ccsproxy.py'), '--max-raw-mib', str(p['max_raw_mib']), '--budget-gib', str(p['budget_gib']),
+    a = launch.argv_for('ccsproxy') + ['--max-raw-mib', str(p['max_raw_mib']), '--budget-gib', str(p['budget_gib']),
          '--retries', str(p['retries']), '--port', str(p['port']), '--log', PROXY_LOG, '--stats-json', PROXY_STATS]
     if p['origin']: a += ['--origin', paths.MIRROR]
     if p['offline']: a += ['--offline']
@@ -21,7 +21,7 @@ def proxy_argv(cfg):
 
 def guard_argv(cfg):
     g = config.effective(cfg)['guard']
-    return [paths.PY, os.path.join(paths.TOOLS, 'diskguard.py'), '--limit-gib', str(g['limit_gib']), '--action', g['action'],
+    return launch.argv_for('diskguard') + ['--limit-gib', str(g['limit_gib']), '--action', g['action'],
             '--interval', str(g['interval']), '--cache', paths.XPAK_CACHE, '--status-json', GUARD_STATS, '--log', GUARD_LOG]
 
 

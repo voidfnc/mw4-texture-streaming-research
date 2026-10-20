@@ -13,9 +13,9 @@ labels: bug
 **Steps to reproduce**
 
 **Environment**
-- Toolkit version (shown in the window title, or `python tools\ccsmirror.py --version`):
+- Toolkit version (shown in the window title, or `ccs-cli.exe --version`, or `python tools\ccsmirror.py --version`):
 - Windows version:
-- Python version:
+- How you run it (installer / portable zip / from source) and the Python version if from source:
 - Internet connection (IPv4-only / dual-stack):
 
 **Doctor output** (Doctor tab, or `python tools\ccsgui.py --doctor`) and the relevant lines of the log. Please check them for personal paths before posting.

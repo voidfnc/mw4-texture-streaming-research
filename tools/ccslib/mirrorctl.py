@@ -1,17 +1,16 @@
 """mirrorctl.py - control the resumable chunk mirror (tools/ccsmirror.py) as a detached child process."""
 import json, os, subprocess, sys
-from . import paths, procs
+from . import launch, paths, procs
 
 PROGRESS = os.path.join(paths.RUN, 'mirror_progress.json')
 OUTFILE = os.path.join(paths.RUN, 'mirror.out')
-SCRIPT = os.path.join(paths.TOOLS, 'ccsmirror.py')
 
 
 def stopfile(): return os.path.join(paths.MIRROR, 'STOP')       # resolved at call time: the mirror folder is configurable
 
 
 def run_argv(workers=4, tier=4096, budget_gib=0, min_free_gib=40, max_rps=50, retries=4, scope=None, packages=None, limit_mbps=0, daily_gib=0, link_wait_s=0, line_mbps=0):
-    a = [paths.PY, SCRIPT, 'run', '--workers', str(int(workers)), '--tier', str(tier), '--budget-gib', str(budget_gib), '--min-free-gib', str(min_free_gib),
+    a = launch.argv_for('ccsmirror') + ['run', '--workers', str(int(workers)), '--tier', str(tier), '--budget-gib', str(budget_gib), '--min-free-gib', str(min_free_gib),
          '--max-rps', str(max_rps), '--retries', str(int(retries)), '--progress-json', PROGRESS, '--stop-file', stopfile(), '--accept-notice']      # the GUI shows the notice before it starts a run
     if scope: a += ['--scope', scope]
     if scope == 'custom' and packages: a += ['--packages', packages if isinstance(packages, str) else ','.join(packages)]
@@ -56,7 +55,7 @@ def progress():
 def status():
     """Per-priority table + stored totals, via `ccsmirror.py status --json` (None if the mirror is not initialised)."""
     if not os.path.exists(os.path.join(paths.MIRROR, 'index.sqlite')): return None
-    r = subprocess.run([paths.PY, SCRIPT, 'status', '--json'], capture_output=True, text=True, timeout=120, creationflags=procs.CREATE_NO_WINDOW)
+    r = subprocess.run(launch.argv_for('ccsmirror', 'status', '--json'), capture_output=True, text=True, timeout=120, creationflags=procs.CREATE_NO_WINDOW)
     try: return json.loads(r.stdout)
     except Exception: return None
 
@@ -72,4 +71,4 @@ def verify_progress():
 def oneshot(args, out=None):
     """Run `ccsmirror.py <args>` detached (verify / retry-failed / init). Output goes to tools/work/run/mirror_<cmd>.out."""
     name = 'mirror-' + args[0]
-    return procs.start(name, [paths.PY, SCRIPT, *args], out or os.path.join(paths.RUN, f'mirror_{args[0]}.out'))
+    return procs.start(name, launch.argv_for('ccsmirror', *args), out or os.path.join(paths.RUN, f'mirror_{args[0]}.out'))
