@@ -22,8 +22,9 @@ AppUpdatesURL={#Repo}/releases
 VersionInfoVersion={#NumericVersion}
 VersionInfoProductName={#AppName}
 VersionInfoDescription={#AppName} setup
-; per user by default (no administrator rights needed); the first screen offers "for all users" as an option
-PrivilegesRequired=lowest
+; for all users by default (Program Files, one administrator prompt): the program itself runs as administrator, so its files should be somewhere other programs of the user cannot
+; replace. The first screen offers "for me only" (no administrator rights, files in the user's own profile) as an option.
+PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 DefaultDirName={autopf}\MW4 Texture Streaming
 DisableProgramGroupPage=yes

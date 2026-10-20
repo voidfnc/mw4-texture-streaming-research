@@ -11,7 +11,10 @@ if not exist "%VENV%\Scripts\python.exe" (
 rem files of an earlier version would otherwise be tested (and offered to release.py) too
 del /q "%~dp0out\*-Setup.exe" "%~dp0out\*-portable.zip" "%~dp0out\SHA256SUMS.txt" 2>nul
 "%VENV%\Scripts\python.exe" -W ignore "%~dp0build.py" %* || exit /b 1
-for %%f in ("%~dp0out\*-Setup.exe") do python "%~dp0test_installer.py" "%%f" || exit /b 1
+for %%f in ("%~dp0out\*-Setup.exe") do (
+  python "%~dp0test_installer.py" "%%f" --current-user || exit /b 1
+  python "%~dp0test_installer.py" "%%f" --all-users || exit /b 1
+)
 echo.
 echo Done. Files are in %~dp0out
 echo Next: python packaging\release.py --dry-run

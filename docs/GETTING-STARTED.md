@@ -14,8 +14,8 @@ also a short test to compare it on your own PC.
 
 Download from the [Releases page](https://github.com/voidfnc/mw4-texture-streaming-research/releases) and pick one:
 
-- **The installer** (`...-Setup.exe`, recommended): double-click, accept the notice, press Next and Install. It installs for you only, so setup itself does not ask for an administrator
-  password; "for all users" is an option on its first screen. The program asks for administrator permission each time it starts (the *UAC prompt*): answer Yes. It adds a Start menu entry (and a desktop shortcut if you leave that ticked) and a normal uninstall entry in
+- **The installer** (`...-Setup.exe`, recommended): double-click, accept the notice, press Next and Install. It installs for all users by default (in Program Files, with one Windows permission prompt);
+  "for me only" is an option on its first screen and needs no administrator rights. The program asks for administrator permission each time it starts (the *UAC prompt*): answer Yes. It adds a Start menu entry (and a desktop shortcut if you leave that ticked) and a normal uninstall entry in
   *Apps & features*. It does not touch your hosts file or your game folder.
 - **The portable zip** (`...-portable.zip`): unzip it anywhere and double-click `MW4 Texture Streaming.exe`. Nothing is installed, and your settings stay in a `data` folder next to it.
 - **From source**, if you prefer to run the code yourself: see the README.

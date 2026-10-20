@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.2.4 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
+Beta 0.2.5 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
 I started this because the Modern Warfare campaign on my PC looked blurry no matter what I did in the graphics menu. Walls and character gear sat on the lowest
 texture tier even with every setting maxed out. The game is supposed to download higher-resolution texture pieces from a CDN while you play, and on my machine
@@ -49,7 +49,7 @@ Pick one. The files are on the [Releases page](https://github.com/voidfnc/mw4-te
 
 | | What you get | Who it is for |
 |---|---|---|
-| **Installer** (recommended) | `MW4-Texture-Streaming-<version>-Setup.exe`. Double-click, Next, Install. Installs for you only (setup needs no administrator rights); "for all users" is an option on the first screen. The program itself asks for administrator permission when it starts. Start menu entries, optional desktop shortcut, uninstall in *Apps & features*. | Most people. Needs no Python. |
+| **Installer** (recommended) | `MW4-Texture-Streaming-<version>-Setup.exe`. Double-click, Next, Install. Installs for all users by default (Program Files, one Windows permission prompt); "for me only" (no administrator rights, in your own profile) is an option on the first screen. The program itself also asks for administrator permission when it starts. Start menu entries, optional desktop shortcut, uninstall in *Apps & features*. | Most people. Needs no Python. |
 | **Portable zip** | `MW4-Texture-Streaming-<version>-win64-portable.zip`. Unzip anywhere and run `MW4 Texture Streaming.exe`. Nothing is installed; settings stay in a `data` folder next to it; delete the folder to remove it. | Locked-down PCs, a USB stick, trying it out. |
 | **From source** | Clone this repository and run `python tools\ccsgui.py` (Python 3.10+, standard library only). See [Running from source](#running-from-source). | Developers and advanced users. Everything is in this repository. |
 
@@ -58,16 +58,16 @@ Windows may say "Windows protected your PC" (SmartScreen) because the files are 
 
 ## What it looks like
 
-**The installer** asks whether to install for you only (the default, no administrator rights) or for all users, shows the notice and licence, says what it will and will not do, and
+**The installer** asks whether to install for all users (the default: Program Files, one permission prompt) or for you only (no administrator rights), shows the notice and licence, says what it will and will not do, and
 offers the shortcuts. Cancelling at any point installs nothing.
 
-![Install mode: for me only (recommended) or for all users](docs/images/installer-0-mode.png)
+![Install mode: for all users (recommended) or for me only](docs/images/installer-0-mode.png)
 ![Notice and licence page](docs/images/installer-1-license.png)
 ![What setup does and does not do](docs/images/installer-2-info.png)
 ![Shortcut options](docs/images/installer-3-options.png)
 
 **The program.** Screenshots of version **0.2.3-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them. They are
-regenerated when the windows change (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`); the version in the title bar is the version they were taken with. Later versions start with an administrator prompt, so the installer's information page and the first line of the activity log read slightly differently there.
+regenerated when the windows change (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`); the version in the title bar is the version they were taken with. Later versions start with an administrator prompt, so the first line of the activity log reads slightly differently there. The four installer pages above are from 0.2.5-beta.
 
 **Guided setup in Simple view**: the checklist ticks the steps it can verify and highlights the next button (here *Start session*).
 
@@ -112,8 +112,9 @@ files in the game folder. With the rights from the start, none of these asks aga
 game setup you confirm, and its own files. If you decline the prompt the program still starts and asks for permission for each hosts-file change, as before. From source, the
 window relaunches itself elevated once (`CCS_NO_ELEVATE=1` or `--no-elevate` keeps it unelevated). The setup program itself runs without administrator rights.
 
-Because the program runs elevated, whoever can change its files can make it run their code with those rights. The installer's default folder is inside your own profile, so other
-programs that run as you could replace those files; if that matters to you, install for all users (Program Files), or keep the portable zip in a folder only you can write to.
+Because the program runs elevated, whoever can change its files can make it run their code with those rights. That is why the installer's default is to install for all users (Program Files):
+only an administrator can change files there. If you choose "for me only", the files are inside your own profile and other programs that run as you could replace them; the portable zip
+has the same property, so keep it in a folder only you can write to.
 
 ## If something doesn't work
 
