@@ -1,7 +1,7 @@
 # Using the control window
 
 Start it from the Start menu or desktop shortcut (installer), by double-clicking `MW4 Texture Streaming.exe` (portable zip), or with `tools\ccs-gui.bat` (no console window) or
-`python tools\ccsgui.py` (source). It runs **unelevated**; only changes to the hosts file ask for administrator rights (UAC). The installer and the zip need no Python; from source
+`python tools\ccsgui.py` (source). It asks for administrator rights when it starts (the Windows UAC prompt; from source it relaunches itself elevated once) and then needs no further prompts for the hosts file, the game folder or a mirror inside Program Files. If you decline, it still starts and asks for each hosts-file change as before. `CCS_NO_ELEVATE=1` or `--no-elevate` keeps a source run unelevated on purpose. The installer and the zip need no Python; from source
 you need Python 3.10+ with tkinter. The first time it opens it shows a short notice about what the tools are and are not. Before the first bulk download (Texture pack or Mirror tab) it shows a second notice
 that you have to accept once per version; on the command line the same thing is `ccsmirror.py run ... --accept-notice`.
 
@@ -157,13 +157,13 @@ The setup is not offered when the *Engine cache folder* setting (Game tab) point
 | Red *SETUP NEEDED* | Game tab, set the game folder, *Save locations* |
 | Doctor: *Mirror: unable to open database file* (older versions), or *Mirror folder: you can read it but not write to it* | The mirror is in a folder only an administrator can write to (for example inside Program Files). A stored mirror is read as it is, without writing next to it; building or extending one needs a folder you can write to: set another *Mirror folder* in the Game tab |
 | The report says the game asked for textures and got them, but they still look low | Doctor, *Game setup* row, Fix: set up the game (see [Game setup](#game-setup-online-mode-and-the-cache-link)); close the game first and start it again afterwards |
-| Game never streams, hosts light red or amber | Doctor, Fix: apply hosts (UAC). The Hosts tab's *Test resolution* should show `127.0.0.1` and `::1` |
+| Game never streams, hosts light red or amber | Doctor, Fix: apply hosts (a UAC prompt only if the program is not running as administrator). The Hosts tab's *Test resolution* should show `127.0.0.1` and `::1` |
 | *Permission denied* when writing the hosts file, even as admin | See [Hosts file: permission denied](#hosts-file-permission-denied) below |
 | *'NoneType' object has no attribute 'splitlines'* | Fixed in 0.1.1-beta (a non-English Windows printed text the old code could not decode). Update, or open an issue with the support bundle |
 | Mirror downloads are far below your line speed | Look at the `edge test` / `run: upstream=` lines in `tools\work\ccsmirror.log` and at the speed line on the Texture pack tab (it shows MiB/s **and** Mbps and the edge in use). Set *My line speed* so the tool re-checks the edge by itself, try 8 connections, and see [docs/TEXTURE-PACK.md](TEXTURE-PACK.md#download-speed) |
 | First start with no mirror: the proxy would not start, or the Doctor failed on the mirror | Fixed: a missing or empty mirror is normal now (every chunk comes from the CDN until you build one). Update to the latest version |
 | Windows says "Windows protected your PC" when you run the installer or the program | The files are not code-signed yet. *More info*, then *Run anyway*; compare the file with `SHA256SUMS.txt` on the release page (`certutil -hashfile <file> SHA256`) if you want to be sure |
-| Update or uninstall shows a Windows permission prompt | Normal when a session is on: setup/uninstall first stops the helpers and takes the hosts override out, which needs your permission. If you decline, it asks whether to go on anyway; *Restore hosts* in the Start menu fixes it later |
+| Update or uninstall shows a Windows permission prompt | Normal when a session is on: setup/uninstall first stops the helpers (they run with the program's administrator rights) and takes the hosts override out, which needs your permission. If you decline, it asks whether to go on anyway; *Restore hosts* in the Start menu fixes it later |
 | Port 80 is taken | The Doctor names the owner; the fix asks before ending it |
 | Proxy not answering | Doctor, Fix: restart proxy. The traceback is in `tools\work\run\proxy.out` |
 | Report missing | Reports are written when the game process exits; if you stopped the session first, press *Generate report* in the Report tab |
@@ -186,7 +186,7 @@ hosts file at all, add the two lines the *Hosts* tab shows yourself (`ccshosts.p
 
 | Tool | Purpose |
 |---|---|
-| `ccshosts.py status \| diff \| apply \| remove \| verify \| flush \| backups \| restore-backup` | hosts manager (`--elevate` asks for UAC) |
+| `ccshosts.py status \| diff \| apply \| remove \| verify \| flush \| backups \| restore-backup` | hosts manager (`--elevate` asks for UAC unless already administrator) |
 | `ccsproxy.py --origin <mirror> [--offline] [--max-raw-mib N]` | the proxy |
 | `ccsmirror.py plan \| init \| run \| status \| verify \| prune \| retry-failed` | the mirror |
 | `ccsreport.py --list \| --segment N [--from HH:MM:SS --to HH:MM:SS]` | session reports |

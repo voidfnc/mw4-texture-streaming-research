@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.4-beta
+**The program runs as administrator by default.** It asks for permission once, when it starts, instead of per action.
+
+- **Elevated from the start.** `MW4 Texture Streaming.exe` now carries an administrator manifest, so Windows shows the permission prompt (UAC) when it opens and the program then
+  writes to the hosts file, the game folder and a mirror inside Program Files without asking again. That also removes a whole class of "cannot write" problems for a game in
+  Program Files. If the prompt is declined the program still starts and asks per hosts-file change, as before. From source, `ccsgui.py` relaunches itself elevated once;
+  `CCS_NO_ELEVATE=1` or `--no-elevate` keeps it unelevated. `ccs-cli.exe` (helpers, command line, setup's hooks) is unchanged and does not ask.
+- **Setup and uninstall still work.** Setup starts the program with `shellexec` so the prompt can appear, and `uninstall-prep stop-helpers` asks Windows for permission when the helpers
+  were started by the elevated window (an unelevated process cannot end them); `procs.stop` no longer forgets a helper it could not end.
+- **Docs:** a new *Administrator rights* section in the README says what the rights are used for and notes that an elevated program in a folder other programs of yours can write to
+  (the per-user install folder) could be replaced; install for all users if that matters to you. The README screenshots are from 0.2.3-beta (the windows did not change).
+
 ## 0.2.3-beta
 **One fix: the mirror index can be read from a folder you cannot write to.** Nothing else changes.
 

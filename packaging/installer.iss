@@ -64,7 +64,8 @@ Name: "{autodesktop}\MW4 Texture Streaming"; Filename: "{app}\{#AppExe}"; Workin
 Name: "{autodesktop}\Restore hosts"; Filename: "{app}\Restore hosts.bat"; WorkingDir: "{app}"; Tasks: restoreicon
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "Start MW4 Texture Streaming"; Flags: nowait postinstall skipifsilent
+; shellexec: the program asks for administrator rights (its manifest), which a plain start from this per-user setup could not do
+Filename: "{app}\{#AppExe}"; Description: "Start MW4 Texture Streaming"; Flags: shellexec postinstall skipifsilent
 Filename: "{app}\START HERE.txt"; Description: "Read the quick start"; Flags: shellexec postinstall skipifsilent unchecked
 
 [Code]
