@@ -193,6 +193,107 @@ class FolderFinderTests(unittest.TestCase):
         self.assertIsInstance(guide.fixed_drives(), list); self.assertIsInstance(guide.steam_common_dirs(), list); self.assertEqual(guide.steam_common_dirs([]), [])
 
 
+class HelpTests(unittest.TestCase):
+    """Simple view / spotlight / failure coaching / what-happened / before-after test: the pure logic."""
+    def rows(self, state=None, **kw):
+        f = dict(BASE, **kw); return guide.evaluate(state or guide.new_state(path='quick'), f), f
+
+    def test_new_state_keys_are_cleaned(self):
+        s = guide.clean_state(dict(simple=1, summary=dict(req=5, junk='x', flag=True), ab=-4))
+        self.assertEqual((s['simple'], s['summary'], s['ab']), (True, dict(req=5), 0))
+        self.assertEqual(guide.clean_state(dict(summary=[1], ab='x'))['summary'], {}); self.assertEqual(guide.clean_state(dict(ab=True))['ab'], 0)
+        self.assertEqual(guide.clean_state(dict(ab=2))['ab'], 2); self.assertEqual(guide.new_state(), guide.clean_state(None))
+
+    def test_the_summary_is_kept_when_the_session_ends_and_refreshed_after_a_later_one(self):
+        live = dict(BASE, proxy_ready=True, proxy_alive=True, hosts_ok=True, resolve_ok=True, game_seen=True, requests=300, last_stat=dict(req=300, upok=290))
+        s = guide.advance(guide.new_state(), live); self.assertEqual((s['ms'], s['summary']), (['session', 'game'], {}))                  # while it runs nothing is recorded
+        gone = dict(live, proxy_ready=False, proxy_alive=False, hosts_ok=False, resolve_ok=False)
+        s = guide.advance(s, gone); self.assertEqual(s['ms'], ['session', 'game', 'after']); self.assertEqual(s['summary'], dict(req=300, upok=290))
+        s2 = guide.advance(s, dict(gone, last_stat=dict(req=50, upok=50))); self.assertEqual(s2['summary'], dict(req=50, upok=50))          # a later session replaces it
+        self.assertEqual(guide.advance(s2, dict(live, last_stat=dict(req=999)))['summary'], dict(req=50, upok=50))                          # but not while one is running
+        self.assertEqual(guide.advance(s, dict(gone, last_stat=None))['summary'], dict(req=300, upok=290))                                  # nothing known: keep what there is
+        self.assertEqual(guide.restart(s)['summary'], {})
+
+    def test_a_stopped_session_does_not_ask_to_start_again(self):
+        rows = {r['id']: r for r in guide.evaluate(guide.new_state(path='quick', ms=['session', 'game', 'after']), dict(BASE))}
+        self.assertEqual(rows['session']['status'], 'done'); self.assertNotIn('Press Start session', rows['session']['detail']); self.assertIn('stopped', rows['session']['detail'])
+
+    def test_spotlight_points_at_the_control_for_the_current_step(self):
+        sp = lambda st, **kw: guide.spot(*self.rows(st, **kw)); live = dict(proxy_ready=True, proxy_alive=True, hosts_ok=True, resolve_ok=True)
+        self.assertIsNone(sp(guide.new_state()))                                                                                           # no path chosen yet: the panel's own buttons
+        self.assertEqual(sp(guide.new_state(path='quick')), 'btn_start')
+        self.assertEqual(sp(guide.new_state(path='quick'), blocked_by='x.exe'), 'btn_doctor')
+        self.assertEqual(sp(guide.new_state(path='offline')), 'tab:Texture pack')
+        self.assertIsNone(sp(guide.new_state(path='quick', ms=['session']), **live))                                                      # waiting for the game
+        self.assertIsNone(sp(guide.new_state(path='quick', ms=['session', 'game']), game_running=True, requests=50, **live))              # still playing: no nudge to stop
+        self.assertEqual(sp(guide.new_state(path='quick', ms=['session', 'game']), requests=50, **live), 'btn_stop')
+        self.assertEqual(sp(guide.new_state(path='quick', ms=['session'])), 'btn_start')                                                   # stopped before the game: start again
+        self.assertIsNone(sp(guide.new_state(path='quick', ms=['session', 'game', 'after'])))                                              # all done
+        self.assertIsNone(guide.spot([], {}))
+
+    def coach(self, last='', st=None, **kw): return guide.coach(st or guide.new_state(), dict(BASE, **kw), last)
+
+    def test_coach_recognises_the_usual_failures(self):
+        for text, want in (('Session NOT ready: hosts override not applied:   permission denied', 'hosts_denied'), ('[WinError 5] Access is denied', 'hosts_denied'),
+                           ('The operation was canceled by the user', 'uac_cancelled'), ('upstream timed out', 'cdn_unreachable'), ('Address already in use', 'port_busy'),
+                           ('port 80 is taken', 'port_busy'), ('Session NOT ready: proxy did not start', 'not_ready'), ('that folder does not look like the game folder', 'wrong_folder')):
+            c = self.coach(text); self.assertEqual([x['id'] for x in c], [want], text); self.assertTrue(c[0]['title'] and c[0]['text'] and c[0]['actions'], text)
+        for quiet in ('', 'report written in 3 s', 'support bundle: C:\\x', 'game detected: sp26-cod.exe', 'report on stop failed: x'): self.assertEqual(self.coach(quiet), [], quiet)      # ordinary lines are not "problems"
+
+    def test_coach_state_based_cards(self):
+        live = dict(proxy_ready=True, proxy_alive=True, hosts_ok=True, resolve_ok=True); ids = lambda c: [x['id'] for x in c]
+        self.assertEqual(ids(self.coach(st=guide.new_state(ms=['session']), proxy_alive=True, hosts_ok=False)), ['hosts_lost'])
+        self.assertEqual(self.coach(proxy_alive=True, hosts_ok=False), [])                                                                 # still starting: the hosts line is not there yet
+        self.assertEqual(ids(self.coach(game_running=True, requests=0, game_secs=120, **live)), ['no_traffic'])
+        for quiet in (dict(game_secs=30), dict(requests=5, game_secs=120)): self.assertEqual(self.coach(game_running=True, **dict(live, **{'requests': 0, **quiet})), [])
+        self.assertEqual(ids(self.coach(free_gib=2.0, game_running=True)), ['disk_low']); self.assertEqual(self.coach(free_gib=2.0), [])
+        many = self.coach('permission denied', st=guide.new_state(ms=['session']), proxy_alive=True, hosts_ok=False, free_gib=1.0, game_running=True); self.assertLessEqual(len(many), 2)
+        self.assertEqual(ids(self.coach('permission denied', st=guide.new_state(ms=['session']), proxy_alive=True, hosts_ok=False))[0], 'hosts_lost')
+
+    def test_what_happened_text(self):
+        self.assertEqual((guide.explain({}), guide.explain(None), guide.explain('x'), guide.explain(dict(a='b'))), ([], [], [], []))
+        z = guide.explain(dict(req=0, secs=60)); self.assertIn('Nothing reached the helper', z[0]); self.assertIn('Doctor', z[1])
+        t = guide.explain(dict(req=1840, mirror=0, upok=1836, err=0, skip=0, secs=1380)); self.assertIn('1,840 texture pieces in about 23 min', t[0]); self.assertIn('1,836 were fetched from the internet', t[0]); self.assertIn('No failed requests.', t[1])
+        m = guide.explain(dict(req=100, mirror=60, upok=40, err=3, skip=7, secs=20)); self.assertIn('60 came from your offline copy and 40 from the internet', m[0]); self.assertNotIn('about', m[0]); self.assertIn('3 requests failed', m[1]); self.assertIn('7 pieces were left out', m[1])
+        joined = ' '.join(t + m).lower(); self.assertFalse(any(w in joined for w in ('sharper', 'better', 'improve', 'faster')))        # it says what was delivered, never how the picture looks
+        self.assertIn('before/after test', t[-1])
+
+    def test_before_after_test_steps(self):
+        self.assertEqual((guide.ab_view(-1)['n'], guide.ab_view(99)['n'], guide.ab_view('x')['n'], guide.ab_view(None)['n']), (1, 4, 1, 1)); v = guide.ab_view(0)
+        self.assertEqual((v['n'], v['total'], v['first'], v['last'], v['action']), (1, 4, True, False, None)); self.assertTrue(guide.ab_view(3)['last'])
+        self.assertEqual(len({s['id'] for s in guide.AB_STEPS}), len(guide.AB_STEPS)); self.assertTrue({s['action'][0] for s in guide.AB_STEPS if s['action']} <= {'hosts_remove', 'start_session', 'open_shots'})
+        self.assertNotIn('Last session', guide.ab_view(3)['text']); self.assertIn('Last session: The game asked for 9 texture pieces', guide.ab_view(3, dict(req=9, upok=9))['text'])
+        self.assertTrue(guide.ab_dir().startswith(paths.WORK))
+
+    def test_words_and_hover_help(self):
+        terms = [t for t, _ in guide.GLOSSARY]; self.assertEqual(len(terms), len(set(terms))); self.assertTrue(all(len(x) > 20 for _, x in guide.GLOSSARY))
+        self.assertEqual(sorted(guide.LIGHT_HELP), sorted(['hosts', 'resolve', 'proxy', 'port', 'mirror', 'guard', 'game', 'disk']))
+        self.assertEqual(sorted(guide.COUNTER_HELP), sorted(['req', 'mirror', 'upok', 'err', 'retry', 'cliabort', 'skip', 'miss', 'mgib', 'ugib', 'rps', 'sess']))
+        self.assertEqual(set(guide.SIMPLE_COUNTER_LABELS), set(guide.SIMPLE_COUNTERS)); self.assertTrue(set(guide.SIMPLE_COUNTERS) <= set(guide.COUNTER_HELP))
+
+    def test_getting_started_page_is_published_and_matches_the_words_list(self):
+        repo = os.path.abspath(os.path.join(TOOLS, '..')); read = lambda *p: open(os.path.join(repo, *p), encoding='utf-8').read()
+        if not os.path.isfile(os.path.join(repo, 'docs', 'GETTING-STARTED.md')): self.skipTest('not run from a full checkout')
+        doc = read('docs', 'GETTING-STARTED.md')
+        for term, text in guide.GLOSSARY: self.assertIn(f'**{term}**', doc); self.assertIn(text, doc)                    # the page and the Words button say the same
+        for step in guide.AB_STEPS: self.assertIn(step['title'].split(':')[0], doc)
+        self.assertIn('docs/GETTING-STARTED.md', read('README.md')); self.assertIn('!/docs/GETTING-STARTED.md', read('.gitignore'))         # linked, and not dropped by the whitelist
+
+    def test_random_facts_always_give_one_current_step_or_a_finished_list(self):
+        import random
+        rnd = random.Random(11); lasts = ('', 'permission denied', 'Session NOT ready: x', 'timed out', 'ok')
+        for _ in range(4000):
+            st = guide.new_state(path=rnd.choice(['', 'quick', 'offline']), ms=rnd.sample(['session', 'game', 'after'], rnd.randint(0, 3)), skipped=rnd.sample(['pack', 'game', 'after'], rnd.randint(0, 3)),
+                                 confirmed_root=rnd.choice(['', 'C:\\x']))
+            f = dict(BASE, **{k: rnd.choice([True, False]) for k in ('configured', 'folder_exists', 'game_running', 'proxy_ready', 'proxy_alive', 'hosts_ok', 'resolve_ok', 'game_seen', 'mirror_alive')},
+                     folder_score=rnd.choice([0, 1, 2, 3]), free_gib=rnd.choice([None, 1.0, 30.0, 300.0]), requests=rnd.choice([0, 5, 25, 500]), blocked_by=rnd.choice(['', 'x.exe']),
+                     pack_total=rnd.choice([None, 100]), pack_stored=rnd.choice([None, 10, 100]), game_secs=rnd.choice([0, 200]), last_stat=rnd.choice([None, dict(req=5)]))
+            rows = guide.evaluate(st, f); cur = [r for r in rows if r['status'] == 'current']
+            self.assertLessEqual(len(cur), 1); self.assertEqual(bool(cur), not guide.all_passed(rows)); self.assertEqual([r['n'] for r in rows], list(range(1, len(rows) + 1)))
+            a = guide.advance(st, f); self.assertEqual(guide.advance(a, f), a); self.assertLessEqual(set(st['ms']), set(a['ms']))              # idempotent, and milestones never disappear
+            guide.spot(rows, f); self.assertLessEqual(len(guide.coach(a, f, rnd.choice(lasts))), 2)
+
+
 class FirstRunTests(unittest.TestCase):
     def test_a_game_folder_without_chunk_lists_does_not_block_starting_a_session(self):
         # the guide accepts such a folder (the quick fix does not need the lists), so the session start must not refuse it either
