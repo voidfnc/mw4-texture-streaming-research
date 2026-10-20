@@ -1,6 +1,7 @@
 # Changelog
 
-## Unreleased
+## 0.1.3-beta
+Guided setup for first-time users, plus the fixes found while building it. Nothing changes for people who already have it running; the guide is optional.
 
 - Session reports and the Doctor no longer print numbers from the author's own test runs ("runs 1-3 of 2026-10-19/20", "64 GB in run 10"). They looked like a comparison
   against your own history and were not.
@@ -23,7 +24,10 @@
 - **What happened** summary after a session, and a four-step **before/after test** to compare the game with and without the tool on your own PC.
 - Fixes: the guide showed "Press Start session" on a finished session step, the panel was empty for the first second after start, a stray control character in the README
   (`tools\restore-hosts.bat` was printed wrong). `--selftest` no longer shows the first-run dialogs.
-- 23 new tests (161 in total).
+- 30 new tests (168 in total).
+- README screenshots (`docs/images/`, regenerated with `tools/make_screenshots.py` for each release), a roadmap for a no-Python download (`docs/ROADMAP.md`), and a test that
+  keeps the README and this changelog in step with the version number.
+- The Proxy tab no longer prints the author's own test-run numbers under the size histogram.
 
 ## 0.1.2-beta
 Fixes for slow mirror downloads (a user on a 100 Mbit/s line saw about 1 Mbit/s).

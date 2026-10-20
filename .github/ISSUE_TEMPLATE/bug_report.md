@@ -13,7 +13,7 @@ labels: bug
 **Steps to reproduce**
 
 **Environment**
-- Toolkit version (`python tools\ccsmirror.py --version`):
+- Toolkit version (shown in the window title, or `python tools\ccsmirror.py --version`):
 - Windows version:
 - Python version:
 - Internet connection (IPv4-only / dual-stack):

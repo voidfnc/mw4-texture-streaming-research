@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.1.2 · Windows · Python 3.10+ (standard library only)
+Beta 0.1.3 · Windows · Python 3.10+ (standard library only)
 
 I started this because the Modern Warfare campaign on my PC looked blurry no matter what I did in the graphics menu. Walls and character gear sat on the lowest
 texture tier even with every setting maxed out. The game is supposed to download higher-resolution texture pieces from a CDN while you play, and on my machine
@@ -36,10 +36,33 @@ unmodified game start streaming. The whole story, with the captures that show it
   requests per second, a User-Agent that names the tool, back-off on HTTP 429/503).
 - **Control window** (`tools/ccsgui.py`, started with `tools\ccs-gui.bat`): one place for all of the above, plus a doctor that checks your setup, live
   statistics, and a report for every game session (what the game asked for, how fast, how much was already in its cache).
+- **Guided setup and Simple view**: an optional checklist that finds your game folder, checks the PC and ticks each step off, with hover help, plain-language help cards
+  for the usual failures and a before/after test. New here? See [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
 - **Texture pack tab**: choose what to mirror (campaign only, everything, or specific packages) and how large chunks may be. See
   [docs/TEXTURE-PACK.md](docs/TEXTURE-PACK.md).
 
 The proxy and mirror never touch the game process. Details of how the pieces fit together are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## What it looks like
+
+Screenshots of version **0.1.3-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them. They are
+regenerated for each release with `python tools\make_screenshots.py`, so the version in the title bar is the version they belong to.
+
+**Guided setup in Simple view**: the checklist ticks the steps it can verify and highlights the next button (here *Start session*).
+
+![Guided setup in Simple view, ready to start the session](docs/images/guide-start.png)
+
+**During a session**: the live counters and the Activity log, with the checklist waiting for you to finish playing.
+
+![Guided setup while the game is running](docs/images/guide-playing.png)
+
+**After the session**: a short "What happened" summary of what the game asked for and what was delivered. It says nothing about how the picture looks; the before/after test is for that.
+
+![Guided setup after a session, with the What happened summary](docs/images/guide-summary.png)
+
+**Full view**: every tab, all twelve counters and the throughput graph, for when you want the detail.
+
+![Full view of the Dashboard during a session](docs/images/full-view.png)
 
 ## Trying it
 
@@ -58,7 +81,9 @@ each step off by itself. It is optional and never changes anything without a cli
 `tools\work\gui_settings.json`. Then use *Start session*, launch the game, and watch the Dashboard. [docs/USAGE.md](docs/USAGE.md) walks through each tab, and the command-line versions of everything are listed there too.
 To undo the hosts change at any time run `tools\restore-hosts.bat`.
 
-The tests don't need the game: `python -m unittest discover -s tools/tests` (161 tests, a couple of minutes).
+A download that needs no Python is planned; see [docs/ROADMAP.md](docs/ROADMAP.md).
+
+The tests don't need the game: `python -m unittest discover -s tools/tests` (168 tests, a couple of minutes).
 
 ## If something doesn't work
 
