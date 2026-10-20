@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ccslib import cachectl, config, doctor, guide, hosts, launch, logtail, mirrorctl, pack, paths, procs, proxyctl, report, session, version
+from ccslib import cachectl, config, doctor, gamefix, guide, hosts, launch, logtail, mirrorctl, pack, paths, procs, proxyctl, report, session, version
 
 BG, PANEL, FG, DIM, ACC = '#16181d', '#1e2128', '#d7dae0', '#8b93a1', '#4c8dff'
 OK, WARN, BAD, OFF = '#3ecf6e', '#e8b43a', '#ec5b5b', '#555b66'
@@ -646,11 +646,11 @@ class App(tk.Tk):
         if own and not (pp.get('alive') and all(o['pid'] == pp['pid'] for o in own)): blocked = own[0].get('name') if own[0].get('name') not in (None, '', '?') else 'another program'
         now = time.time(); root = paths.GAME_ROOT; fc = self._gfc
         if not fc or fc[1] != root or now - fc[0] > 5:
-            ex = os.path.isdir(root); fc = (now, root, ex, guide.score_folder(root) if ex else 0); self._gfc = fc
+            ex = os.path.isdir(root); fc = (now, root, ex, guide.score_folder(root) if ex else 0, gamefix.state(root) if ex else 'na'); self._gfc = fc
         tot = (getattr(self, '_pack_plan', None) or {}).get('total') or {}; rs = s.get('resolve') or {}
         if ps and ps.get('stat'):                                                    # what the proxy has done so far; kept after it stops, for the "what happened" text
             c = ps['stat']; g = lambda k: c.get(k) or 0; self._guide_peak = dict(req=g('req'), mirror=g('mirror'), upok=g('ok') - g('mirror'), err=g('err'), skip=g('skip'), miss=g('miss'), secs=(ps.get('now') or 0) - (ps.get('started') or 0))
-        return dict(configured=paths.CONFIGURED, folder_root=root, folder_exists=fc[2], folder_score=fc[3], blocked_by=blocked, port=port, free_gib=s.get('free'),
+        return dict(configured=paths.CONFIGURED, folder_root=root, folder_exists=fc[2], folder_score=fc[3], game_setup=fc[4], blocked_by=blocked, port=port, free_gib=s.get('free'),
                     game_running=bool(s.get('game')), proxy_ready=bool(ps), proxy_alive=bool(pp.get('alive')), hosts_ok=s.get('hosts') in ('OK', 'FOREIGN', 'MIXED'),
                     resolve_ok=bool(rs.get('ok')), hosts_state=s.get('hosts', '?'), requests=int(ps['stat']['req']) if ps and ps.get('stat') else 0,
                     pack_total=tot.get('chunks'), pack_stored=tot.get('stored'), mirror_alive=bool((s.get('mproc') or {}).get('alive')),
@@ -755,6 +755,7 @@ class App(tk.Tk):
             elif a == 'goto_pack': self._goto('Texture pack')
             elif a == 'goto_report': self._goto('Report')
             elif a == 'doctor': self._goto('Doctor'); self.do_doctor()
+            elif a == 'game_setup': self.do_game_setup()
             elif a == 'start_session': self.do_start()
             elif a == 'stop_session': self.do_stop()
             elif a == 'apply_hosts': self.do_hosts_apply()
@@ -1169,11 +1170,12 @@ class App(tk.Tk):
             tk.Label(self.doc_frame, text='●', fg=col[r['level']], bg=BG, font=('Segoe UI', 12)).grid(row=i, column=0, padx=(8, 4), pady=3, sticky='n')
             ttk.Label(self.doc_frame, text=r['name'], style='H.TLabel', width=20).grid(row=i, column=1, sticky='nw', pady=3)
             ttk.Label(self.doc_frame, text=r['detail'], wraplength=640, justify='left').grid(row=i, column=2, sticky='nw', pady=3, padx=6)
-            if r.get('fix'): ttk.Button(self.doc_frame, text='Fix: ' + {'hosts_apply': 'apply hosts (UAC)', 'flush_dns': 'flush DNS (UAC)', 'start_proxy': 'start proxy', 'restart_proxy': 'restart proxy', 'kill_port_owner': 'stop port owner'}[r['fix'][0]],
+            if r.get('fix'): ttk.Button(self.doc_frame, text='Fix: ' + {'hosts_apply': 'apply hosts (UAC)', 'flush_dns': 'flush DNS (UAC)', 'start_proxy': 'start proxy', 'restart_proxy': 'restart proxy', 'kill_port_owner': 'stop port owner', 'game_fix': 'set up the game'}[r['fix'][0]],
                                            command=lambda fx=r['fix'], n=r['name']: self.do_fix(fx, n)).grid(row=i, column=3, padx=8, pady=2, sticky='ne')
         self.doc_frame.columnconfigure(2, weight=1)
 
     def do_fix(self, fix, name):
+        if fix[0] == 'game_fix': return self.do_game_setup()
         if fix[0] == 'kill_port_owner':
             who = ', '.join(f'{n} (pid {p})' for p, n in fix[1])
             if not messagebox.askyesno('Stop port owner', f'Terminate {who}?\n\nOnly do this if it is a stale proxy or something you do not need.', parent=self): return
@@ -1181,6 +1183,25 @@ class App(tk.Tk):
             ok, msg = session.run_fix(self.cfg, fix, self.say); self.say(f"fix {name}: {'ok' if ok else 'FAILED'} - {msg}", 'OK' if ok else 'ERR')
             res = doctor.run_all(self.cfg); self.q.put(('ask', lambda: self._show_doctor(res)))
         self.bg('fix', go)
+
+    def do_game_setup(self):
+        """Ask first (it changes two things in the game folder), then apply; the Doctor and the checklist show the result."""
+        s = gamefix.status()
+        if not s['applicable']: messagebox.showinfo('Game setup', gamefix.describe(s), parent=self); return
+        if s['ok']: messagebox.showinfo('Game setup', 'Already set up.', parent=self); return
+        if s['game_running']: messagebox.showinfo('Game setup', 'The game is running. Close it, then try again.', parent=self); return
+        if not messagebox.askyesno('Set up the game',
+                                   'This makes two small changes in your game folder so the game uses the textures that are streamed to it:\n\n'
+                                   "1. In sp26\\steam_settings\\configs.main.ini: offline=0 and disable_lan_only=1 (the game's Steam emulator stops reporting offline mode). "
+                                   'A copy of the original is kept next to it.\n'
+                                   "2. sp26\\xpak_cache becomes a link to the game's xpak_cache folder. A real folder in the way is renamed, not deleted.\n\n"
+                                   'Windows may ask for permission if the game is in Program Files.\n\nContinue?', parent=self): return
+        def go():
+            ok, msg = session.run_fix(self.cfg, ('game_fix', None), self.say); self.say(f"game setup: {'ok' if ok else 'FAILED'} - {msg}", 'OK' if ok else 'ERR')
+            self._gfc = None
+            if ok: self.q.put(('ask', lambda: messagebox.showinfo('Game setup', 'Done: ' + msg + '\n\nStart (or restart) the game from its launcher now.', parent=self)))
+            else: self.q.put(('ask', lambda: messagebox.showerror('Game setup', 'The setup could not be finished (the Doctor shows what is still missing):\n\n' + msg, parent=self)))
+        self.bg('game setup', go)
 
     def do_bundle(self):
         def go():

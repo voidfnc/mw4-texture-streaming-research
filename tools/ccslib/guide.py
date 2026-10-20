@@ -232,8 +232,11 @@ def evaluate(state, f):
     free = f.get('free_gib'); need = MIN_FREE_GIB.get(path or 'quick', 2.0)
     if free is not None and free < need: problems.append(f'only {free:.0f} GiB free on this drive (about {need:g} GiB needed)')
     if f.get('game_running') and not live: problems.append('the game is running: close it, start the session, then launch it again')
+    setup = f.get('game_setup') == 'needed'
+    if setup: problems.append('the game folder needs one small setup so the game uses the streamed textures (online mode and a cache link)')
     pdone = live or 'session' in ms or (fok and not problems)
-    add('preflight', pdone, 'Port, disk space and the game being closed all look fine.' if not problems else 'Needs attention: ' + '; '.join(problems) + '.', [('doctor', 'Open the Doctor')] if problems else [])
+    acts = ([('game_setup', 'Set up the game')] if setup else []) + ([('doctor', 'Open the Doctor')] if problems and (not setup or len(problems) > 1) else [])
+    add('preflight', pdone, 'Port, disk space, the game folder setup and the game being closed all look fine.' if not problems else 'Needs attention: ' + '; '.join(problems) + '.', acts)
     # 4 pack (offline path only)
     if path == 'offline':
         tot, got = f.get('pack_total'), f.get('pack_stored')
@@ -300,6 +303,7 @@ GLOSSARY = (
     ('Requests per second (req/s)', 'How often the tool asks the CDN for a piece. It is capped so it does not hammer the servers.'),
     ('Doctor', 'A checklist that tests everything this tool depends on (port, hosts entry, folders, internet) and offers a safe fix for each failing check.'),
     ('Game cache', 'The folder where the game keeps pieces it has already received (xpak_cache). The game recreates it if it is missing.'),
+    ('Game setup', 'Two small changes in the game folder so the game uses the textures it is sent: its Steam emulator is set to online mode, and sp26\\xpak_cache is linked to the cache the game fills. Done once, after you confirm.'),
     ('Disk guard', 'Watches the game cache and stops the game if it grows past the limit you set, so the drive cannot fill up.'),
     ('Report', 'After a session the tool writes a summary of what the game asked for and what was delivered. It is found in the Report tab.'),
 )

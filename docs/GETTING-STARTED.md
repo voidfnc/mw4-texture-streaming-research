@@ -41,7 +41,9 @@ A checklist at the top of the Dashboard. Each step ticks itself when the real st
 2. **Find your game folder.** Press *Find my game folder*. The tool looks in the folder around itself, in your game libraries and in the usual places on every drive, and
    shows what looks like the game. It never picks one for you: choose the right one, or press *Browse...* and point at any folder. If the folder does not look like the
    game, you can still say *Use it anyway*.
-3. **Check this PC.** Port 80 free, enough disk space, the game closed. If something is in the way it says what, and the *Doctor* button can fix most of it.
+3. **Check this PC.** Port 80 free, enough disk space, the game closed, and the game folder set up to use streamed textures. If something is in the way it says what, and the
+   *Doctor* button can fix most of it. If the game folder needs its one-time setup, press *Set up the game* and confirm (see [Game setup](USAGE.md#game-setup-online-mode-and-the-cache-link)); it
+   keeps a copy of what it changes.
 4. **Texture pack** (offline copy only). Press *Download* in the Texture pack tab. You can pause and resume at any time, and carry on with the next steps while it runs, or skip it.
 5. **Start the session.** Press *Start session*. Windows shows a permission prompt (the *UAC prompt*) because the hosts file is protected: answer Yes. The tool adds one
    marked block to that file and keeps a backup. *Restore hosts* takes the block out again.
@@ -133,6 +135,9 @@ A checklist that tests everything this tool depends on (port, hosts entry, folde
 
 **Game cache**  
 The folder where the game keeps pieces it has already received (xpak_cache). The game recreates it if it is missing.
+
+**Game setup**  
+Two small changes in the game folder so the game uses the textures it is sent: its Steam emulator is set to online mode, and sp26\xpak_cache is linked to the cache the game fills. Done once, after you confirm.
 
 **Disk guard**  
 Watches the game cache and stops the game if it grows past the limit you set, so the drive cannot fill up.

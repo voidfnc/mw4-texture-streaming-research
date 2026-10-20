@@ -23,6 +23,7 @@ def snap():
         if rel.startswith(SKIP):
             dn[:] = []
             continue
+        dn[:] = [d for d in dn if not os.lstat(os.path.join(dp, d)).st_file_attributes & 0x400]       # do not follow junctions (sp26\xpak_cache is one after the game setup)
         for f in fn:
             p = os.path.join(dp, f)
             try:

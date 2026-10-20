@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.2.0 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
+Beta 0.2.1 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
 I started this because the Modern Warfare campaign on my PC looked blurry no matter what I did in the graphics menu. Walls and character gear sat on the lowest
 texture tier even with every setting maxed out. The game is supposed to download higher-resolution texture pieces from a CDN while you play, and on my machine
@@ -66,7 +66,7 @@ offers the shortcuts. Cancelling at any point installs nothing.
 ![What setup does and does not do](docs/images/installer-2-info.png)
 ![Shortcut options](docs/images/installer-3-options.png)
 
-**The program.** Screenshots of version **0.2.0-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them. They are
+**The program.** Screenshots of version **0.2.1-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them. They are
 regenerated for each release (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`), so the version in the title bar is the version they belong to.
 
 **Guided setup in Simple view**: the checklist ticks the steps it can verify and highlights the next button (here *Start session*).
@@ -113,6 +113,11 @@ administrator. The usual causes are the read-only attribute on the file (run `at
 security software with hosts-file protection (pause it briefly or allow `MW4 Texture Streaming.exe` and `ccs-cli.exe`, or `python.exe` when running from source, apply the override, turn it back on). A refused write leaves the file
 untouched, and the message says so. I don't turn off anyone's security software and I don't change permissions on system files for you; that is your call. If you
 would rather not let the tool write the file at all, you can add the two lines yourself (`ccs-cli.exe --ccs-run ccshosts diff apply`, or `python tools\ccshosts.py diff apply` from source, shows them).
+
+**Textures are streamed (the report shows requests and answers) but still look low.** On repacks that use a Steam emulator, the game can be set to offline mode and can look for its
+cache in `sp26\xpak_cache` while the engine fills `xpak_cache`. The Doctor's *Game setup* row (and the guide's *Check this PC* step) fixes both after you confirm: it sets
+`offline=0` and `disable_lan_only=1` in `sp26\steam_settings\configs.main.ini` (a copy of the original is kept) and links `sp26\xpak_cache` to `xpak_cache`. Close the game first,
+and start it again afterwards. Details and the command line: [docs/USAGE.md](docs/USAGE.md#game-setup-online-mode-and-the-cache-link).
 
 **"'NoneType' object has no attribute 'splitlines'" when starting a session.** That was a bug on Windows installs with a non-English language, fixed in 0.1.1.
 Update to the latest version. If you still see it, open an issue with the support bundle from the Doctor tab (check its contents first).

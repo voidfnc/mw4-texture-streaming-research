@@ -82,6 +82,11 @@ def smoke(app, v):
     local = os.path.join(tmp, 'Local'); os.makedirs(local); e2 = {k: x for k, x in env.items() if k != 'CCS_WORK'}; e2['LOCALAPPDATA'] = local
     c, out, _ = call('--ccs-run', 'uninstall-prep', 'status', '--json', e=e2); check(json.loads(out)['data_dir'] == os.path.join(local, 'MW4TextureStreaming'), 'settings live in the local app data folder, not in the program folder')
     c, out, _ = call('--ccs-run', 'selfcheck', t=180); check(c == 0 and 'all fine' in out, 'the built program starts its own helpers and makes a shortcut (selfcheck)')
+    fake = os.path.join(tmp, 'game'); os.makedirs(os.path.join(fake, 'sp26', 'steam_settings')); os.makedirs(os.path.join(fake, 'xpak_cache'))
+    open(os.path.join(fake, 'sp26', 'steam_settings', 'configs.main.ini'), 'w').write('[main::connectivity]\noffline=1\n')
+    c, out, _ = call('--ccs-run', 'gamefix', 'status', '--root', fake); check(c == 1 and 'offline mode' in out, 'game setup sees an offline game folder')
+    c, out, _ = call('--ccs-run', 'gamefix', 'apply', '--root', fake); c2, _, _ = call('--ccs-run', 'gamefix', 'status', '--root', fake); check(c == 0 and c2 == 0, 'game setup applies (settings file + cache link)')
+    c, out, _ = call('--ccs-run', 'gamefix', 'undo', '--root', fake); check(c == 0 and not os.path.lexists(os.path.join(fake, 'sp26', 'xpak_cache')), 'game setup undoes it and leaves the real cache')
     port = 18000 + os.getpid() % 1000; log = os.path.join(tmp, 'proxy.log')
     p = subprocess.Popen([cli, '--ccs-run', 'ccsproxy', '--port', str(port), '--offline', '--log', log, '--stats-json', os.path.join(tmp, 'stats.json')], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     try:

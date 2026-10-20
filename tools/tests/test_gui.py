@@ -160,6 +160,25 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(any('apply hosts' in b.cget('text') for b in buttons))                  # hosts absent -> Fix: apply hosts (UAC)
         self.assertTrue(any('start proxy' in b.cget('text') for b in buttons))                  # proxy stopped -> Fix: start proxy
 
+    def test_game_setup_is_offered_by_the_doctor_and_the_guide_and_applied_after_a_yes(self):
+        from unittest import mock
+        from ccslib import gamefix
+        g = self.game_dir(); st = os.path.join(g, 'sp26', 'steam_settings'); os.makedirs(st); os.makedirs(os.path.join(g, 'xpak_cache'))
+        with open(os.path.join(st, 'configs.main.ini'), 'w') as f: f.write('[main::connectivity]\noffline=1\n')
+        c = config.load(); c['paths'].update(game_root=g); config.save(c); paths.reload(); self.app.cfg = c; self.app._gfc = None
+        with mock.patch.object(procs, 'image_running', return_value=[]):
+            self.assertEqual(self.app._guide_facts()['game_setup'], 'needed')
+            rows = guide.evaluate(guide.new_state(path='quick'), dict(self.app._guide_facts(), game_setup='needed'))
+            self.assertIn(('game_setup', 'Set up the game'), next(r for r in rows if r['id'] == 'preflight')['actions'])
+            res = doctor.run_all(config.load()); self.app._show_doctor(res); self.app.update()
+            self.assertTrue(any('set up the game' in b.cget('text') for b in walk(self.app.doc_frame) if b.winfo_class() == 'TButton'))
+            self.app.guide_do('game_setup'); self.pump(1.5)                                                                    # askyesno is patched to yes
+            self.assertEqual(gamefix.state(g), 'ok'); self.assertTrue(any(k == 'info' and 'Done' in a[1] for k, a in self.calls))
+            self.assertEqual(self.app._guide_facts()['game_setup'], 'ok')
+            self.app.guide_do('game_setup'); self.assertTrue(any(k == 'info' and 'Already' in a[1] for k, a in self.calls))   # a second press only says so
+            messagebox.askyesno = lambda *a, **k: False; os.rmdir(os.path.join(g, 'sp26', 'xpak_cache')); self.app.guide_do('game_setup'); self.pump(0.5)
+            self.assertEqual(gamefix.state(g), 'needed', 'a No changes nothing')
+
     def test_report_generation_from_log_and_view(self):
         lg = os.path.join(paths.WORK, 'ccsproxy.log')
         open(lg, 'w', encoding='utf-8').write('09:00:00 START 2026-10-21 pid=1\n09:00:00 index: 1 chunk ids\n09:00:01 GET /pc/iw9_3/23/aa/00000000000000aa_00000010_1 -> 200 16B MIRROR\n')
