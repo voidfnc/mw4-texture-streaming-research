@@ -44,7 +44,7 @@ class SettingsText(unittest.TestCase):
         out = gamefix.set_keys(text); k = gamefix.read_keys(out)
         self.assertEqual((k['offline'], k['disable_lan_only']), ('0', '1')); self.assertEqual(gamefix.set_keys(out), out, 'a second pass must change nothing'); return out
 
-    def test_the_repack_default_is_fixed(self):
+    def test_the_default_offline_file_is_fixed(self):
         self.assertEqual(self.check('[main::connectivity]\noffline=1\n'), '[main::connectivity]\noffline=0\ndisable_lan_only=1\n')
 
     def test_an_empty_or_unrelated_file_gets_the_section(self):
@@ -74,7 +74,7 @@ class SettingsText(unittest.TestCase):
 
 
 class Status(Quiet):
-    def test_the_repack_layout_needs_the_setup(self):
+    def test_the_usual_layout_needs_the_setup(self):
         s = gamefix.status(make_game('s1'))
         self.assertTrue(s['applicable']); self.assertFalse(s['ok']); self.assertEqual(s['link_state'], 'missing'); self.assertEqual(len(s['problems']), 2)
         self.assertIn('offline mode', s['problems'][0]); self.assertEqual(gamefix.state(s['root']), 'needed')

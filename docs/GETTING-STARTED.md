@@ -137,7 +137,7 @@ A checklist that tests everything this tool depends on (port, hosts entry, folde
 The folder where the game keeps pieces it has already received (xpak_cache). The game recreates it if it is missing.
 
 **Game setup**  
-Two small changes in the game folder so the game uses the textures it is sent: its Steam emulator is set to online mode, and sp26\xpak_cache is linked to the cache the game fills. Done once, after you confirm.
+Two small changes in the game folder so the game uses the textures it is sent: its Steam settings are set to online mode, and sp26\xpak_cache is linked to the cache the game fills. Done once, after you confirm.
 
 **Disk guard**  
 Watches the game cache and stops the game if it grows past the limit you set, so the drive cannot fill up.

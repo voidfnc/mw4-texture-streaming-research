@@ -2,7 +2,7 @@
 
 Thanks for looking. A few ground rules, mostly to keep the project on the right side of the line it has drawn for itself:
 
-- **Never attach game files**, chunk lists (`*_cdn.xpak`), cache files, mirror contents, decoded textures or screenshots that show them. If a capture is needed to
+- **Never attach game files**, chunk lists (`*_cdn.xpak`), cache files, mirror contents, decoded textures or screenshots that show them (an ordinary frame of the running game, like the two in the README, is fine when nothing personal is visible: no paths, names or addresses). If a capture is needed to
   explain a bug, describe it or trim it to the lines that matter.
 - The tools stay on the data and network path. Pull requests that patch or hook the game, read its memory, touch drivers or anti-cheat, or get around licensing or
   login will be closed.

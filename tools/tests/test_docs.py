@@ -92,5 +92,34 @@ class ScreenshotTests(unittest.TestCase):
             self.assertGreaterEqual(ihdr[0], 300); self.assertLess(len(data), 400 * 1024, n); self.assertIn(f'docs/images/{n}', readme)
 
 
+def jpeg_markers(data):
+    """The marker codes of a JPEG up to the start of the image data (so any metadata segment shows up)."""
+    assert data[:2] == b'\xff\xd8', 'not a JPEG'; pos = 2; out = []
+    while pos + 4 <= len(data):
+        assert data[pos] == 0xff, 'broken JPEG'; m = data[pos + 1]; out.append(m)
+        if m == 0xda: break
+        pos += 2 + struct.unpack('>H', data[pos + 2:pos + 4])[0]
+    return out
+
+
+class InGameFrameTests(unittest.TestCase):
+    def test_the_in_game_frames_are_clean_valid_and_all_used(self):
+        folder = os.path.join(REPO, 'docs', 'ingame')
+        if not os.path.isdir(folder): self.skipTest('no in-game frames')
+        readme = read('README.md'); names = sorted(os.listdir(folder)); self.assertTrue(names)
+        for n in names:
+            data = open(os.path.join(folder, n), 'rb').read(); marks = jpeg_markers(data)
+            self.assertEqual([m for m in marks if 0xe1 <= m <= 0xef or m == 0xfe], [], f'{n} carries metadata (EXIF, comment, ...): re-save it without')
+            self.assertLess(len(data), 1536 * 1024, n); self.assertIn(f'docs/ingame/{n}', readme)
+            for needle in (b'Exif', b'DODI', b'Program Files', b'C:\\Users'): self.assertNotIn(needle, data, n)
+
+    def test_public_text_keeps_clear_of_forums_other_sources_and_where_a_fix_came_from(self):
+        files = [f for f in tracked_markdown()] + ['packaging/setup-info.txt', 'packaging/START HERE.txt']
+        if not tracked_markdown(): self.skipTest('not a git checkout')
+        bad = re.compile(r'repack|emulator|DODI|forum|rutracker|torrent|a user (on|report)|user report|users? (reported|found)', re.I)
+        for f in files:
+            for i, line in enumerate(read(*f.split('/')).splitlines(), 1): self.assertIsNone(bad.search(line), f'{f}:{i}: {line.strip()[:100]}')
+
+
 if __name__ == '__main__':
     unittest.main()

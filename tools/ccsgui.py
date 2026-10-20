@@ -1197,7 +1197,7 @@ class App(tk.Tk):
         if s['game_running']: messagebox.showinfo('Game setup', 'The game is running. Close it, then try again.', parent=self); return
         if not messagebox.askyesno('Set up the game',
                                    'This makes two small changes in your game folder so the game uses the textures that are streamed to it:\n\n'
-                                   "1. In sp26\\steam_settings\\configs.main.ini: offline=0 and disable_lan_only=1 (the game's Steam emulator stops reporting offline mode). "
+                                   "1. In sp26\\steam_settings\\configs.main.ini: offline=0 and disable_lan_only=1 (the game stops reporting offline mode). "
                                    'A copy of the original is kept next to it.\n'
                                    "2. sp26\\xpak_cache becomes a link to the game's xpak_cache folder. A real folder in the way is renamed, not deleted.\n\n"
                                    'Windows may ask for permission if the game is in Program Files.\n\nContinue?', parent=self): return

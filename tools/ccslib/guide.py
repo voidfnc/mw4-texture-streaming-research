@@ -303,7 +303,7 @@ GLOSSARY = (
     ('Requests per second (req/s)', 'How often the tool asks the CDN for a piece. It is capped so it does not hammer the servers.'),
     ('Doctor', 'A checklist that tests everything this tool depends on (port, hosts entry, folders, internet) and offers a safe fix for each failing check.'),
     ('Game cache', 'The folder where the game keeps pieces it has already received (xpak_cache). The game recreates it if it is missing.'),
-    ('Game setup', 'Two small changes in the game folder so the game uses the textures it is sent: its Steam emulator is set to online mode, and sp26\\xpak_cache is linked to the cache the game fills. Done once, after you confirm.'),
+    ('Game setup', 'Two small changes in the game folder so the game uses the textures it is sent: its Steam settings are set to online mode, and sp26\\xpak_cache is linked to the cache the game fills. Done once, after you confirm.'),
     ('Disk guard', 'Watches the game cache and stops the game if it grows past the limit you set, so the drive cannot fill up.'),
     ('Report', 'After a session the tool writes a summary of what the game asked for and what was delivered. It is found in the Report tab.'),
 )

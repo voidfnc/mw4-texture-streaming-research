@@ -127,7 +127,7 @@ def check_game():
 
 
 def check_game_setup():
-    """Online mode in the game's Steam emulator + sp26/xpak_cache linked to the cache the helper fills (see gamefix.py). Quiet when the layout does not apply."""
+    """Online mode in the game's Steam settings + sp26/xpak_cache linked to the cache the helper fills (see gamefix.py). Quiet when the layout does not apply."""
     from . import gamefix
     s = gamefix.status()
     if not s['applicable']: return _c('Game setup', 'info', gamefix.describe(s))

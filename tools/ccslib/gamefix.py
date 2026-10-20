@@ -1,6 +1,6 @@
 """gamefix.py - the two small settings in the game folder that let the game use the textures it streams.
 
-  1. The Steam emulator next to the game (sp26/steam_settings/configs.main.ini) is set to offline mode. The game then never asks for additional content, so the pieces
+  1. The game's Steam settings (sp26/steam_settings/configs.main.ini) are set to offline mode. The game then never asks for additional content, so the pieces
      the helper delivers are not used. Fix: [main::connectivity] offline=0 and disable_lan_only=1.
   2. The engine fills <game folder>/xpak_cache, but the game looks for its cache in sp26/xpak_cache. Fix: sp26/xpak_cache becomes a directory junction (a folder
      link, no administrator rights needed for the link itself) to <game folder>/xpak_cache.
@@ -186,7 +186,7 @@ def status(root=None, check_game=True):
     s['config_ok'] = keys_ok(s['keys'])
     if not s['config_ok']:
         off = s['keys'].get('offline')
-        s['problems'].append(f"the game's Steam emulator is in offline mode ({CONFIG_NAME}: offline=1)" if off == '1' else
+        s['problems'].append(f"the game's Steam settings are in offline mode ({CONFIG_NAME}: offline=1)" if off == '1' else
                              f'{CONFIG_NAME} does not set online mode (offline=0)' if off != '0' else f'{CONFIG_NAME} is missing disable_lan_only=1')
     s['link_state'] = link_state(L['link'], L['target'])
     if s['link_state'] != 'ok':

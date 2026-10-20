@@ -96,9 +96,9 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 
 ## Game setup: online mode and the cache link
 
-Streaming only helps if the game then uses what it received. On repacks that run the game through a Steam emulator, two things in the game folder can stop that:
+Streaming only helps if the game then uses what it received. In a game folder that has a `sp26\steam_settings` folder, two things can stop that:
 
-1. The emulator is in offline mode (`sp26\steam_settings\configs.main.ini` has `offline=1`), so the game does not ask for additional content.
+1. The Steam settings are in offline mode (`sp26\steam_settings\configs.main.ini` has `offline=1`), so the game does not ask for additional content.
 2. The engine fills `<game folder>\xpak_cache`, but the game looks for its cache in `<game folder>\sp26\xpak_cache`.
 
 The *Doctor* shows a *Game setup* row and the guide's *Check this PC* step offers *Set up the game*. After you confirm, it:
@@ -122,7 +122,7 @@ ccs-cli.exe --ccs-run gamefix undo         put the two settings back to what the
 ```
 
 Doing it by hand gives the same result: edit `configs.main.ini` as above, and in a Command Prompt in the game folder run `mklink /J sp26\xpak_cache xpak_cache`.
-Online mode means the emulator no longer reports offline, so it may try to reach the network; if you would rather not, undo it: after a setup made by this tool the
+Online mode means the game no longer reports offline, so it may try to reach the network; if you would rather not, undo it: after a setup made by this tool the
 Doctor's *Game setup* row has an *Undo the game setup* button (it asks first, and asks Windows for permission only if needed), or run `undo`. Undo changes only
 `offline` and `disable_lan_only` back to their earlier values (or removes them again if they were not there; a settings file that did not exist is removed), so any other edit you made to
 the file since stays. It removes `sp26\xpak_cache` only when it is a link to `xpak_cache`, never a real folder.

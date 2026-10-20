@@ -66,7 +66,7 @@ offers the shortcuts. Cancelling at any point installs nothing.
 ![What setup does and does not do](docs/images/installer-2-info.png)
 ![Shortcut options](docs/images/installer-3-options.png)
 
-**The program.** Screenshots of version **0.2.3-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them. They are
+**The program.** Screenshots of version **0.2.3-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them (the two in-game frames are further down). They are
 regenerated when the windows change (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`); the version in the title bar is the version they were taken with. Later versions start with an administrator prompt, so the first line of the activity log reads slightly differently there. The four installer pages above are from 0.2.5-beta.
 
 **Guided setup in Simple view**: the checklist ticks the steps it can verify and highlights the next button (here *Start session*).
@@ -84,6 +84,14 @@ regenerated when the windows change (`python tools\make_screenshots.py`; the ins
 **Full view**: every tab, all twelve counters and the throughput graph, for when you want the detail.
 
 ![Full view of the Dashboard during a session](docs/images/full-view.png)
+
+**In the game.** Two frames from a play session of the single-player campaign at 2560x1440 with the toolkit running (0.2.5-beta). In the first, the Dashboard sits next to the game: 117
+texture pieces delivered so far, none from the internet, no errors (the game folder path in the window is covered). In the second, a close-up of a character and a shop interior. They show how
+the game looks with the streamed textures; they are not a measured comparison (I took no before/after pairs, see [section 7 of FINDINGS](docs/FINDINGS.md#7-what-i-could-not-verify)).
+The frames are copyrighted game art, shown here only to illustrate the toolkit.
+
+![The game next to the toolkit window during a session](docs/ingame/ingame-1.jpg)
+![A close-up of a character in a shop](docs/ingame/ingame-2.jpg)
 
 ## Running from source
 
@@ -126,7 +134,7 @@ security software with hosts-file protection (pause it briefly or allow `MW4 Tex
 untouched, and the message says so. I don't turn off anyone's security software and I don't change permissions on system files for you; that is your call. If you
 would rather not let the tool write the file at all, you can add the two lines yourself (`ccs-cli.exe --ccs-run ccshosts diff apply`, or `python tools\ccshosts.py diff apply` from source, shows them).
 
-**Textures are streamed (the report shows requests and answers) but still look low.** On repacks that use a Steam emulator, the game can be set to offline mode and can look for its
+**Textures are streamed (the report shows requests and answers) but still look low.** In some game folders the Steam settings put the game in offline mode, and the game can look for its
 cache in `sp26\xpak_cache` while the engine fills `xpak_cache`. The Doctor's *Game setup* row (and the guide's *Check this PC* step) fixes both after you confirm: it sets
 `offline=0` and `disable_lan_only=1` in `sp26\steam_settings\configs.main.ini` (a copy of the original is kept) and links `sp26\xpak_cache` to `xpak_cache`. Close the game first,
 and start it again afterwards. Details and the command line: [docs/USAGE.md](docs/USAGE.md#game-setup-online-mode-and-the-cache-link).

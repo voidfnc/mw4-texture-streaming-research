@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- **Docs:** `docs/FINDINGS.md` has a new section 9 on the game folder settings (online mode and the cache link) with what was observed in one session, what was not tested separately, and
+- **Docs:** the README shows two in-game frames (`docs/ingame/`, with the game folder path covered in the first and no metadata in either). `docs/FINDINGS.md` has a new section 9 on the game folder settings (online mode and the cache link) with what was observed in one session, what was not tested separately, and
   what is still unchecked. No program change. (One older changelog line no longer refers to where a fix came from.)
 
 ## 0.2.5-beta
@@ -47,7 +47,7 @@
 ## 0.2.1-beta
 **Game setup: helps the game use the textures it is sent.** One new check and one-click fix, nothing else changes.
 
-- **Game setup check and fix.** Some repacks run the game's Steam emulator in offline mode and the game looks for its cache in `sp26\xpak_cache` while the engine fills
+- **Game setup check and fix.** In some game folders the Steam settings put the game in offline mode and the game looks for its cache in `sp26\xpak_cache` while the engine fills
   `xpak_cache` in the game folder, so streamed textures can arrive without ever showing. The Doctor has a new *Game setup* row and the guide's *Check this PC* step asks for it
   when it is needed; *Set up the game* (one click, after a confirmation) sets `offline=0` and `disable_lan_only=1` in `sp26\steam_settings\configs.main.ini` (a copy of the
   original is kept next to it, other lines are left alone) and makes `sp26\xpak_cache` a folder link (junction) to `xpak_cache`. A real folder in the way is renamed aside, never
@@ -104,7 +104,7 @@ Guided setup for first-time users, plus the fixes found while building it. Nothi
 - The Proxy tab no longer prints the author's own test-run numbers under the size histogram.
 
 ## 0.1.2-beta
-Fixes for slow mirror downloads (a user on a 100 Mbit/s line saw about 1 Mbit/s).
+Fixes for slow mirror downloads (about 1 Mbit/s on a 100 Mbit/s line).
 
 - The mirror no longer depends on one built-in CDN address. While the hosts override is on, the old code asked `nslookup` for the edge address and could not read
   the answer (this host lists IPv6 first, and the labels are translated on non-English Windows), so every run silently used a fixed address that can be far away.
