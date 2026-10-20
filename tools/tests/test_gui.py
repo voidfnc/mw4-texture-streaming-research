@@ -183,6 +183,21 @@ class GuiTests(unittest.TestCase):
         self.app._report_key = None; self.app._make_report(-1, None, True); self.assertEqual(len(report.list_reports()), n1)   # also after a GUI restart (newest saved report covers it)
         open(lg, 'a', encoding='utf-8').write(req('10:05:00', 0xc3) + '\n'); self.app._make_report(-1, None, True); self.assertEqual(len(report.list_reports()), n1 + 1)   # new traffic -> new report
 
+    def test_stop_session_does_not_repeat_the_game_launch_report(self):
+        self.app.stop_poll.set(); time.sleep(1.2)
+        lg = os.path.join(paths.WORK, 'ccsproxy.log'); day = '2026-10-23'
+        def req(tod, cid): return f'{tod} GET /pc/iw9_3/23/{cid & 0xff:02x}/{cid:016x}_00000010_1 -> 200 16B MIRROR'
+        open(lg, 'w', encoding='utf-8').write('\n'.join(['10:00:00 START ' + day + ' pid=1', '10:00:00 index: 1 chunk ids', req('10:00:10', 0xd1), req('10:00:11', 0xd2)]) + '\n')
+        win = (time.mktime((2026, 10, 23, 9, 59, 0, 0, 0, -1)), time.mktime((2026, 10, 23, 10, 2, 0, 0, 0, -1)))      # the game launch holds every request of the run
+        n0 = len(report.list_reports()); self.app._make_report(-1, win, True); n1 = len(report.list_reports()); self.assertEqual(n1, n0 + 1)
+        self.app._make_report(-1, None, True); self.assertEqual(len(report.list_reports()), n1)                          # Stop session right after the game exited: nothing new, no second copy
+        open(lg, 'a', encoding='utf-8').write(req('10:05:00', 0xd3) + '\n'); self.app._make_report(-1, None, True); self.assertEqual(len(report.list_reports()), n1 + 1)   # more traffic -> a new report
+
+    def test_report_and_doctor_text_carry_no_numbers_from_the_authors_own_runs(self):
+        import inspect
+        from ccslib import report as rp, doctor as dc
+        for src in (inspect.getsource(rp), inspect.getsource(dc)): self.assertNotIn('runs 1-3 of', src); self.assertNotIn('in run 10', src)
+
     def test_game_launch_window_reports_and_run_list(self):
         import datetime
         lg = os.path.join(paths.WORK, 'ccsproxy.log'); day = '2026-10-21'

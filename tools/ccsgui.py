@@ -944,12 +944,12 @@ class App(tk.Tk):
 
     @staticmethod
     def _saved_report_covers(seg, window):
-        """True when the newest saved report is already the whole of this proxy run (same run, same request count): a stop-time report must not duplicate it."""
+        """True when the newest saved report already holds all of this proxy run's requests (same run, same request count, whole run or the single game launch): a stop-time report must not duplicate it."""
         try:
             ls = report.list_reports()
             if not ls or window: return False
             j = json.load(open(max(ls, key=os.path.getmtime), encoding='utf-8'))
-            return j.get('segment') == seg['idx'] and not j.get('window') and j['requests']['total'] == seg['nreq'] and j.get('date') == seg.get('date')
+            return j.get('segment') == seg['idx'] and j['requests']['total'] == seg['nreq'] and j.get('date') == seg.get('date')      # a report for the game-launch window that holds all of the run's requests counts too
         except Exception: return False
 
     def _make_report(self, idx, window=None, auto=False):
