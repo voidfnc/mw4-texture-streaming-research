@@ -84,7 +84,7 @@ def validate():
     elif not os.path.isdir(GAME_ROOT): add('Game folder', 'fail', f'does not exist: {GAME_ROOT}')
     else: add('Game folder', 'ok', GAME_ROOT)
     lists = glob.glob(os.path.join(GAME_ROOT, 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(GAME_ROOT, 'sp26', '*_cdn.xpak'))
-    add('CDN chunk lists', 'ok' if lists else 'fail', f'{len(lists)} *_cdn.xpak files under cod26/ and sp26/' if lists else 'no cod26/*_cdn.xpak or sp26/*_cdn.xpak found - wrong game folder?')
+    add('CDN chunk lists', 'ok' if lists else 'warn', f'{len(lists)} *_cdn.xpak files under cod26/ and sp26/' if lists else 'none found under cod26/ or sp26/. The proxy still works without them; the mirror and the detail-level cap need them (wrong game folder?)')
     exes = [e for e in GAME_EXES if os.path.exists(os.path.join(GAME_ROOT, e))]
     add('Game executable', 'ok' if exes else 'info', ', '.join(exes) if exes else f'none of {", ".join(GAME_EXES)} in the folder (process names are matched, so this is only informational)')
     add('Engine cache', 'ok' if os.path.isdir(XPAK_CACHE) else 'warn', XPAK_CACHE + ('' if os.path.isdir(XPAK_CACHE) else '  (missing - the game creates it on first run)'))

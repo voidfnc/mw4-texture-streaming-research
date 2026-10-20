@@ -20,6 +20,7 @@ DEFAULTS = dict(
     log_max_mb=25,                        # rotate a log at session start when it is larger (0 = never); 3 old copies are kept
     keep_running_on_close=False,
     bulk_ack='',                          # version of the bulk-download notice the user accepted
+    guide=dict(enabled=False, path='', ms=[], skipped=[], confirmed_root='', offered=''),     # optional guided setup (see guide.py)
     notice_ack='',                        # version of the research/responsibility notice the user has seen
 )
 

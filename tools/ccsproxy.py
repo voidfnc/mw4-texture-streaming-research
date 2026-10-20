@@ -62,9 +62,14 @@ MKEY = {}      # id -> (etag, cod_key) from mirror/index.sqlite when --origin is
 
 def load_mirror(origin):
     import sqlite3
-    c = sqlite3.connect(os.path.join(origin, 'index.sqlite'))
-    for sid, et, ck in c.execute('select id, etag, cod_key from chunks where status=1'):
-        MKEY[sid & (2**64 - 1)] = ((et or '').split(':')[0] or None, ck)
+    db = os.path.join(origin, 'index.sqlite')
+    if not os.path.isfile(db): log(f"mirror: no index in {origin} yet - every chunk comes from the CDN until a mirror is built"); return      # a first-time user has no mirror: not an error
+    c = sqlite3.connect(db)
+    try:
+        for sid, et, ck in c.execute('select id, etag, cod_key from chunks where status=1'):
+            MKEY[sid & (2**64 - 1)] = ((et or '').split(':')[0] or None, ck)
+    except sqlite3.Error as e: log(f"mirror: index unreadable ({e}) - chunks that are not on disk come from the CDN")
+    finally: c.close()
     log(f"mirror: {len(MKEY)} stored chunks indexed from {origin}")
 
 def log(m):

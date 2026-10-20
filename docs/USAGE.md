@@ -4,6 +4,31 @@ Start it with `tools\ccs-gui.bat` (no console window) or `python tools\ccsgui.py
 rights (UAC). Python 3.10+ with tkinter is the only requirement. The first time it opens it shows a short notice about what the tools are and are not. Before the first bulk download (Texture pack or Mirror tab) it shows a second notice
 that you have to accept once per version; on the command line the same thing is `ccsmirror.py run ... --accept-notice`.
 
+## Guided setup (optional)
+
+If the window looks like a lot, turn on the guided setup. On the very first start, with no game folder set yet, the window offers it once ("New here?"). It can also be
+switched on or off at any time with the *Guide* button on the Dashboard or in *Settings -> Help*.
+
+It is a short checklist at the top of the Dashboard. You pick a path first, then each step ticks itself off when the real state of the PC says it is done:
+
+| Step | What it checks | Ticks when |
+|---|---|---|
+| 1. Choose how to start | your choice | you pick *Quick fix* (no big download) or *Offline copy* (download the texture pack once) |
+| 2. Find your game folder | the game folder setting | the folder exists and looks like the game |
+| 3. Check this PC | port 80, free disk space, game closed | nothing in the way |
+| 4. Texture pack (offline path only) | the mirror | the pack is complete, or a download is running (the next steps do not wait for it), or you skipped it |
+| 5. Start the session | proxy and hosts override | the session is running |
+| 6. Play | requests reaching the proxy | the game has been delivered its texture pieces |
+| 7. When you are done | the session | you stopped it; the report is in the Report tab |
+
+*Find my game folder* looks in the folder around this tool, your Steam libraries and the usual places on every fixed drive (the drive root, `Games`, `Program Files`,
+one or two folder levels down). It judges folders by what is inside (a `cod26` or `sp26` folder, the chunk lists, or a known game program), not by name, and shows you
+what it found. Nothing is set until you pick one. You can always browse to any folder instead, and a folder that does not look right is accepted if you say *Use it
+anyway*.
+
+The guide never changes anything by itself: its buttons run the same actions as the normal ones (*Start session*, *Stop session*, the Doctor, the tabs). If something
+goes wrong, the last problem is shown in the panel as well as in the Activity log. *Start over* runs the checklist again from the session step, and *Hide* closes it.
+
 ## First run: tell it where things are (Game tab)
 
 Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SETUP NEEDED* banner and *Start session* refuses.
@@ -66,6 +91,7 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 | *Permission denied* when writing the hosts file, even as admin | See [Hosts file: permission denied](#hosts-file-permission-denied) below |
 | *'NoneType' object has no attribute 'splitlines'* | Fixed in 0.1.1-beta (a non-English Windows printed text the old code could not decode). Update, or open an issue with the support bundle |
 | Mirror downloads are far below your line speed | Look at the `edge test` / `run: upstream=` lines in `tools\work\ccsmirror.log` and at the speed line on the Texture pack tab (it shows MiB/s **and** Mbps and the edge in use). Set *My line speed* so the tool re-checks the edge by itself, try 8 connections, and see [docs/TEXTURE-PACK.md](TEXTURE-PACK.md#download-speed) |
+| First start with no mirror: the proxy would not start, or the Doctor failed on the mirror | Fixed: a missing or empty mirror is normal now (every chunk comes from the CDN until you build one). Update to the latest version |
 | Port 80 is taken | The Doctor names the owner; the fix asks before ending it |
 | Proxy not answering | Doctor, Fix: restart proxy. The traceback is in `tools\work\run\proxy.out` |
 | Report missing | Reports are written when the game process exits; if you stopped the session first, press *Generate report* in the Report tab |
