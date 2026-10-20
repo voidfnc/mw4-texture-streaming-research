@@ -40,7 +40,13 @@ def main():
     if uninstall_entry(): sys.exit('an installed copy exists already: uninstall it first so this test does not touch it')
     menu = os.path.join(os.environ['APPDATA'], 'Microsoft', 'Windows', 'Start Menu', 'Programs', APP); desk = os.path.join(shell_folder('Desktop'), APP + '.lnk')
     def install(tag):
-        r = subprocess.run([setup, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', f'/DIR={app}', f'/LOG={os.path.join(tmp, tag + ".log")}'], env=env, timeout=300); return r.returncode
+        log = os.path.join(tmp, tag + '.log')
+        try: return subprocess.run([setup, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', f'/DIR={app}', f'/LOG={log}'], env=env, timeout=150).returncode
+        except subprocess.TimeoutExpired:                                         # a hang: show where it is stuck instead of waiting for the CI time limit
+            print(f'setup ({tag}) did not finish in 150 s; its log:'); print(open(log, errors='replace').read()[-3500:] if os.path.exists(log) else '(no log)')
+            print(subprocess.run(['tasklist'], capture_output=True, text=True).stdout[-2500:])
+            subprocess.run(['taskkill', '/F', '/T', '/IM', os.path.basename(setup)], capture_output=True); subprocess.run(['taskkill', '/F', '/T', '/IM', '_unins.tmp'], capture_output=True)
+            raise SystemExit(f'installer test failed: setup ({tag}) hung')
     try:
         print('install'); check(install('install') == 0, 'setup exits 0 (silent, per user, no administrator rights)')
         exe, cli = os.path.join(app, APP + '.exe'), os.path.join(app, 'ccs-cli.exe')
