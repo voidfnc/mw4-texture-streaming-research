@@ -69,7 +69,7 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 |---|---|---|
 | Game folder | the folder that contains `cod26\` and `sp26\` (with the `*_cdn.xpak` chunk lists) | not configured |
 | Engine cache folder | the game's stream cache (`cache_N_2.xpak`) | `<game folder>\xpak_cache` |
-| Mirror folder | where the chunks are stored; can be another drive | `<game folder>\mirror` |
+| Mirror folder | where the chunks are stored; can be another drive. Building a mirror needs a folder you can write to: inside Program Files that usually means a folder of your own instead | `<game folder>\mirror` |
 | Player config file | `s.1.0.cod26.txt`, read only, used for the settings snapshot in reports | `%LOCALAPPDATA%\Activision\Call of Duty\players\s.1.0.cod26.txt` |
 | Game process names | what counts as "game running" | `sp26-cod.exe, cod.exe` |
 | Disk guard may terminate | processes the guard ends at the cache limit | `sp26-cod.exe` |
@@ -155,6 +155,7 @@ The setup is not offered when the *Engine cache folder* setting (Game tab) point
 | Symptom | What to try |
 |---|---|
 | Red *SETUP NEEDED* | Game tab, set the game folder, *Save locations* |
+| Doctor: *Mirror: unable to open database file* (older versions), or *Mirror folder: you can read it but not write to it* | The mirror is in a folder only an administrator can write to (for example inside Program Files). A stored mirror is read as it is, without writing next to it; building or extending one needs a folder you can write to: set another *Mirror folder* in the Game tab |
 | The report says the game asked for textures and got them, but they still look low | Doctor, *Game setup* row, Fix: set up the game (see [Game setup](#game-setup-online-mode-and-the-cache-link)); close the game first and start it again afterwards |
 | Game never streams, hosts light red or amber | Doctor, Fix: apply hosts (UAC). The Hosts tab's *Test resolution* should show `127.0.0.1` and `::1` |
 | *Permission denied* when writing the hosts file, even as admin | See [Hosts file: permission denied](#hosts-file-permission-denied) below |

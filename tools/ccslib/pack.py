@@ -7,7 +7,7 @@ The same level drives the mirror download cap and the proxy serve cap (config.ef
 The chunk lists (*_cdn.xpak) come from the user's own game install; nothing is bundled.
 """
 import os, shutil, sqlite3, sys, time
-from . import paths
+from . import mirrordb, paths
 
 sys.path.insert(0, paths.TOOLS)
 import cdnxpak                                                                     # noqa: E402
@@ -98,7 +98,7 @@ def stored_status(mirror_dir=None):
     """-> {unsigned id: status} from the mirror index ({} when there is none). 1 = stored, 0 pending, 2 failed, 3 = 404."""
     db = os.path.join(mirror_dir or paths.MIRROR, 'index.sqlite')
     if not os.path.exists(db): return {}
-    c = sqlite3.connect(db, timeout=10)
+    c = mirrordb.connect_read(db, timeout=10)
     try: return {(i & (2**64 - 1)): s for i, s in c.execute('select id, status from chunks')}
     finally: c.close()
 

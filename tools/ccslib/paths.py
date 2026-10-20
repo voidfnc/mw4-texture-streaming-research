@@ -101,7 +101,10 @@ def validate():
     exes = [e for e in GAME_EXES if os.path.exists(os.path.join(GAME_ROOT, e))]
     add('Game executable', 'ok' if exes else 'info', ', '.join(exes) if exes else f'none of {", ".join(GAME_EXES)} in the folder (process names are matched, so this is only informational)')
     add('Engine cache', 'ok' if os.path.isdir(XPAK_CACHE) else 'warn', XPAK_CACHE + ('' if os.path.isdir(XPAK_CACHE) else '  (missing - the game creates it on first run)'))
-    add('Mirror folder', 'ok' if os.path.isdir(MIRROR) else 'warn', MIRROR + ('' if os.path.isdir(MIRROR) else '  (missing - created by the first mirror run)'))
+    from . import mirrordb
+    if not os.path.isdir(MIRROR): add('Mirror folder', 'warn' if mirrordb.writable(MIRROR) else 'info', MIRROR + ('  (missing - created by the first mirror run)' if mirrordb.writable(MIRROR) else '  (missing, and you cannot create it here: only needed for an offline copy, which needs a folder you can write to - choose one in the Game tab)'))
+    elif not mirrordb.writable(MIRROR): add('Mirror folder', 'warn', MIRROR + '  (you can read it but not write to it: a stored mirror is used as it is, but building or extending one needs a folder you can write to - choose another in the Game tab)')
+    else: add('Mirror folder', 'ok', MIRROR)
     add('Player config', 'ok' if os.path.isfile(PLAYER_CFG) else 'warn', PLAYER_CFG + ('' if os.path.isfile(PLAYER_CFG) else '  (not found - settings snapshot in reports will be empty)'))
     return out
 

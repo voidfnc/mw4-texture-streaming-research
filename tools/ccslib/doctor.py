@@ -1,6 +1,6 @@
 """doctor.py - preflight checks. Each check -> dict(name, level 'ok'|'warn'|'fail'|'info', detail). Never raises, never writes."""
 import http.client, os, random, shutil, sqlite3, sys
-from . import config, hosts, pack, paths, procs, proxyctl, upstream
+from . import config, hosts, mirrordb, pack, paths, procs, proxyctl, upstream
 
 
 def _c(name, level, detail, fix=None):
@@ -34,7 +34,7 @@ def check_port(cfg):
 def _mirror_rows(n=20):
     db = os.path.join(paths.MIRROR, 'index.sqlite')
     if not os.path.exists(db): return None, []
-    c = sqlite3.connect(db, timeout=5)
+    c = mirrordb.connect_read(db, timeout=5)
     try:
         total = c.execute('select count(*) from chunks where status=1').fetchone()[0]
         ids = [r[0] for r in c.execute('select id from chunks where status=1 limit 5000')]

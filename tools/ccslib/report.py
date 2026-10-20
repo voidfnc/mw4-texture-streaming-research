@@ -8,7 +8,7 @@ Answers, per run: what did the game request (tiers, >4 MiB = 4K-class demand), f
 already hold in xpak_cache (re-request rate), were there mirror gaps / errors, how did the cache grow, which graphics settings were active.
 """
 import collections, datetime, glob, json, os, re, sqlite3, sys, time
-from . import paths
+from . import mirrordb, paths
 
 TIERS = [('<=64K', 2**16), ('<=256K', 2**18), ('<=1M', 2**20), ('<=4M', 2**22), ('<=8M', 2**23), ('<=16M', 2**24), ('>16M', None)]
 TIER_NAMES = [t[0] for t in TIERS]
@@ -109,7 +109,7 @@ def load_catalogue():
 def load_mirror_ids():
     db = os.path.join(paths.MIRROR, 'index.sqlite')
     if not os.path.exists(db): return None
-    c = sqlite3.connect(db, timeout=10)
+    c = mirrordb.connect_read(db, timeout=10)
     try: return {sid & (2**64 - 1) for (sid,) in c.execute('select id from chunks where status=1')}
     finally: c.close()
 
