@@ -29,6 +29,22 @@ anyway*.
 The guide never changes anything by itself: its buttons run the same actions as the normal ones (*Start session*, *Stop session*, the Doctor, the tabs). If something
 goes wrong, the last problem is shown in the panel as well as in the Activity log. *Start over* runs the checklist again from the session step, and *Hide* closes it.
 
+Around the checklist:
+
+- **Spotlight.** The control the current step points at is highlighted in amber (*Start session*, *Stop session*, *Doctor*) or marked with an arrow (a tab). It is shown only
+  while the guide is on, and never for *Stop session* while the game is still running.
+- **Simple view.** The guide's header button (also *Settings -> Help*) hides the advanced tabs (Proxy, Mirror, Cache, Game, Hosts / DNS, Logs), the profile picker, the
+  throughput graph and eight of the twelve counters, and names the remaining counters in plainer words. *Full view* shows everything again. The first-run offer turns it on
+  together with the guide; it is a display setting only and is kept between runs. A guide button that points at a hidden tab (for example *Open the Doctor*) shows that tab.
+- **Hover help.** Every status light and counter has a tooltip that says what it means. The *Words* button opens the same plain-language list as the end of
+  [GETTING-STARTED.md](GETTING-STARTED.md).
+- **Help cards.** For the usual failures the panel shows a short card (cause and a button) above the raw last problem: a refused hosts write, a closed permission prompt, a busy port,
+  a hosts entry that disappeared while the helper runs, a game that runs for a minute and a half without any request reaching the helper, an unreachable CDN, a nearly full disk.
+- **What happened.** When the session ends, the panel summarises the last session: pieces requested, from the internet or the mirror, failed, left out by the detail level. It
+  states what was delivered, not how the picture looks.
+- **Before/after test.** A four-step helper (pick a spot, play with the tool off, play with it on, compare screenshots) that uses the normal *Restore hosts* and *Start session*
+  buttons and opens a folder for the screenshots (`tools/work/ab-test`). It remembers the step you were on.
+
 ## First run: tell it where things are (Game tab)
 
 Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SETUP NEEDED* banner and *Start session* refuses.

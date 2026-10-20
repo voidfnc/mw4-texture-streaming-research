@@ -16,6 +16,14 @@
 - A game folder without the `*_cdn.xpak` chunk lists no longer blocks *Start session*: the Doctor and the folder check warn instead (the proxy works without them; the
   mirror and the detail-level cap need them).
 - Tooltip and layout hardening. 37 new tests (138 in total).
+- **Simple view.** One button (or *Settings -> Help*) hides the advanced tabs, the profile picker, the graph and most counters; the first-run offer turns it on with the guide.
+- **Spotlight, hover help and *Words*.** The control for the current step is highlighted, every status light and counter explains itself on hover, and a plain-language list of
+  the terms is one click away (and in the new `docs/GETTING-STARTED.md`).
+- **Help cards** for the usual failures (refused hosts write, closed permission prompt, busy port, vanished hosts entry, no traffic, unreachable CDN, low disk), with a button each.
+- **What happened** summary after a session, and a four-step **before/after test** to compare the game with and without the tool on your own PC.
+- Fixes: the guide showed "Press Start session" on a finished session step, the panel was empty for the first second after start, a stray control character in the README
+  (`tools\restore-hosts.bat` was printed wrong). `--selftest` no longer shows the first-run dialogs.
+- 23 new tests (161 in total).
 
 ## 0.1.2-beta
 Fixes for slow mirror downloads (a user on a 100 Mbit/s line saw about 1 Mbit/s).

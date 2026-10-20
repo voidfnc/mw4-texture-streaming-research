@@ -14,6 +14,17 @@ def setUpModule():
     os.makedirs(TMP, exist_ok=True); paths.ensure_dirs()
 
 
+def walk(w):
+    yield w
+    for c in w.winfo_children(): yield from walk(c)
+
+
+def texts_of(w): return [x.cget('text') for x in walk(w) if x.winfo_class() in ('Label', 'TLabel', 'TButton', 'Button')]
+
+
+def button(w, text): return next(x for x in walk(w) if x.winfo_class() == 'TButton' and x.cget('text') == text)
+
+
 class GuiTests(unittest.TestCase):
     def setUp(self):
         try: os.remove(paths.SETTINGS_FILE)
@@ -369,6 +380,119 @@ class GuiTests(unittest.TestCase):
         destroyed = []; real = self.app.destroy; self.app.destroy = lambda: (destroyed.append(1), real())
         self.app.snap = dict(hosts='ABSENT'); self.app.on_close()
         self.assertEqual(asked, []); self.assertEqual(destroyed, [1])                               # no prompt, window closed
+
+
+    # ---------------------------------------------------------------- simple view, spotlight, words, before/after test, coaching
+    def tab_states(self): return {n: str(self.app.nb.tab(f, 'state')) for n, f in self.app.tabs.items()}
+
+    def test_simple_view_hides_the_advanced_parts_and_full_view_brings_them_back(self):
+        app = self.app; app.update(); dash = app.tabs['Dashboard']
+        self.assertTrue(all(s == 'normal' for s in self.tab_states().values())); self.assertEqual(app.btn_view.cget('text'), 'Simple view')
+        app._goto('Cache'); app.set_simple(True); app.update()
+        self.assertEqual(sorted(n for n, s in self.tab_states().items() if s == 'normal'), sorted(guide.SIMPLE_TABS)); self.assertEqual(app.nb.index('current'), app.nb.index(dash))      # a hidden tab that was open is left
+        self.assertEqual((app.prof_box.winfo_manager(), app.spark_box.winfo_manager(), app.prof_desc.winfo_manager(), app.simple_note.winfo_manager()), ('', '', '', 'pack'))
+        self.assertEqual(sorted(k for k, c in app.cnt_cells.items() if c.winfo_manager() == 'grid'), sorted(guide.SIMPLE_COUNTERS)); self.assertEqual(app.cnt_lbl['req'].cget('text'), 'Pieces requested')
+        self.assertEqual((app.btn_view.cget('text'), app.sv_simple.get()), ('Full view', True)); self.assertTrue(json.load(open(paths.SETTINGS_FILE))['guide']['simple'])
+        app.cfg['notice_ack'] = 'x'; a2 = ccsgui.App(); a2.withdraw(); a2.update()                                                       # a restart keeps the choice
+        try: self.assertEqual(sorted(n for n, f in a2.tabs.items() if str(a2.nb.tab(f, 'state')) == 'normal'), sorted(guide.SIMPLE_TABS))
+        finally: a2.stop_poll.set(); a2.destroy()
+        app.guide_do('view'); app.update(); self.assertTrue(all(s == 'normal' for s in self.tab_states().values()))
+        self.assertEqual((app.prof_box.winfo_manager(), app.spark_box.winfo_manager(), app.prof_desc.winfo_manager(), app.simple_note.winfo_manager()), ('pack', 'pack', 'pack', ''))
+        self.assertEqual(len([c for c in app.cnt_cells.values() if c.winfo_manager() == 'grid']), 12); self.assertEqual(app.cnt_lbl['req'].cget('text'), 'Requests'); self.assertEqual(app.btn_view.cget('text'), 'Simple view')
+        slaves = dash.pack_slaves(); self.assertLess(slaves.index(app.cnt_box), slaves.index(app.spark_box))                              # the graph comes back in its old place
+        app.sv_simple.set(True); app.set_simple(app.sv_simple.get()); self.assertTrue(app._guide_state()['simple'])                      # the Settings checkbox does the same
+
+    def test_goto_brings_a_hidden_tab_back_instead_of_failing(self):
+        app = self.app; app.set_simple(True); app._goto('Logs')
+        self.assertEqual(str(app.nb.tab(app.tabs['Logs'], 'state')), 'normal'); self.assertEqual(app.nb.index('current'), app.nb.index(app.tabs['Logs']))
+
+    def test_the_offer_turns_simple_view_on_with_the_guide_and_no_turns_both_off(self):
+        from ccslib import version
+        self.app.cfg['notice_ack'] = version.__version__; self.app._first_run_notice()
+        self.assertEqual((self.app._guide_state()['enabled'], self.app._guide_state()['simple']), (True, True)); self.assertEqual(str(self.app.nb.tab(self.app.tabs['Proxy'], 'state')), 'hidden')
+        self.app.cfg['guide'] = guide.new_state(); messagebox.askyesno = lambda *a, **k: False; self.app._offer_guide(); self.app.set_simple(False)
+        self.assertEqual((self.app._guide_state()['enabled'], self.app._guide_state()['simple']), (False, False)); self.assertTrue(all(s == 'normal' for s in self.tab_states().values()))
+
+    def test_spotlight_highlights_one_control_and_clears_it(self):
+        app = self.app; app._spot('btn_start'); self.assertEqual(str(app.btn_start.cget('style')), 'Spot.TButton'); app._spot('tab:Texture pack')
+        self.assertEqual(str(app.btn_start.cget('style')), 'Accent.TButton'); self.assertTrue(app.nb.tab(app.tabs['Texture pack'], 'text').startswith('\u25b6'))
+        app._spot(None); self.assertEqual(app.nb.tab(app.tabs['Texture pack'], 'text'), 'Texture pack')
+        app._spot('btn_stop'); self.assertEqual(str(app.btn_stop.cget('style')), 'Spot.TButton'); app._spot('btn_stop'); app._spot('no_such_control'); self.assertEqual(str(app.btn_stop.cget('style')), 'TButton')   # unknown names are harmless
+        app._spot(None)
+
+    def test_the_guide_spotlights_the_step_it_is_on_and_stops_when_hidden(self):
+        app = self.app; self._freeze(); g = self.game_dir(); app.guide_toggle(True); app._apply_game_folder(g); app.guide_do('choose_quick'); self._snap(); app._guide_tick()
+        self.assertEqual((app._spot_key, str(app.btn_start.cget('style'))), ('btn_start', 'Spot.TButton'))
+        self._snap(**self._live()); app._guide_tick(); self.assertIsNone(app._spot_key); self.assertEqual(str(app.btn_start.cget('style')), 'Accent.TButton')       # session running: nothing to press
+        self._snap(); app._guide_tick(); self.assertEqual(app._spot_key, 'btn_start'); app.guide_toggle(False); self.assertIsNone(app._spot_key); self.assertEqual(str(app.btn_start.cget('style')), 'Accent.TButton')
+
+    def test_words_dialog_lists_every_term_and_opens_once(self):
+        app = self.app; d = app.show_glossary(); app.update(); self.assertIs(app.show_glossary(), d)
+        body = next(x for x in walk(d) if x.winfo_class() == 'Text').get('1.0', 'end')
+        for term, text in guide.GLOSSARY: self.assertIn(term, body); self.assertIn(text[:30], body)
+        d.destroy(); self.assertIsNot(app.show_glossary(), d); app.guide_do('glossary')
+
+    def test_hover_help_and_simple_view_cover_what_the_window_really_has(self):
+        app = self.app
+        self.assertEqual(sorted(guide.LIGHT_HELP), sorted(app.lights)); self.assertEqual(sorted(guide.COUNTER_HELP), sorted(app.cnt)); self.assertTrue(set(guide.SIMPLE_TABS) <= set(app.tabs))
+        self.assertEqual(sorted(app.cnt_cells), sorted(app.cnt)); self.assertTrue(all(w.bind('<Enter>') for w in walk(app.cnt_cells['req']) if w.winfo_class() in ('TFrame', 'TLabel')))
+
+    def test_before_after_test_walks_the_steps_calls_the_normal_handlers_and_resumes(self):
+        app = self.app; calls = []; app.do_hosts_remove = lambda: calls.append('remove'); app.do_start = lambda: calls.append('start')
+        real = os.startfile; os.startfile = lambda p: calls.append(('open', p)); self.addCleanup(setattr, os, 'startfile', real)
+        d = app.show_abtest(); app.update(); self.assertIs(app.show_abtest(), d); head = lambda: next(t for t in texts_of(d) if t.startswith('Step '))
+        self.assertEqual(head(), 'Step 1 of 4: Pick a spot'); self.assertTrue(button(d, 'Back').instate(['disabled'])); self.assertEqual([t for t in texts_of(d) if t in ('Start session', 'Switch the tool off (Restore hosts)')], [])
+        button(d, 'Next').invoke(); self.assertEqual((head(), app._guide_state()['ab']), ('Step 2 of 4: Before: tool off', 1)); button(d, 'Switch the tool off (Restore hosts)').invoke()
+        button(d, 'Next').invoke(); self.assertTrue(head().startswith('Step 3')); button(d, 'Start session').invoke(); self.assertEqual(calls, ['remove', 'start'])
+        button(d, 'Back').invoke(); self.assertTrue(head().startswith('Step 2')); button(d, 'Next').invoke(); button(d, 'Next').invoke(); self.assertTrue(head().startswith('Step 4'))
+        button(d, 'Open the screenshots folder').invoke(); self.assertEqual(calls[-1], ('open', guide.ab_dir())); self.assertTrue(os.path.isdir(guide.ab_dir()))
+        self.assertEqual(button(d, 'Done').cget('text'), 'Done'); button(d, 'Done').invoke(); app.update(); self.assertFalse(d.winfo_exists())
+        d2 = app.show_abtest(); self.assertIsNot(d2, d); self.assertTrue(next(t for t in texts_of(d2) if t.startswith('Step ')).startswith('Step 4'))                  # resumes where it was left
+        d2.destroy(); app.cfg['guide']['ab'] = 99; self.assertEqual(guide.clean_state(app.cfg['guide'])['ab'], 99); d3 = app.show_abtest(); self.assertTrue(next(t for t in texts_of(d3) if t.startswith('Step ')).startswith('Step 4')); d3.destroy()
+
+    def test_a_known_failure_gets_a_plain_card_with_working_buttons(self):
+        app = self.app; self._freeze(); calls = []; app.do_start = lambda: calls.append('start'); app.do_hosts_apply = lambda: calls.append('apply'); app.guide_toggle(True); self._snap(); app._guide_tick()
+        self.assertNotIn('Windows refused to change the hosts file', texts_of(app.guide_body))
+        app.say('Session NOT ready: hosts override not applied:   permission denied', 'ERR'); app._guide_tick(); t = texts_of(app.guide_body)
+        self.assertIn('Windows refused to change the hosts file', t); self.assertIn('Try again', t); self.assertTrue(any(x.startswith('Last problem') for x in t))
+        button(app.guide_body, 'Try again').invoke(); self.assertEqual(calls, ['start'])
+        app.say('Session READY: session running', 'OK'); app._guide_tick(); self.assertNotIn('Windows refused to change the hosts file', texts_of(app.guide_body))          # a success clears it
+        app.guide_do('apply_hosts'); self.assertEqual(calls, ['start', 'apply'])
+        app.guide_toggle(True); st = app._guide_state(); st['ms'] = ['session']; app._guide_save(st); self._snap(hosts='ABSENT', pproc=dict(alive=True, pid=7)); app._guide_tick()
+        self.assertIn('The hosts entry is gone', texts_of(app.guide_body)); self.assertIn('Put it back (UAC)', texts_of(app.guide_body))
+
+    def test_what_happened_is_shown_after_the_session_ends_and_hidden_while_one_runs(self):
+        app = self.app; self._freeze(); app.guide_toggle(True)
+        self._snap(**self._live(req=345, game=['sp26-cod.exe'])); app._guide_tick(); self.assertEqual(app._guide_state()['ms'], ['session', 'game']); self.assertNotIn('What happened', texts_of(app.guide_body))
+        self._snap(); app._guide_tick(); st = app._guide_state(); self.assertEqual(st['ms'], ['session', 'game', 'after']); self.assertEqual(st['summary']['req'], 345)
+        t = texts_of(app.guide_body); self.assertIn('What happened', t); self.assertTrue(any('345 texture pieces' in x for x in t)); self.assertIn('Before/after test', t)
+        self.assertEqual(json.load(open(paths.SETTINGS_FILE))['guide']['summary']['req'], 345)                                                           # kept for the next start
+        self._snap(**self._live(req=5)); app._guide_tick(); self.assertNotIn('What happened', texts_of(app.guide_body))                                    # a new session is running: not the old numbers
+        app.guide_do('restart'); self.assertEqual(app._guide_state()['summary'], {})
+
+    def test_the_selftest_window_shows_no_first_run_dialogs(self):
+        from unittest import mock
+        from ccslib import version
+        self.app.cfg['notice_ack'] = version.__version__; self.app.cfg['guide']['offered'] = 'x'                                      # the window from setUp shares the event loop: keep it quiet
+        asked = []; messagebox.askyesno = lambda *a, **k: (asked.append(a), True)[1]
+        with mock.patch.object(ccsgui.App, '_poller', lambda self: None):
+            a = ccsgui.App(selftest=True); a.withdraw()
+            try:
+                t0 = time.time()
+                while time.time() - t0 < 1.6: a.update(); time.sleep(0.02)
+            finally: a.stop_poll.set(); a.destroy()
+        self.assertEqual((asked, self.calls), ([], []))                                                                         # nobody to answer: nothing is asked
+
+    def test_the_panel_is_filled_in_right_away_not_after_the_first_poll(self):
+        from unittest import mock
+        self.app.guide_toggle(True)
+        with mock.patch.object(ccsgui.App, '_poller', lambda self: None):
+            a = ccsgui.App(); a.withdraw()
+            try:
+                t0 = time.time()
+                while time.time() - t0 < 0.7: a.update(); time.sleep(0.02)
+                self.assertTrue(a._guide_lbl); self.assertEqual(a.snap, {})
+            finally: a.stop_poll.set(); a.destroy()
 
 
 def tearDownModule():

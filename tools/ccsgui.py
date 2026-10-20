@@ -49,17 +49,20 @@ def fmt_dur(s):
 
 
 class App(tk.Tk):
-    def __init__(self):
+    SPOT_BASE = dict(btn_start='Accent.TButton', btn_stop='TButton', btn_doctor='TButton')          # the style a highlighted button goes back to
+
+    def __init__(self, selftest=False):                                      # selftest: no first-run dialogs (nobody is there to answer them)
         super().__init__()
         paths.ensure_dirs()
         self.title(f'MW4 Texture Streaming Toolkit {version.__version__}'); self.geometry('1180x760'); self.minsize(980, 620); self.configure(bg=BG)
         self.cfg = config.load(); self.snap = {}; self.q = queue.Queue(); self.busy = False
-        self.rate = collections.deque(maxlen=12); self.series = collections.deque(maxlen=180); self._game_prev = False; self._guide_game_seen = False; self._guide_last = None; self._gfc = None; self._guide_sig = None; self._guide_lbl = {}; self.game_start = None; self.tails = {n: logtail.Tail(p, 150) for n, p in LOG_SOURCES}
+        self.rate = collections.deque(maxlen=12); self.series = collections.deque(maxlen=180); self._game_prev = False; self._guide_game_seen = False; self._guide_last = None; self._gfc = None; self._guide_sig = None; self._guide_lbl = {}; self._guide_peak = None; self._spot_key = None; self.game_start = None; self.tails = {n: logtail.Tail(p, 150) for n, p in LOG_SOURCES}
         self.log_lines = collections.deque(maxlen=6000); self.gui_log_path = dict(LOG_SOURCES)['gui']
         self._style(); self._build()
         self.protocol('WM_DELETE_WINDOW', self.on_close)
         self.stop_poll = threading.Event(); threading.Thread(target=self._poller, daemon=True).start()
-        self.after(300, self._drain); self.after(700, self._refresh); self.after(500, self._tail_logs); self.after(1200, self._first_run_notice)
+        self.after(300, self._drain); self.after(700, self._refresh); self.after(500, self._tail_logs); self.after(250, self._guide_tick_safe)
+        if not selftest: self.after(1200, self._first_run_notice)
         self.say('CCS Control started' + ('  (running as admin)' if procs.is_admin() else '  (unelevated; hosts changes use UAC)'))
 
     def _first_run_notice(self):
@@ -76,6 +79,7 @@ class App(tk.Tk):
         s.map('TNotebook.Tab', background=[('selected', BG)], foreground=[('selected', FG)])
         s.configure('TButton', background='#2b3039', foreground=FG, padding=(12, 6), borderwidth=0); s.map('TButton', background=[('active', '#363c48'), ('disabled', PANEL)], foreground=[('disabled', OFF)])
         s.configure('Accent.TButton', background=ACC, foreground='white'); s.map('Accent.TButton', background=[('active', '#6aa0ff'), ('disabled', PANEL)])
+        s.configure('Spot.TButton', background=WARN, foreground=BG); s.map('Spot.TButton', background=[('active', '#f0c75e'), ('disabled', PANEL)], foreground=[('disabled', OFF)])
         s.configure('Danger.TButton', background='#7a2e32', foreground='white'); s.map('Danger.TButton', background=[('active', '#963a3f'), ('disabled', PANEL)])
         s.configure('TLabel', background=BG, foreground=FG); s.configure('Dim.TLabel', foreground=DIM); s.configure('H.TLabel', font=('Segoe UI Semibold', 11))
         s.configure('TFrame', background=BG); s.configure('Card.TFrame', background=PANEL); s.configure('TLabelframe', background=BG, bordercolor='#2a2e37'); s.configure('TLabelframe.Label', background=BG, foreground=DIM)
@@ -109,14 +113,15 @@ class App(tk.Tk):
         for key, label in (('hosts', 'Hosts'), ('resolve', 'Resolver'), ('proxy', 'Proxy'), ('port', 'Port'), ('mirror', 'Mirror'), ('guard', 'Guard'), ('game', 'Game'), ('disk', 'Disk')):
             f = ttk.Frame(top, style='Card.TFrame'); f.pack(side='left', padx=3, ipadx=6, ipady=3)
             dot = tk.Label(f, text='●', fg=OFF, bg=PANEL, font=('Segoe UI', 13)); dot.pack(side='left', padx=(6, 2))
-            tk.Label(f, text=label, fg=DIM, bg=PANEL, font=('Segoe UI', 8)).pack(side='top', anchor='w', padx=(0, 6))
+            nm = tk.Label(f, text=label, fg=DIM, bg=PANEL, font=('Segoe UI', 8)); nm.pack(side='top', anchor='w', padx=(0, 6))
             val = tk.Label(f, text='-', fg=FG, bg=PANEL, font=('Segoe UI', 9)); val.pack(side='top', anchor='w', padx=(0, 6)); self.lights[key] = (dot, val)
+            for w in (f, dot, nm, val): Tip(w, guide.LIGHT_HELP[key])                                      # what each light means, on hover
         self.nb = ttk.Notebook(self); self.nb.pack(fill='both', expand=True, padx=12, pady=(4, 12))
         self.tabs = {}
         for name, fn in (('Dashboard', self._tab_dash), ('Proxy', self._tab_proxy), ('Texture pack', self._tab_pack), ('Mirror', self._tab_mirror), ('Cache', self._tab_cache), ('Game', self._tab_game), ('Doctor', self._tab_doctor), ('Report', self._tab_report), ('Hosts / DNS', self._tab_hosts),
                          ('Logs', self._tab_logs), ('Settings', self._tab_settings)):
             f = ttk.Frame(self.nb); self.nb.add(f, text=name); self.tabs[name] = f; fn(f)
-        self._sync_caps(); self.after(900, self.pack_refresh)
+        self._apply_view(); self._sync_caps(); self.after(900, self.pack_refresh)
 
     def light(self, key, level, text):
         dot, val = self.lights[key]; dot.configure(fg={'ok': OK, 'warn': WARN, 'fail': BAD, 'off': OFF}[level]); val.configure(text=text)
@@ -126,26 +131,35 @@ class App(tk.Tk):
         slot_banner = ttk.Frame(f); slot_banner.pack(fill='x'); slot_guide = ttk.Frame(f); slot_guide.pack(fill='x')          # fixed places, so either can come and go without moving the other
         self.setup_banner = tk.Label(slot_banner, text='', fg='white', bg='#7a2e32', anchor='w', padx=10, font=('Segoe UI', 10, 'bold'))      # packed only while something needs setting up
         gh = ttk.Frame(slot_guide); ttk.Label(gh, text='Guided setup (optional)').pack(side='left', padx=(0, 14))
-        ttk.Button(gh, text='Start over', command=lambda: self.guide_do('restart')).pack(side='left', padx=2); ttk.Button(gh, text='Hide', command=lambda: self.guide_toggle(False)).pack(side='left', padx=2)
+        for text, cmd, tip in (('Start over', lambda: self.guide_do('restart'), 'Run the checklist again from the session step.'),
+                               ('Simple view', lambda: self.guide_do('view'), 'Hide the advanced tabs and the detailed counters. Press again for the full view.'),
+                               ('Words', lambda: self.guide_do('glossary'), 'What the words used in this window mean.'),
+                               ('Before/after test', lambda: self.guide_do('abtest'), 'A short guided test to compare the game with and without the tool on your PC.'),
+                               ('Hide', lambda: self.guide_toggle(False), 'Close this checklist. The Guide button brings it back.')):
+            b = ttk.Button(gh, text=text, command=cmd); b.pack(side='left', padx=2); Tip(b, tip)
+            if text == 'Simple view': self.btn_view = b
         self.guide_frame = ttk.LabelFrame(slot_guide, labelwidget=gh); self.guide_body = ttk.Frame(self.guide_frame); self.guide_body.pack(fill='x', padx=10, pady=(4, 6)); self.guide_body.bind('<Configure>', self._guide_wrap)
-        self.sv_guide = tk.BooleanVar(value=guide.clean_state(self.cfg.get('guide'))['enabled'])
+        gs = guide.clean_state(self.cfg.get('guide')); self.sv_guide = tk.BooleanVar(value=gs['enabled']); self.sv_simple = tk.BooleanVar(value=gs['simple'])
         if self.sv_guide.get(): self.guide_frame.pack(fill='x', pady=(8, 0))
-        row = ttk.Frame(f); row.pack(fill='x', pady=10)
-        ttk.Label(row, text='Profile').pack(side='left'); self.profile = tk.StringVar(value=self.cfg['profile'])
-        self.prof_cb = ttk.Combobox(row, textvariable=self.profile, values=list(config.all_profiles(self.cfg)), state='readonly', width=16); self.prof_cb.pack(side='left', padx=(6, 2)); self.prof_cb.bind('<<ComboboxSelected>>', self._profile_changed)
-        ttk.Button(row, text='Save as...', command=self.profile_save_as).pack(side='left', padx=2); ttk.Button(row, text='Delete', command=self.profile_delete).pack(side='left', padx=(2, 14))
+        row = self.dash_row = ttk.Frame(f); row.pack(fill='x', pady=10)
+        self.prof_box = pf = ttk.Frame(row); pf.pack(side='left')
+        ttk.Label(pf, text='Profile').pack(side='left'); self.profile = tk.StringVar(value=self.cfg['profile'])
+        self.prof_cb = ttk.Combobox(pf, textvariable=self.profile, values=list(config.all_profiles(self.cfg)), state='readonly', width=16); self.prof_cb.pack(side='left', padx=(6, 2)); self.prof_cb.bind('<<ComboboxSelected>>', self._profile_changed)
+        ttk.Button(pf, text='Save as...', command=self.profile_save_as).pack(side='left', padx=2); ttk.Button(pf, text='Delete', command=self.profile_delete).pack(side='left', padx=(2, 14))
         self.btn_start = ttk.Button(row, text='Start session', style='Accent.TButton', command=self.do_start); self.btn_start.pack(side='left', padx=4)
         self.btn_stop = ttk.Button(row, text='Stop session', command=self.do_stop); self.btn_stop.pack(side='left', padx=4)
         ttk.Button(row, text='Restore hosts (remove override)', style='Danger.TButton', command=self.do_hosts_remove).pack(side='left', padx=4)
-        ttk.Button(row, text='Doctor', command=self.do_doctor).pack(side='left', padx=4)
+        self.btn_doctor = ttk.Button(row, text='Doctor', command=self.do_doctor); self.btn_doctor.pack(side='left', padx=4)
         ttk.Button(row, text='Guide', command=self.guide_toggle).pack(side='left', padx=4)
         self.prof_desc = ttk.Label(f, text='', style='Dim.TLabel'); self.prof_desc.pack(anchor='w'); self._profile_changed()
-        g = ttk.LabelFrame(f, text='Live (proxy)'); g.pack(fill='x', pady=10); self.cnt = {}
-        for i, (k, lab) in enumerate((('req', 'Requests'), ('mirror', 'From mirror'), ('upok', 'Upstream OK'), ('err', 'Errors'), ('retry', 'Retries'), ('cliabort', 'Client aborts'),
-                                      ('skip', 'Tier-skipped'), ('miss', 'Misses/404'), ('mgib', 'Mirror GiB'), ('ugib', 'Upstream GiB'), ('rps', 'Req/s (12s)'), ('sess', 'Session time'))):
-            c = ttk.Frame(g); c.grid(row=i // 6, column=i % 6, padx=14, pady=8, sticky='w'); ttk.Label(c, text=lab, style='Dim.TLabel').pack(anchor='w')
-            l = ttk.Label(c, text='-', style='H.TLabel'); l.pack(anchor='w'); self.cnt[k] = l
-        sp = ttk.LabelFrame(f, text='Throughput, last 3 min  (blue = requests/s, green = MiB/s served)'); sp.pack(fill='x', pady=(0, 8))
+        self.simple_note = ttk.Label(f, text='Simple view is on: the advanced tabs are hidden. Settings -> Help (or the Full view button in the guide) brings them back.', style='Dim.TLabel')
+        self.cnt_box = g = ttk.LabelFrame(f, text='Live (proxy)'); g.pack(fill='x', pady=10); self.cnt = {}; self.cnt_cells = {}; self.cnt_lbl = {}; self.cnt_names = {}; self.cnt_order = []
+        for k, lab in (('req', 'Requests'), ('mirror', 'From mirror'), ('upok', 'Upstream OK'), ('err', 'Errors'), ('retry', 'Retries'), ('cliabort', 'Client aborts'),
+                       ('skip', 'Tier-skipped'), ('miss', 'Misses/404'), ('mgib', 'Mirror GiB'), ('ugib', 'Upstream GiB'), ('rps', 'Req/s (12s)'), ('sess', 'Session time')):
+            c = ttk.Frame(g); name = ttk.Label(c, text=lab, style='Dim.TLabel'); name.pack(anchor='w')
+            l = ttk.Label(c, text='-', style='H.TLabel'); l.pack(anchor='w'); self.cnt[k] = l; self.cnt_cells[k] = c; self.cnt_lbl[k] = name; self.cnt_names[k] = lab; self.cnt_order.append(k)
+            for w in (c, name, l): Tip(w, guide.COUNTER_HELP[k])
+        self.spark_box = sp = ttk.LabelFrame(f, text='Throughput, last 3 min  (blue = requests/s, green = MiB/s served)'); sp.pack(fill='x', pady=(0, 8))
         self.spark = tk.Canvas(sp, height=84, bg=PANEL, highlightthickness=0); self.spark.pack(fill='x', padx=8, pady=6)
         ttk.Label(f, text='Activity', style='H.TLabel').pack(anchor='w'); fr, self.act = self._scrolled(f, 10); fr.pack(fill='both', expand=True, pady=(4, 0))
 
@@ -605,7 +619,10 @@ class App(tk.Tk):
         bt = ttk.Frame(g); bt.grid(row=8, column=1, columnspan=2, sticky='w', pady=10)
         ttk.Button(bt, text='Save settings', style='Accent.TButton', command=self.save_settings).pack(side='left'); ttk.Button(bt, text='Create desktop shortcut', command=self.make_shortcut).pack(side='left', padx=10)
         h = ttk.LabelFrame(f, text='Help'); h.pack(fill='x', pady=6)
-        ttk.Checkbutton(h, text='Show the guided setup on the Dashboard', variable=self.sv_guide, command=lambda: self.guide_toggle(self.sv_guide.get())).pack(anchor='w', padx=12, pady=6)
+        ttk.Checkbutton(h, text='Show the guided setup on the Dashboard', variable=self.sv_guide, command=lambda: self.guide_toggle(self.sv_guide.get())).pack(anchor='w', padx=12, pady=(6, 2))
+        ttk.Checkbutton(h, text='Simple view (hide the advanced tabs and the detailed counters)', variable=self.sv_simple, command=lambda: self.set_simple(self.sv_simple.get())).pack(anchor='w', padx=12, pady=2)
+        hb = ttk.Frame(h); hb.pack(anchor='w', padx=12, pady=(2, 6))
+        ttk.Button(hb, text='What do these words mean?', command=self.show_glossary).pack(side='left'); ttk.Button(hb, text='Before/after test', command=self.show_abtest).pack(side='left', padx=8)
         i = ttk.LabelFrame(f, text='Where things are (game/cache/mirror/player-config locations: Game tab)'); i.pack(fill='x', pady=6)
         for k, v in (('Tools / scripts', paths.TOOLS), ('Work dir (logs, reports, settings)', paths.WORK), ('Hosts file', paths.hosts_path()), ('Python', paths.PY)):
             r = ttk.Frame(i); r.pack(fill='x', padx=10, pady=2); ttk.Label(r, text=k, width=32, style='Dim.TLabel').pack(side='left'); ttk.Label(r, text=v).pack(side='left')
@@ -625,11 +642,24 @@ class App(tk.Tk):
         if not fc or fc[1] != root or now - fc[0] > 5:
             ex = os.path.isdir(root); fc = (now, root, ex, guide.score_folder(root) if ex else 0); self._gfc = fc
         tot = (getattr(self, '_pack_plan', None) or {}).get('total') or {}; rs = s.get('resolve') or {}
+        if ps and ps.get('stat'):                                                    # what the proxy has done so far; kept after it stops, for the "what happened" text
+            c = ps['stat']; g = lambda k: c.get(k) or 0; self._guide_peak = dict(req=g('req'), mirror=g('mirror'), upok=g('ok') - g('mirror'), err=g('err'), skip=g('skip'), miss=g('miss'), secs=(ps.get('now') or 0) - (ps.get('started') or 0))
         return dict(configured=paths.CONFIGURED, folder_root=root, folder_exists=fc[2], folder_score=fc[3], blocked_by=blocked, port=port, free_gib=s.get('free'),
                     game_running=bool(s.get('game')), proxy_ready=bool(ps), proxy_alive=bool(pp.get('alive')), hosts_ok=s.get('hosts') in ('OK', 'FOREIGN', 'MIXED'),
                     resolve_ok=bool(rs.get('ok')), hosts_state=s.get('hosts', '?'), requests=int(ps['stat']['req']) if ps and ps.get('stat') else 0,
                     pack_total=tot.get('chunks'), pack_stored=tot.get('stored'), mirror_alive=bool((s.get('mproc') or {}).get('alive')),
-                    pack_run_done=((s.get('mprog') or {}).get('ok', 0) + (s.get('mprog') or {}).get('fail', 0)), pack_run_total=(s.get('mprog') or {}).get('queued'))
+                    pack_run_done=((s.get('mprog') or {}).get('ok', 0) + (s.get('mprog') or {}).get('fail', 0)), pack_run_total=(s.get('mprog') or {}).get('queued'),
+                    last_stat=self._guide_peak, game_secs=(now - self.game_start) if s.get('game') and self.game_start else 0)
+
+    def _guide_note(self):
+        last = self._guide_last
+        return last[1] if last and time.time() - last[0] < 600 else ''
+
+    def _guide_tick_safe(self):
+        """The checklist must never break the refresh loop; a given problem is logged once."""
+        try: self._guide_tick()
+        except Exception as e:
+            if str(e) != getattr(self, '_guide_err', None): self._guide_err = str(e); self.say(f'guide: {e}', 'WARN')
 
     def _guide_tick(self):
         """Once a second from _refresh: advance the milestones the facts prove and redraw the panel when something changed."""
@@ -641,24 +671,25 @@ class App(tk.Tk):
         f['game_seen'] = self._guide_game_seen
         st = guide.advance(st0, f)
         if st != st0: self._guide_save(st)
-        self._guide_render(st, guide.evaluate(st, f))
+        rows = guide.evaluate(st, f); self._spot(guide.spot(rows, f))
+        self._guide_render(st, rows, guide.coach(st, f, self._guide_note()), guide.explain(st['summary']) if 'after' in st['ms'] and not guide.live_session(f) else [])
 
     def _guide_visibility(self):
         on = self._guide_state()['enabled']
         if on: self.guide_frame.pack(fill='x', pady=(8, 0))
-        else: self.guide_frame.pack_forget()
+        else: self.guide_frame.pack_forget(); self._spot(None)
         self.sv_guide.set(on); self._guide_sig = None
 
     def guide_toggle(self, on=None):
         st = self._guide_state(); st['enabled'] = (not st['enabled']) if on is None else bool(on); st['offered'] = st['offered'] or version.__version__
         self._guide_save(st); self._guide_visibility(); self._guide_tick()
 
-    def _guide_render(self, st, rows):
-        """Compact checklist: every step is one line; only the step you are on (and a running one) spells out what to do."""
+    def _guide_render(self, st, rows, cards=(), lines=()):
+        """Compact checklist: every step is one line; only the step you are on (and a running one) spells out what to do. Below it: help for what is going wrong, and what happened last time."""
         shown = lambda r: '' if r['status'] == 'todo' else r['detail']
-        wl = self._guide_wraplength()
-        last = self._guide_last; note = last[1] if last and time.time() - last[0] < 600 else ''
-        sig = json.dumps([[r['id'], r['n'], r['status'], r['actions'], r['skippable']] for r in rows]) + st['path'] + str(guide.all_passed(rows)) + note
+        wl = self._guide_wraplength(); note = self._guide_note()
+        sig = (json.dumps([[r['id'], r['n'], r['status'], r['actions'], r['skippable']] for r in rows]) + st['path'] + str(guide.all_passed(rows)) + note
+               + json.dumps([[c['id'], c['actions']] for c in cards]) + '\n'.join(lines))
         if sig == self._guide_sig:                                                    # same layout: only refresh the texts (the request counter changes every second)
             for r in rows:
                 lab = self._guide_lbl.get(r['id'])
@@ -681,6 +712,19 @@ class App(tk.Tk):
                 if r['skippable'] and r['status'] in ('current', 'running'): ttk.Button(bt, text='Skip', command=lambda i=r['id']: self.guide_do('skip:' + i)).pack(side='left', padx=2)
         if rows and guide.all_passed(rows):
             ttk.Label(self.guide_body, text='All set. Next time: Start session, play, Stop session. "Start over" runs this checklist again.', style='H.TLabel').pack(anchor='w', pady=(4, 0))
+        if lines:                                                                      # what happened in the session that just ended
+            box = tk.Frame(self.guide_body, bg=PANEL); box.pack(fill='x', pady=(6, 0))
+            tk.Label(box, text='What happened', fg=ACC, bg=PANEL, font=('Segoe UI', 10, 'bold'), anchor='w').pack(fill='x', padx=8, pady=(6, 0))
+            tk.Label(box, text='\n'.join(lines), fg=FG, bg=PANEL, anchor='w', justify='left', wraplength=wl + 330).pack(fill='x', padx=8, pady=2)
+            bb = tk.Frame(box, bg=PANEL); bb.pack(anchor='w', padx=8, pady=(2, 6)); ttk.Button(bb, text='Before/after test', command=lambda: self.guide_do('abtest')).pack(side='left')
+        for c in cards:                                                                # plain-language help for what is going wrong now
+            box = tk.Frame(self.guide_body, bg=PANEL); box.pack(fill='x', pady=(6, 0))
+            tk.Label(box, text=c['title'], fg=WARN, bg=PANEL, font=('Segoe UI', 10, 'bold'), anchor='w').pack(fill='x', padx=8, pady=(6, 0))
+            tk.Label(box, text=c['text'], fg=FG, bg=PANEL, anchor='w', justify='left', wraplength=wl + 330).pack(fill='x', padx=8, pady=2)
+            if c['actions']:
+                bb = tk.Frame(box, bg=PANEL); bb.pack(anchor='w', padx=8, pady=(2, 6))
+                for k, (act, lab) in enumerate(c['actions']): ttk.Button(bb, text=lab, style='Accent.TButton' if k == 0 else 'TButton', command=lambda a=act: self.guide_do(a)).pack(side='left', padx=(0, 6))
+            else: tk.Frame(box, bg=PANEL, height=4).pack()
         if note: tk.Label(self.guide_body, text='Last problem: ' + note + '   (details: Activity log below, or the Doctor)', fg=BAD, bg=BG, anchor='w', justify='left', wraplength=self._guide_wraplength() + 330).pack(fill='x', pady=(4, 0))
 
     def _guide_wraplength(self):
@@ -699,13 +743,19 @@ class App(tk.Tk):
             elif a == 'confirm_anyway': st['confirmed_root'] = paths.GAME_ROOT; self._guide_save(st)
             elif a.startswith('skip:'): self._guide_save(guide.skip(st, a[5:]))
             elif a == 'restart': self._guide_game_seen = False; self._guide_save(guide.restart(st))
-            elif a == 'goto_pack': self.nb.select(self.tabs['Texture pack'])
-            elif a == 'goto_report': self.nb.select(self.tabs['Report'])
-            elif a == 'doctor': self.nb.select(self.tabs['Doctor']); self.do_doctor()
+            elif a == 'view': self.set_simple()
+            elif a == 'glossary': self.show_glossary()
+            elif a == 'abtest': self.show_abtest()
+            elif a == 'goto_pack': self._goto('Texture pack')
+            elif a == 'goto_report': self._goto('Report')
+            elif a == 'doctor': self._goto('Doctor'); self.do_doctor()
             elif a == 'start_session': self.do_start()
             elif a == 'stop_session': self.do_stop()
+            elif a == 'apply_hosts': self.do_hosts_apply()
+            elif a == 'hosts_remove': self.do_hosts_remove()
+            elif a == 'open_shots': os.makedirs(guide.ab_dir(), exist_ok=True); os.startfile(guide.ab_dir())
         except Exception as e: self.say(f'guide: {e}', 'WARN')
-        self._guide_tick()
+        self._guide_tick_safe()
 
     def guide_find_folder(self):
         self.say('guide: looking for the game folder in the usual places...')
@@ -751,8 +801,81 @@ class App(tk.Tk):
         st = self._guide_state()
         if st['offered'] or paths.CONFIGURED: return
         yes = messagebox.askyesno('Guided setup', 'New here? The guided setup is a short checklist on the Dashboard that walks you through the first run and ticks each step off by itself.\n\n'
-                                                  'It never changes anything without a click, and you can turn it on or off any time with the Guide button.\n\nShow it?', parent=self)
-        st['offered'] = version.__version__; st['enabled'] = bool(yes); self._guide_save(st); self._guide_visibility(); self._guide_tick()
+                                                  'It never changes anything without a click. While it is on, the advanced tabs are tucked away (Simple view); the "Full view" button or Settings -> Help brings them back.\n\nShow it?', parent=self)
+        st['offered'] = version.__version__; st['enabled'] = bool(yes); st['simple'] = bool(yes); self._guide_save(st); self._guide_visibility(); self._apply_view(); self._guide_tick_safe()
+
+    # ---------------------------------------------------------------- simple view, tabs, spotlight, words, before/after test
+    def _apply_view(self):
+        """Simple view hides the advanced tabs, the profile picker, the graph and most counters (and uses plainer counter names); Full view shows everything."""
+        simple = self._guide_state()['simple']
+        try: was = next((n for n, fr in self.tabs.items() if str(fr) == str(self.nb.select())), None)
+        except tk.TclError: was = None
+        for name, fr in self.tabs.items():
+            try: self.nb.tab(fr, state='hidden' if simple and name not in guide.SIMPLE_TABS else 'normal')
+            except tk.TclError: pass
+        if simple and was and was not in guide.SIMPLE_TABS:                          # the tab that was open is gone: go to the Dashboard (not to whichever tab Tk picks)
+            try: self.nb.select(self.tabs['Dashboard'])
+            except tk.TclError: pass
+        if simple: self.prof_box.pack_forget(); self.prof_desc.pack_forget(); self.spark_box.pack_forget(); self.simple_note.pack(anchor='w', after=self.dash_row)
+        else: self.prof_box.pack(side='left', before=self.btn_start); self.simple_note.pack_forget(); self.prof_desc.pack(anchor='w', after=self.dash_row); self.spark_box.pack(fill='x', pady=(0, 8), after=self.cnt_box)
+        for c in self.cnt_cells.values(): c.grid_remove()
+        for n, k in enumerate([k for k in self.cnt_order if not simple or k in guide.SIMPLE_COUNTERS]):
+            self.cnt_cells[k].grid(row=n // 6, column=n % 6, padx=14, pady=8, sticky='w'); self.cnt_lbl[k].configure(text=guide.SIMPLE_COUNTER_LABELS[k] if simple else self.cnt_names[k])
+        self.btn_view.configure(text='Full view' if simple else 'Simple view'); self.sv_simple.set(simple)
+
+    def set_simple(self, on=None):
+        st = self._guide_state(); st['simple'] = (not st['simple']) if on is None else bool(on); self._guide_save(st); self._apply_view()
+
+    def _goto(self, name):
+        """Open a tab (a hidden one is brought back first: the user asked for it)."""
+        fr = self.tabs[name]
+        try:
+            if self.nb.tab(fr, 'state') == 'hidden': self.nb.tab(fr, state='normal')
+        except tk.TclError: pass
+        self.nb.select(fr)
+
+    def _spot(self, key):
+        """Highlight the control the current step points at, and clear the previous one (a button turns amber, a tab gets an arrow)."""
+        if key == self._spot_key: return
+        old, self._spot_key = self._spot_key, key
+        for k, on in ((old, False), (key, True)):
+            if not k: continue
+            try:
+                if k.startswith('tab:'): self.nb.tab(self.tabs[k[4:]], text=('\u25b6 ' if on else '') + k[4:])
+                else: getattr(self, k).configure(style='Spot.TButton' if on else self.SPOT_BASE.get(k, 'TButton'))
+            except (tk.TclError, KeyError, AttributeError): pass
+
+    def show_glossary(self):
+        old = getattr(self, '_glossary', None)
+        if old is not None and old.winfo_exists(): old.lift(); return old
+        dlg = self._glossary = tk.Toplevel(self); dlg.title('What the words mean'); dlg.configure(bg=BG); dlg.transient(self); dlg.geometry('720x520')
+        fr, t = self._scrolled(dlg, 20); fr.pack(fill='both', expand=True, padx=12, pady=(12, 6)); t.configure(state='normal', wrap='word')
+        for term, text in guide.GLOSSARY: t.insert('end', term + '\n', 'ACC'); t.insert('end', text + '\n\n')
+        t.configure(state='disabled'); ttk.Button(dlg, text='Close', command=dlg.destroy).pack(pady=(0, 10)); return dlg
+
+    def show_abtest(self):
+        """A short guided before/after comparison. It only points at the usual buttons; the steps are saved so it can be left and resumed."""
+        old = getattr(self, '_ab', None)
+        if old is not None and old.winfo_exists(): old.lift(); return old
+        dlg = self._ab = tk.Toplevel(self); dlg.title('Before / after test'); dlg.configure(bg=BG); dlg.transient(self); dlg.geometry('660x330')
+        head = ttk.Label(dlg, style='H.TLabel'); head.pack(anchor='w', padx=14, pady=(14, 4)); body = ttk.Label(dlg, wraplength=620, justify='left'); body.pack(anchor='w', padx=14)
+        bt = ttk.Frame(dlg); bt.pack(side='bottom', fill='x', padx=14, pady=14); box = {}
+        act = ttk.Button(bt, style='Accent.TButton'); back = ttk.Button(bt, text='Back'); nxt = ttk.Button(bt, text='Next'); ttk.Button(bt, text='Close', command=dlg.destroy).pack(side='right')
+        nxt.pack(side='right', padx=6); back.pack(side='right')
+        def show(i=None):
+            st = self._guide_state()
+            if i is not None: st['ab'] = i; self._guide_save(st)
+            v = guide.ab_view(st['ab'], st['summary']); box['v'] = v
+            head.configure(text=f"Step {v['n']} of {v['total']}: {v['title']}"); body.configure(text=v['text'])
+            if v['action']: act.configure(text=v['action'][1], command=lambda a=v['action'][0]: self.guide_do(a)); act.pack(side='left')
+            else: act.pack_forget()
+            back.state(['disabled'] if v['first'] else ['!disabled']); nxt.configure(text='Done' if v['last'] else 'Next')
+        def step(d):
+            v = box['v']
+            if d > 0 and v['last']: dlg.destroy(); return
+            show(v['n'] - 1 + d)
+        back.configure(command=lambda: step(-1)); nxt.configure(command=lambda: step(1)); dlg.show = show; show()
+        return dlg
 
     # ---------------------------------------------------------------- thread plumbing
     def say(self, msg, tag=None):
@@ -845,9 +968,7 @@ class App(tk.Tk):
             fr = s.get('free');
             if fr is not None: self.light('disk', 'fail' if fr < 20 else 'warn' if fr < 60 else 'ok', f'{fr:.0f} GiB free')
             self._refresh_counters(ps, s); self._refresh_hosts_tab(h); self._refresh_mirror_live(s)
-            try: self._guide_tick()
-            except Exception as e:                                                      # the checklist must never break the refresh loop (and logs a given problem once)
-                if str(e) != getattr(self, '_guide_err', None): self._guide_err = str(e); self.say(f'guide: {e}', 'WARN')
+            self._guide_tick_safe()
             self.c_warn.configure(text='Game is running: the cache may be mid-write (read-only view; backup/restore/install are blocked).' if g else '')
         self.after(1000, self._refresh)
 
@@ -1195,7 +1316,7 @@ def single_instance():
 
 if __name__ == '__main__':
     if '--selftest' in sys.argv:
-        app = App(); app.after(2500, lambda: (print(json.dumps({k: v for k, v in app.snap.items() if k in ('hosts', 'resolve', 'pstat', 'game', 'free')}, default=str)), app.destroy())); app.mainloop(); sys.exit(0)
+        app = App(selftest=True); app.after(2500, lambda: (print(json.dumps({k: v for k, v in app.snap.items() if k in ('hosts', 'resolve', 'pstat', 'game', 'free')}, default=str)), app.destroy())); app.mainloop(); sys.exit(0)
     if not single_instance():
         import tkinter.messagebox as mb; r = tk.Tk(); r.withdraw(); mb.showinfo('CCS Control', 'CCS Control is already running.'); sys.exit(0)
     app = App()
