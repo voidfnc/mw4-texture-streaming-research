@@ -17,7 +17,7 @@
 - New: `ccs-cli.exe --ccs-run selfcheck` (starts and stops the proxy and disk guard and makes a shortcut, without touching the hosts file) and `uninstall-prep` (what the installer calls).
 - The window has an icon, and holds a named mutex so the installer knows it is open.
 - Fixed: a Python warning in `netwatch.py`.
-- 28 new tests (196 in total): launcher and dispatcher, uninstall hooks, selfcheck, version and packaging consistency (the installer script, build script, spec, workflow and requirements must agree with the code and the version).
+- 28 new tests (196 in total): launcher and dispatcher, uninstall hooks, selfcheck, version and packaging consistency (the installer script, build script, spec, release script and requirements must agree with the code and the version).
 
 ## 0.1.3-beta
 Guided setup for first-time users, plus the fixes found while building it. Nothing changes for people who already have it running; the guide is optional.
