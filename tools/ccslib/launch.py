@@ -11,7 +11,7 @@ RUN_FLAG = '--ccs-run'
 CLI_EXE = 'ccs-cli.exe'                                                 # console build of the same program: helpers and command-line use (the GUI exe has no console)
 GUI_EXE = 'MW4 Texture Streaming.exe'
 TOOLS = ('ccsproxy', 'ccsmirror', 'diskguard', 'ccshosts', 'netwatch', 'ccsreport')
-INTERNAL = {'uninstall-prep': 'ccslib.uninstall', 'selfcheck': 'ccslib.selfcheck'}                       # not scripts: small commands the installer calls (module must have main(args) -> exit code)
+INTERNAL = {'uninstall-prep': 'ccslib.uninstall', 'selfcheck': 'ccslib.selfcheck', 'gamefix': 'ccslib.gamefix'}   # not scripts: small commands the installer and the window call (module must have main(args) -> exit code)
 FROZEN = bool(getattr(sys, 'frozen', False))
 
 
@@ -29,6 +29,7 @@ def argv_for(name, *args, frozen=None, executable=None):
     if name not in TOOLS and name not in INTERNAL: raise ValueError(f'unknown tool {name!r}')
     a = [str(x) for x in args]; frozen = FROZEN if frozen is None else frozen
     if frozen: return [cli_exe(True, executable), RUN_FLAG, name, *a]
+    if name in INTERNAL: return [executable or sys.executable, os.path.join(paths.TOOLS, 'ccs.py'), RUN_FLAG, name, *a]     # no script of its own: the entry point runs it
     return [executable or sys.executable, os.path.join(paths.TOOLS, name + '.py'), *a]
 
 

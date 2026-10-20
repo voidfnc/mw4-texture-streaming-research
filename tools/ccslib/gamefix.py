@@ -1,0 +1,261 @@
+"""gamefix.py - the two small settings in the game folder that let the game use the textures it streams.
+
+  1. The Steam emulator next to the game (sp26/steam_settings/configs.main.ini) is set to offline mode. The game then never asks for additional content, so the pieces
+     the helper delivers are not used. Fix: [main::connectivity] offline=0 and disable_lan_only=1.
+  2. The engine fills <game folder>/xpak_cache, but the game looks for its cache in sp26/xpak_cache. Fix: sp26/xpak_cache becomes a directory junction (a folder
+     link, no administrator rights needed for the link itself) to <game folder>/xpak_cache.
+
+  ccs-cli.exe --ccs-run gamefix status [--json]     what is set now (exit 0 = nothing to do or not applicable, 1 = a change is needed)
+  ccs-cli.exe --ccs-run gamefix apply               make both changes (asks Windows for permission when the game folder needs it)
+  ccs-cli.exe --ccs-run gamefix undo                put the settings file back from the copy made before the first change, remove the link
+  From source: python tools/ccs.py --ccs-run gamefix <command>
+
+Safe by design: the settings file is copied once to configs.main.ini.mw4ts-backup before the first edit and all other lines in it are kept; a real sp26/xpak_cache
+folder is renamed aside (sp26/xpak_cache.before-link), never deleted; nothing is touched while the game is running; applying twice changes nothing the second time.
+"""
+import argparse, json, os, re, shutil, stat, subprocess, sys, time
+from . import launch, paths, procs
+
+SECTION = 'main::connectivity'
+WANT = (('offline', '0'), ('disable_lan_only', '1'))
+CONFIG_NAME = 'configs.main.ini'
+BACKUP_NAME = CONFIG_NAME + '.mw4ts-backup'
+ASIDE_NAME = 'xpak_cache.before-link'
+
+
+class GameBusy(Exception):
+    pass
+
+
+class NotApplicable(Exception):
+    pass
+
+
+def layout(root=None):
+    """The paths this module works with, for a game folder."""
+    root = os.path.normpath(root or paths.GAME_ROOT); sp = os.path.join(root, 'sp26'); st = os.path.join(sp, 'steam_settings')
+    return dict(root=root, sp26=sp, settings=st, config=os.path.join(st, CONFIG_NAME), backup=os.path.join(st, BACKUP_NAME), link=os.path.join(sp, 'xpak_cache'),
+                target=os.path.join(root, 'xpak_cache'))
+
+
+# ------------------------------------------------------------------------------------------------ the settings file (pure text functions)
+
+_SECTION_RE = re.compile(r'^\s*\[(.*?)\]\s*$')
+
+
+def _split(text):
+    bom = text.startswith('﻿'); body = text[1:] if bom else text
+    return bom, body.splitlines(keepends=True)
+
+
+def read_keys(text):
+    """{key: value} of [main::connectivity] (keys lower-cased; the last one wins)."""
+    out = {}; inside = False
+    for line in _split(text)[1]:
+        m = _SECTION_RE.match(line.rstrip('\r\n'))
+        if m: inside = m.group(1).strip().lower() == SECTION; continue
+        if inside and '=' in line and not line.lstrip().startswith((';', '#')):
+            k, v = line.split('=', 1); out[k.strip().lower()] = v.strip()
+    return out
+
+
+def keys_ok(keys):
+    return all(keys.get(k) == v for k, v in WANT)
+
+
+def set_keys(text):
+    """`text` with offline=0 and disable_lan_only=1 in [main::connectivity]. Other lines, comments, other sections, the line endings and a BOM are kept."""
+    bom, lines = _split(text); nl = '\r\n' if '\r\n' in text else ('\n' if '\n' in text else '\r\n'); want = dict(WANT)
+    out = []; inside = found = False; seen = set(); start = 0
+    def close_section():
+        """Add the keys the section did not have, after its last non-blank line."""
+        add = [f'{k}={v}{nl}' for k, v in WANT if k not in seen]
+        if not add: return
+        at = len(out)
+        while at > start and not out[at - 1].strip(): at -= 1
+        if at > start and not out[at - 1].endswith(('\n', '\r')): out[at - 1] += nl
+        out[at:at] = add
+    for line in lines:
+        m = _SECTION_RE.match(line.rstrip('\r\n'))
+        if m:
+            if inside: close_section()
+            inside = m.group(1).strip().lower() == SECTION; found = found or inside; seen = set(); start = len(out) + 1
+            out.append(line); continue
+        if inside and '=' in line and not line.lstrip().startswith((';', '#')):
+            k = line.split('=', 1)[0].strip().lower()
+            if k in want: out.append(f'{k}={want[k]}' + (line[len(line.rstrip('\r\n')):] or nl)); seen.add(k); continue
+        out.append(line)
+    if inside: close_section()
+    if not found:
+        if out and not out[-1].endswith(('\n', '\r')): out[-1] += nl
+        out += [f'[{SECTION}]{nl}'] + [f'{k}={v}{nl}' for k, v in WANT]
+    return ('﻿' if bom else '') + ''.join(out)
+
+
+def _read(path):
+    with open(path, 'rb') as f: return f.read().decode('utf-8', 'surrogateescape')
+
+
+def _write(path, text):
+    tmp = path + '.tmp'
+    with open(tmp, 'wb') as f: f.write(text.encode('utf-8', 'surrogateescape'))
+    os.replace(tmp, path)
+
+
+# ------------------------------------------------------------------------------------------------ the cache link
+
+def is_reparse(p):
+    """True for a junction or symbolic link (without following it)."""
+    try: return bool(os.lstat(p).st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+    except (OSError, AttributeError): return False
+
+
+def link_state(link, target):
+    """'ok' | 'missing' | 'wrong' (a link to somewhere else, or a broken one) | 'dir' (a real folder) | 'file'."""
+    if not os.path.lexists(link): return 'missing'
+    if is_reparse(link):
+        try: return 'ok' if os.path.exists(target) and os.path.samefile(link, target) else 'wrong'
+        except OSError: return 'wrong'
+    return 'dir' if os.path.isdir(link) else 'file'
+
+
+def make_junction(link, target):
+    """Directory junction `link` -> `target`. Raises PermissionError when the folder needs administrator rights."""
+    try:
+        import _winapi; _winapi.CreateJunction(target, link)
+    except ImportError:
+        r = subprocess.run(['cmd', '/c', 'mklink', '/J', link, target], capture_output=True, text=True, errors='replace', creationflags=procs.CREATE_NO_WINDOW)
+        if r.returncode != 0:
+            msg = (r.stdout + r.stderr).strip()
+            raise (PermissionError if 'denied' in msg.lower() else OSError)(msg or 'mklink failed')
+    except OSError as e:
+        if getattr(e, 'winerror', 0) == 5: raise PermissionError(str(e)) from e
+        raise
+
+
+def _empty(d):
+    try: return not os.listdir(d)
+    except OSError: return False
+
+
+# ------------------------------------------------------------------------------------------------ status / apply / undo
+
+def status(root=None):
+    """What is set now (read-only, never raises): dict(applicable, why, ok, config_ok, link, problems, ...). `applicable` is False when this is not the layout the
+    two settings are about (no sp26/steam_settings next to the game)."""
+    L = layout(root); s = dict(L, applicable=False, why='', ok=True, config_ok=True, keys={}, problems=[], game_running=False, link_state='missing')
+    if not os.path.isdir(L['settings']):
+        s['why'] = 'no sp26/steam_settings folder in the game folder, so nothing to set up'; return s
+    s['applicable'] = True
+    try: s['game_running'] = bool(procs.image_running(*paths.GAME_EXES))
+    except Exception: pass
+    try: s['keys'] = read_keys(_read(L['config'])) if os.path.exists(L['config']) else {}
+    except OSError as e: s['keys'] = {}; s['problems'].append(f'cannot read {CONFIG_NAME}: {e}')
+    s['config_ok'] = keys_ok(s['keys'])
+    if not s['config_ok']:
+        off = s['keys'].get('offline')
+        s['problems'].append(f"the game's Steam emulator is in offline mode ({CONFIG_NAME}: offline={off})" if off != '0' else f'{CONFIG_NAME} is missing disable_lan_only=1')
+    s['link_state'] = link_state(L['link'], L['target'])
+    if s['link_state'] != 'ok':
+        s['problems'].append({'missing': 'sp26\\xpak_cache does not exist, so the game does not look in the cache the helper fills',
+                              'wrong': 'sp26\\xpak_cache is a link to somewhere other than the game cache',
+                              'dir': 'sp26\\xpak_cache is a separate folder, not the cache the helper fills',
+                              'file': 'sp26\\xpak_cache is a file'}[s['link_state']])
+    s['ok'] = s['config_ok'] and s['link_state'] == 'ok'
+    return s
+
+
+def state(root=None):
+    """'ok' | 'needed' | 'na' - the short answer for the guide and the Doctor."""
+    s = status(root); return 'na' if not s['applicable'] else ('ok' if s['ok'] else 'needed')
+
+
+def apply(root=None):
+    """Make both changes. -> dict(done=[...], aside='' , status=...). Raises NotApplicable, GameBusy, PermissionError, OSError. Idempotent."""
+    s = status(root)
+    if not s['applicable']: raise NotApplicable(s['why'])
+    if s['ok']: return dict(done=[], aside='', status=s)
+    if s['game_running']: raise GameBusy('the game is running: close it, then apply the game setup')
+    if s['link_state'] == 'file': raise OSError(f"{s['link']} is a file, not a folder: move it away first")
+    done = []; aside = ''
+    if not s['config_ok']:
+        text = _read(s['config']) if os.path.exists(s['config']) else ''
+        if os.path.exists(s['config']) and not os.path.exists(s['backup']): shutil.copy2(s['config'], s['backup'])
+        _write(s['config'], set_keys(text)); done.append(CONFIG_NAME)
+    if s['link_state'] != 'ok':
+        os.makedirs(s['target'], exist_ok=True)
+        if s['link_state'] == 'wrong': os.rmdir(s['link'])                                            # removes the link only, whatever it pointed at
+        elif s['link_state'] == 'dir':
+            if _empty(s['link']): os.rmdir(s['link'])
+            else:
+                aside = os.path.join(s['sp26'], ASIDE_NAME)
+                if os.path.exists(aside): aside += time.strftime('-%Y%m%d-%H%M%S')
+                os.rename(s['link'], aside)
+        make_junction(s['link'], s['target']); done.append('sp26\\xpak_cache')
+    return dict(done=done, aside=aside, status=status(root))
+
+
+def undo(root=None):
+    """Put the settings file back from its backup and remove the link (only a link, never a real folder). -> dict(done=[...], notes=[...])."""
+    s = status(root)
+    if not s['applicable']: raise NotApplicable(s['why'])
+    if s['game_running']: raise GameBusy('the game is running: close it first')
+    done = []; notes = []
+    if os.path.exists(s['backup']):
+        shutil.copy2(s['backup'], s['config']); os.remove(s['backup']); done.append(CONFIG_NAME)
+    else: notes.append('no backup of ' + CONFIG_NAME + ' was found, so it was left as it is')
+    if s['link_state'] in ('ok', 'wrong') and is_reparse(s['link']): os.rmdir(s['link']); done.append('sp26\\xpak_cache')
+    elif s['link_state'] == 'dir': notes.append('sp26\\xpak_cache is a real folder, so it was left as it is')
+    aside = os.path.join(s['sp26'], ASIDE_NAME)
+    if os.path.isdir(aside): notes.append(f'the folder that was in the way is still at {aside}; rename it back to xpak_cache if you want it')
+    return dict(done=done, notes=notes, status=status(root))
+
+
+def describe(s):
+    """One line for the Doctor / the guide."""
+    if not s['applicable']: return s['why']
+    if s['ok']: return 'online mode is set and sp26\\xpak_cache is linked to the game cache'
+    return '; '.join(s['problems']) + (' (close the game first)' if s['game_running'] else '')
+
+
+def apply_elevating(root=None, say=print):
+    """Apply; when the game folder needs administrator rights run the same command elevated (one Windows prompt). -> (ok, message)."""
+    try: r = apply(root)
+    except (NotApplicable, GameBusy) as e: return False, str(e)
+    except PermissionError:
+        rf = os.path.join(paths.RUN, 'gamefix-result.json'); paths.ensure_dirs()
+        if os.path.exists(rf): os.remove(rf)
+        say('game setup: the game folder needs administrator rights, asking Windows for permission')
+        argv = launch.argv_for('gamefix', 'apply', '--root', layout(root)['root'], '--result-file', rf); code = procs.run_elevated(argv)
+        if code is None: return False, 'permission was declined: nothing was changed'
+        try:
+            with open(rf, encoding='utf-8') as f: res = json.load(f)
+        except (OSError, ValueError): return False, f'the elevated run ended with code {code} and no result'
+        return bool(res.get('ok')), res.get('message') or res.get('error') or ''
+    except OSError as e: return False, str(e)
+    return True, _message(r)
+
+
+def _message(r):
+    msg = ('changed: ' + ', '.join(r['done'])) if r['done'] else 'already set up, nothing to change'
+    return msg + (f" (the folder that was in the way is now {r['aside']})" if r.get('aside') else '')
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog='gamefix', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('cmd', choices=('status', 'apply', 'undo')); ap.add_argument('--root'); ap.add_argument('--json', action='store_true'); ap.add_argument('--result-file')
+    a = ap.parse_args(argv); res = dict(cmd=a.cmd, ok=True, message='')
+    try:
+        if a.cmd == 'status': s = status(a.root); res.update(status=s, message=describe(s), ok=s['ok'] or not s['applicable'])
+        elif a.cmd == 'apply': r = apply(a.root); res.update(message=_message(r), done=r['done'], aside=r['aside'], ok=True)
+        else: r = undo(a.root); res.update(message=('restored: ' + ', '.join(r['done']) if r['done'] else 'nothing to undo') + ''.join('; ' + n for n in r['notes']), done=r['done'])
+    except PermissionError as e: res.update(ok=False, error=f'permission denied (run as administrator): {e}', message=str(e))
+    except (NotApplicable, GameBusy, OSError) as e: res.update(ok=False, error=str(e), message=str(e))
+    if a.result_file:
+        paths.ensure_dirs()
+        with open(a.result_file, 'w', encoding='utf-8') as f: json.dump(res, f, default=str)
+    if a.json: print(json.dumps(res, default=str))
+    else: print(res['message'] if res['ok'] or a.cmd == 'status' else 'ERROR: ' + res.get('error', ''))
+    if a.cmd == 'status': return 0 if res['ok'] else 1
+    if not res['ok']: return 3 if 'permission' in res.get('error', '') else 1
+    return 0

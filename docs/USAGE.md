@@ -31,7 +31,7 @@ It is a short checklist at the top of the Dashboard. You pick a path first, then
 |---|---|---|
 | 1. Choose how to start | your choice | you pick *Quick fix* (no big download) or *Offline copy* (download the texture pack once) |
 | 2. Find your game folder | the game folder setting | the folder exists and looks like the game |
-| 3. Check this PC | port 80, free disk space, game closed | nothing in the way |
+| 3. Check this PC | port 80, free disk space, game closed, [game setup](#game-setup-online-mode-and-the-cache-link) | nothing in the way |
 | 4. Texture pack (offline path only) | the mirror | the pack is complete, or a download is running (the next steps do not wait for it), or you skipped it |
 | 5. Start the session | proxy and hosts override | the session is running |
 | 6. Play | requests reaching the proxy | the game has been delivered its texture pieces |
@@ -94,6 +94,32 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 | Slow link - offline mirror | play only from the mirror; nothing goes to the internet |
 | your own | *Save as...* stores the current proxy / guard / watcher settings under a name |
 
+## Game setup: online mode and the cache link
+
+Streaming only helps if the game then uses what it received. On repacks that run the game through a Steam emulator, two things in the game folder can stop that:
+
+1. The emulator is in offline mode (`sp26\steam_settings\configs.main.ini` has `offline=1`), so the game does not ask for additional content.
+2. The engine fills `<game folder>\xpak_cache`, but the game looks for its cache in `<game folder>\sp26\xpak_cache`.
+
+The *Doctor* shows a *Game setup* row and the guide's *Check this PC* step offers *Set up the game*. After you confirm, it:
+
+- sets `offline=0` and `disable_lan_only=1` under `[main::connectivity]` in `configs.main.ini`; the first time, the original is copied to `configs.main.ini.mw4ts-backup`, and every
+  other line stays as it was;
+- makes `sp26\xpak_cache` a directory junction (a folder link) to `xpak_cache`. If `sp26\xpak_cache` already exists as a real folder with files in it, it is renamed to
+  `sp26\xpak_cache.before-link`, not deleted.
+
+It does nothing while the game is running, does nothing the second time, and asks Windows for permission only when the game folder is somewhere that needs it (Program Files, for
+example). It is not offered when the game folder has no `sp26\steam_settings` (a different layout). Start the game from its launcher afterwards.
+
+```
+ccs-cli.exe --ccs-run gamefix status       what is set now (from source: python tools\ccs.py --ccs-run gamefix status)
+ccs-cli.exe --ccs-run gamefix apply        make both changes
+ccs-cli.exe --ccs-run gamefix undo         put the settings file back from its backup and remove the link (a real folder is never removed)
+```
+
+Doing it by hand gives the same result: edit `configs.main.ini` as above, and in a Command Prompt in the game folder run `mklink /J sp26\xpak_cache xpak_cache`.
+Online mode means the emulator no longer reports offline, so it may try to reach the network; if you would rather not, run `undo`.
+
 ## Tabs
 
 - **Dashboard**: live counters, throughput graph, activity log.
@@ -111,6 +137,7 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 - Hosts: only the marked block and loopback lines for the CDN name are touched. A backup is written before every change, the file is read back to verify it, and
   the change is rolled back if the check fails.
 - Cache and mirror: no cache writes while the game runs; backup and restore always keep a copy.
+- Game setup: asks first, keeps a copy of the settings file, never deletes a folder (a real `sp26\xpak_cache` is renamed), and touches nothing while the game runs.
 - Proxy: loopback only, and it forwards only the CDN path shape the game uses.
 - Logs are rotated at session start when they pass the size you set (3 older copies are kept).
 
@@ -119,6 +146,7 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 | Symptom | What to try |
 |---|---|
 | Red *SETUP NEEDED* | Game tab, set the game folder, *Save locations* |
+| The report says the game asked for textures and got them, but they still look low | Doctor, *Game setup* row, Fix: set up the game (see [Game setup](#game-setup-online-mode-and-the-cache-link)); close the game first and start it again afterwards |
 | Game never streams, hosts light red or amber | Doctor, Fix: apply hosts (UAC). The Hosts tab's *Test resolution* should show `127.0.0.1` and `::1` |
 | *Permission denied* when writing the hosts file, even as admin | See [Hosts file: permission denied](#hosts-file-permission-denied) below |
 | *'NoneType' object has no attribute 'splitlines'* | Fixed in 0.1.1-beta (a non-English Windows printed text the old code could not decode). Update, or open an issue with the support bundle |
@@ -153,6 +181,7 @@ hosts file at all, add the two lines the *Hosts* tab shows yourself (`ccshosts.p
 | `ccsmirror.py plan \| init \| run \| status \| verify \| prune \| retry-failed` | the mirror |
 | `ccsreport.py --list \| --segment N [--from HH:MM:SS --to HH:MM:SS]` | session reports |
 | `diskguard.py --limit-gib N --action kill\|warn` | cache size guard |
+| `ccs.py --ccs-run gamefix status \| apply \| undo` (packaged: `ccs-cli.exe --ccs-run gamefix ...`) | game setup, see above |
 
 Every tool has `--help`, and prints the same short notice at the bottom.
 

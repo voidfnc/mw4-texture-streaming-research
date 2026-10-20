@@ -126,6 +126,15 @@ def check_game():
     return _c('Game', 'info', ('running: ' + ', '.join(r)) if r else 'not running')
 
 
+def check_game_setup():
+    """Online mode in the game's Steam emulator + sp26/xpak_cache linked to the cache the helper fills (see gamefix.py). Quiet when the layout does not apply."""
+    from . import gamefix
+    s = gamefix.status()
+    if not s['applicable']: return _c('Game setup', 'info', gamefix.describe(s))
+    if s['ok']: return _c('Game setup', 'ok', gamefix.describe(s))
+    return _c('Game setup', 'warn', 'streamed textures may not be used by the game until this is set: ' + gamefix.describe(s), None if s['game_running'] else ('game_fix', None))
+
+
 def check_locations():
     return [_c(r['name'], r['level'], r['detail'], None) for r in paths.validate()]
 
@@ -133,7 +142,7 @@ def check_locations():
 def run_all(cfg):
     paths.reload(); res = check_locations()
     res += check_hosts(); res.append(check_port(cfg)); res += check_proxy(cfg); res.append(check_mirror(cfg))
-    res += check_pack(cfg); res.append(check_upstream()); res.append(check_disk(cfg)); res.append(check_game())
+    res += check_pack(cfg); res.append(check_upstream()); res.append(check_disk(cfg)); res.append(check_game()); res.append(check_game_setup())
     try:
         import tkinter; res.append(_c('Python', 'ok', f'{sys.version.split()[0]}, tkinter {tkinter.TkVersion}'))
     except Exception as e: res.append(_c('Python', 'warn', f'tkinter missing: {e}'))
