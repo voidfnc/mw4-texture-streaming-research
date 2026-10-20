@@ -44,7 +44,8 @@ def main():
         try: return subprocess.run([setup, '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', f'/DIR={app}', f'/LOG={log}'], env=env, timeout=150).returncode
         except subprocess.TimeoutExpired:                                         # a hang: show where it is stuck instead of waiting for the CI time limit
             print(f'setup ({tag}) did not finish in 150 s; its log:'); print(open(log, errors='replace').read()[-3500:] if os.path.exists(log) else '(no log)')
-            print(subprocess.run(['tasklist'], capture_output=True, text=True).stdout[-2500:])
+            ps = "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'ccs-cli|MW4|ipconfig|tasklist|netstat|_unins|Setup|python' } | Select-Object ProcessId,ParentProcessId,Name,CommandLine | Format-List | Out-String -Width 300"
+            print('the setup and its children:\n' + subprocess.run(['powershell', '-NoProfile', '-Command', ps], capture_output=True, text=True, timeout=60).stdout[-3500:])
             subprocess.run(['taskkill', '/F', '/T', '/IM', os.path.basename(setup)], capture_output=True); subprocess.run(['taskkill', '/F', '/T', '/IM', '_unins.tmp'], capture_output=True)
             raise SystemExit(f'installer test failed: setup ({tag}) hung')
     try:

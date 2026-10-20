@@ -8,6 +8,8 @@ if not exist "%VENV%\Scripts\python.exe" (
   python -m venv "%VENV%" || exit /b 1
   "%VENV%\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check --require-hashes -r "%~dp0requirements-build.txt" || exit /b 1
 )
+rem files of an earlier version would otherwise be tested (and offered to release.py) too
+del /q "%~dp0out\*-Setup.exe" "%~dp0out\*-portable.zip" "%~dp0out\SHA256SUMS.txt" 2>nul
 "%VENV%\Scripts\python.exe" -W ignore "%~dp0build.py" %* || exit /b 1
 for %%f in ("%~dp0out\*-Setup.exe") do python "%~dp0test_installer.py" "%%f" || exit /b 1
 echo.
