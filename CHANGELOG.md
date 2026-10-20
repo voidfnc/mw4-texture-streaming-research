@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.3-beta
+**One fix: the mirror index can be read from a folder you cannot write to.** Nothing else changes.
+
 - **A mirror in a folder you cannot write to is read correctly.** The mirror index could not be opened by a normal (non-administrator) user when the mirror sat in a folder only an
   administrator can write to, such as inside Program Files: the Doctor showed *Mirror: unable to open database file*, the proxy started with no stored chunk keys, and the
   session was reported as not ready. The proxy, the Doctor, the texture pack check and the reports now read the index without writing next to it (`ccslib/mirrordb.py`).
