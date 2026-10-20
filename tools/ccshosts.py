@@ -14,7 +14,7 @@ Exit codes: 0 ok, 1 error, 3 not admin / UAC declined.
 """
 import argparse, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ccslib import hosts, procs, paths
+from ccslib import hosts, launch, procs, paths
 
 
 def main(argv=None):
@@ -28,7 +28,7 @@ def main(argv=None):
     if writes and a.elevate and not procs.is_admin() and not os.environ.get('CCS_HOSTS_PATH'):
         rf = a.result_file or os.path.join(paths.RUN, 'hosts-result.json'); paths.ensure_dirs()
         if os.path.exists(rf): os.remove(rf)
-        sub = [sys.executable, os.path.abspath(__file__), a.cmd] + ([a.arg] if a.arg else []) + (['--force'] if a.force else []) + (['--no-flush'] if a.no_flush else []) + ['--result-file', rf]
+        sub = launch.argv_for('ccshosts', a.cmd) + ([a.arg] if a.arg else []) + (['--force'] if a.force else []) + (['--no-flush'] if a.no_flush else []) + ['--result-file', rf]
         code = procs.run_elevated(sub)
         if code is None: print('UAC declined'); return 3
         try: print(open(rf, encoding='utf-8').read())

@@ -1,0 +1,13 @@
+What this setup does
+
+  - Copies the program, its documentation and a "Restore hosts" shortcut into the folder you choose.
+  - Adds Start menu entries (and a desktop shortcut if you tick it) and an entry in Windows "Apps & features", so you can uninstall it like any other program.
+
+What it does NOT do
+
+  - It does not change your hosts file, firewall, services, startup items or security settings.
+  - It does not download anything and it does not touch your game folder.
+  - The program changes the hosts file only when you press "Start session": Windows asks for permission first, and a backup is written. "Stop session" or "Restore hosts" puts it back.
+
+Your settings, logs and reports are kept in "%LOCALAPPDATA%\MW4TextureStreaming", separate from the program, so updating or reinstalling never loses them.
+Uninstalling takes the hosts override out first (if it is on), asks before deleting your settings, and never deletes a texture mirror you built or your game folder.

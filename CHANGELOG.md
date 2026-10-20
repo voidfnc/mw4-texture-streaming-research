@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.0-beta
+**An installer, a portable zip, and no Python needed.** From this version each release offers a Windows setup program, a portable zip, and the source as before.
+
+- **`MW4-Texture-Streaming-<version>-Setup.exe`**: a setup wizard (Inno Setup). It installs for the current user by default, with no administrator rights; "for all users" is an
+  option on its first screen. It shows the notice and licence, says what it will and will not do, adds Start menu entries and an optional desktop shortcut, and registers an
+  uninstall entry. It never touches the hosts file. Settings, logs and reports stay in `%LOCALAPPDATA%\MW4TextureStreaming`, separate from the program.
+- **Hosts-safe update and uninstall.** If a session is running or the hosts override is on, setup and the uninstaller stop the helpers and take the override out first (Windows asks
+  once), and ask before deleting your settings. A texture mirror and the game folder are never deleted. Silent switches: `/VERYSILENT /DIR= /MERGETASKS=`.
+- **Portable zip**: unzip anywhere, nothing is installed, settings stay in a `data` folder next to the program.
+- **Same program inside**: `MW4 Texture Streaming.exe` (the window) and `ccs-cli.exe` (the helpers and every command-line tool: `ccs-cli.exe --ccs-run ccsproxy ...`). The helpers
+  are started through one function (`ccslib/launch.py`), so running from source behaves exactly as before.
+- **Releases are one command**: `packaging\build.bat` builds the program, the zip and the installer, smoke-tests the result and installs, upgrades (with the hosts block on) and
+  uninstalls the Setup.exe on the build PC; `python packaging/release.py` then makes a draft GitHub release (files, checksums, notes from this changelog). There is no CI pipeline.
+  The version is read from `tools/ccslib/version.py` only, and the release script refuses files from another version.
+- New: `ccs-cli.exe --ccs-run selfcheck` (starts and stops the proxy and disk guard and makes a shortcut, without touching the hosts file) and `uninstall-prep` (what the installer calls).
+- The window has an icon, and holds a named mutex so the installer knows it is open.
+- Fixed: a Python warning in `netwatch.py`.
+- 28 new tests (196 in total): launcher and dispatcher, uninstall hooks, selfcheck, version and packaging consistency (the installer script, build script, spec, workflow and requirements must agree with the code and the version).
+
 ## 0.1.3-beta
 Guided setup for first-time users, plus the fixes found while building it. Nothing changes for people who already have it running; the guide is optional.
 

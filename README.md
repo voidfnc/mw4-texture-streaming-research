@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.1.3 · Windows · Python 3.10+ (standard library only)
+Beta 0.2.0 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
 I started this because the Modern Warfare campaign on my PC looked blurry no matter what I did in the graphics menu. Walls and character gear sat on the lowest
 texture tier even with every setting maxed out. The game is supposed to download higher-resolution texture pieces from a CDN while you play, and on my machine
@@ -43,9 +43,30 @@ unmodified game start streaming. The whole story, with the captures that show it
 
 The proxy and mirror never touch the game process. Details of how the pieces fit together are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+## Download
+
+Pick one. The files are on the [Releases page](https://github.com/voidfnc/mw4-texture-streaming-research/releases/latest).
+
+| | What you get | Who it is for |
+|---|---|---|
+| **Installer** (recommended) | `MW4-Texture-Streaming-<version>-Setup.exe`. Double-click, Next, Install. Installs for you only (no administrator rights); "for all users" is an option on the first screen. Start menu entries, optional desktop shortcut, uninstall in *Apps & features*. | Most people. Needs no Python. |
+| **Portable zip** | `MW4-Texture-Streaming-<version>-win64-portable.zip`. Unzip anywhere and run `MW4 Texture Streaming.exe`. Nothing is installed; settings stay in a `data` folder next to it; delete the folder to remove it. | Locked-down PCs, a USB stick, trying it out. |
+| **From source** | Clone this repository and run `python tools\ccsgui.py` (Python 3.10+, standard library only). See [Running from source](#running-from-source). | Developers and advanced users. Everything is in this repository. |
+
+Windows may say "Windows protected your PC" (SmartScreen) because the files are not code-signed yet: choose *More info*, then *Run anyway*. You can check a download against
+`SHA256SUMS.txt` on the release page (`certutil -hashfile <file> SHA256`). Release files are built from the tagged source with `packaging\build.bat` (see CONTRIBUTING). The installer changes nothing in your hosts file; the program does that only when you press *Start session*.
+
 ## What it looks like
 
-Screenshots of version **0.1.3-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them. They are
+**The installer** asks whether to install for you only (the default, no administrator rights) or for all users, shows the notice and licence, says what it will and will not do, and
+offers the shortcuts. Cancelling at any point installs nothing.
+
+![Install mode: for me only (recommended) or for all users](docs/images/installer-0-mode.png)
+![Notice and licence page](docs/images/installer-1-license.png)
+![What setup does and does not do](docs/images/installer-2-info.png)
+![Shortcut options](docs/images/installer-3-options.png)
+
+**The program.** Screenshots of version **0.2.0-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them. They are
 regenerated for each release with `python tools\make_screenshots.py`, so the version in the title bar is the version they belong to.
 
 **Guided setup in Simple view**: the checklist ticks the steps it can verify and highlights the next button (here *Start session*).
@@ -64,7 +85,7 @@ regenerated for each release with `python tools\make_screenshots.py`, so the ver
 
 ![Full view of the Dashboard during a session](docs/images/full-view.png)
 
-## Trying it
+## Running from source
 
 You need a PC install of the game, Python 3.10 or newer with tkinter (the normal python.org installer has it), and a few GiB of free disk space at the very least.
 The full campaign set is around 82 GiB; a smaller "standard" level is about 54 GiB.
@@ -81,7 +102,7 @@ each step off by itself. It is optional and never changes anything without a cli
 `tools\work\gui_settings.json`. Then use *Start session*, launch the game, and watch the Dashboard. [docs/USAGE.md](docs/USAGE.md) walks through each tab, and the command-line versions of everything are listed there too.
 To undo the hosts change at any time run `tools\restore-hosts.bat`.
 
-The tests don't need the game: `python -m unittest discover -s tools/tests` (168 tests, a couple of minutes).
+The tests don't need the game: `python -m unittest discover -s tools/tests` (196 tests, a couple of minutes).
 
 ## If something doesn't work
 

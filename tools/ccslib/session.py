@@ -5,7 +5,7 @@ stop():  diskguard + proxy (+ hosts per policy)
 `say(msg)` is a callback for progress lines. Hosts writes go through tools/ccshosts.py elevated via UAC.
 """
 import json, os, subprocess, sys, time
-from . import config, doctor, hosts, logrot, paths, procs, proxyctl, upstream
+from . import config, doctor, hosts, launch, logrot, paths, procs, proxyctl, upstream
 
 SESSION_FILE = lambda: os.path.join(paths.RUN, 'session.json')
 
@@ -16,7 +16,7 @@ def hosts_cmd(cmd, say=print, extra=()):
     try: os.remove(rf)
     except OSError: pass
     say(f'hosts: {cmd} (UAC prompt may appear)')
-    code = procs.run_elevated([paths.PY, os.path.join(paths.TOOLS, 'ccshosts.py'), cmd, *extra, '--result-file', rf])
+    code = procs.run_elevated(launch.argv_for('ccshosts', cmd, *extra, '--result-file', rf))
     if code is None: return False, dict(error='UAC declined')
     try: res = json.load(open(rf, encoding='utf-8'))
     except Exception: return False, dict(error=f'no result from elevated helper (exit {code})')
@@ -77,7 +77,7 @@ def start(cfg, say=print):
         if procs.status('guard')['alive']: say('diskguard: already running')
         else: proxyctl.start_guard(cfg); say(f"diskguard: started (limit {eff['guard']['limit_gib']:g} GiB, action {eff['guard']['action']}, cache {paths.XPAK_CACHE})")
     if eff['watchers'].get('netwatch') and not procs.status('netwatch')['alive']:
-        procs.start('netwatch', [paths.PY, os.path.join(paths.TOOLS, 'netwatch.py'), '7200'], os.path.join(paths.RUN, 'netwatch.out')); say('netwatch: started')
+        procs.start('netwatch', launch.argv_for('netwatch', 7200), os.path.join(paths.RUN, 'netwatch.out')); say('netwatch: started')
     json.dump(dict(started=time.time(), profile=cfg.get('profile'), argv=proxyctl.proxy_argv(cfg)), open(SESSION_FILE(), 'w', encoding='utf-8'))
     res = doctor.run_all(cfg); say(doctor.format_results(res))
     bad = [r for r in res if r['level'] == 'fail']

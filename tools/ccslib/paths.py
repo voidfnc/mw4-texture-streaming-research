@@ -13,8 +13,21 @@ Environment overrides (tests / one-off use): CCS_GAME_ROOT, CCS_CACHE_DIR, CCS_M
 """
 import json, os, sys
 
-TOOLS = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))           # where these scripts live
-WORK = os.environ.get('CCS_WORK') or os.path.join(TOOLS, 'work')                  # logs, pid files, settings, reports, hosts backups
+FROZEN = bool(getattr(sys, 'frozen', False))                                      # the packaged app (no Python, no tools/ folder)
+TOOLS = os.path.dirname(os.path.abspath(sys.executable)) if FROZEN else os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))      # where these scripts (or the program) live
+
+
+def default_work(frozen=FROZEN, appdir=None, env=None):
+    """Where logs, pid files, settings, reports and hosts backups go. CCS_WORK wins. From source: tools/work. Packaged: a `data` folder next to the program when a
+    portable.txt sits there (the zip), otherwise MW4TextureStreaming in the user's local app data, so updating or removing the program never touches your settings."""
+    env = os.environ if env is None else env; appdir = appdir or TOOLS
+    if env.get('CCS_WORK'): return env['CCS_WORK']
+    if not frozen: return os.path.join(appdir, 'work')
+    if os.path.exists(os.path.join(appdir, 'portable.txt')): return os.path.join(appdir, 'data')
+    return os.path.join(env.get('LOCALAPPDATA') or os.path.expanduser('~'), 'MW4TextureStreaming')
+
+
+WORK = default_work()                                                             # logs, pid files, settings, reports, hosts backups
 RUN = os.path.join(WORK, 'run')
 HOSTS_BACKUPS = os.path.join(WORK, 'hosts-backups')
 SESSIONS = os.path.join(WORK, 'sessions')

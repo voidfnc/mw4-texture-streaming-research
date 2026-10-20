@@ -1,6 +1,6 @@
 """Tests for the public documentation: the version number appears where it should, links and images exist, the screenshots are valid files, and the screenshot
 tool's PNG writer is correct. No GUI, no network."""
-import os, re, struct, subprocess, sys, unittest, zlib
+import importlib.util, os, re, struct, subprocess, sys, unittest, zlib
 
 TOOLS = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 REPO = os.path.abspath(os.path.join(TOOLS, '..'))
@@ -84,10 +84,11 @@ class ScreenshotTests(unittest.TestCase):
         folder = os.path.join(REPO, 'docs', 'images')
         if not os.path.isdir(folder): self.skipTest('no screenshots')
         readme = read('README.md'); names = sorted(os.listdir(folder))
-        self.assertEqual(sorted(n[:-4] for n in names), sorted(make_screenshots.SHOTS))                     # exactly the ones the tool makes
+        installer = importlib.util.spec_from_file_location('shoot_installer', os.path.join(REPO, 'packaging', 'shoot_installer.py')); si = importlib.util.module_from_spec(installer); installer.loader.exec_module(si)
+        self.assertEqual(sorted(n[:-4] for n in names), sorted(make_screenshots.SHOTS + si.SHOTS))          # exactly the ones the two tools make
         for n in names:
             data = open(os.path.join(folder, n), 'rb').read(); ihdr, raw = decode_png(data)
-            self.assertGreaterEqual(ihdr[0], 800); self.assertLess(len(data), 400 * 1024, n); self.assertIn(f'docs/images/{n}', readme)
+            self.assertGreaterEqual(ihdr[0], 300); self.assertLess(len(data), 400 * 1024, n); self.assertIn(f'docs/images/{n}', readme)
 
 
 if __name__ == '__main__':

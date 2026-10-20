@@ -10,13 +10,26 @@ game. This tool puts a small helper on your PC and tells Windows to send those r
 What the tool can show you is which pieces the game asked for and that they were delivered. How the picture looks is decided by the game, so on this page there is
 also a short test to compare it on your own PC.
 
+## Install
+
+Download from the [Releases page](https://github.com/voidfnc/mw4-texture-streaming-research/releases/latest) and pick one:
+
+- **The installer** (`...-Setup.exe`, recommended): double-click, accept the notice, press Next and Install. It installs for you only, so Windows does not ask for an administrator
+  password; "for all users" is an option on its first screen. It adds a Start menu entry (and a desktop shortcut if you leave that ticked) and a normal uninstall entry in
+  *Apps & features*. It does not touch your hosts file or your game folder.
+- **The portable zip** (`...-portable.zip`): unzip it anywhere and double-click `MW4 Texture Streaming.exe`. Nothing is installed, and your settings stay in a `data` folder next to it.
+- **From source**, if you prefer to run the code yourself: see the README.
+
+Windows may show "Windows protected your PC" because the files are not code-signed yet. Choose *More info*, then *Run anyway*. To uninstall, use *Apps & features* (or the Uninstall entry
+in the Start menu); if the hosts override is on at that moment, the uninstaller takes it out first and asks before it deletes your settings.
+
 ## Before you start
 
-- Windows, Python 3.10 or newer (the normal python.org installer includes what is needed), and the game installed.
+- Windows 10 or 11, 64-bit, and the game installed. The installer and the zip need no Python; running from source needs Python 3.10 or newer.
 - Close the game. The session has to be started first, then the game.
 - A few GiB of free disk space for the quick fix. The offline copy needs a lot more (about 54 to 82 GB).
 
-Start the window with `tools\ccs-gui.bat`, or `python tools\ccsgui.py`. On the very first start it asks whether you want the guided setup. Say yes: it also
+Start the window from the Start menu or the desktop shortcut (zip: double-click `MW4 Texture Streaming.exe`; from source: `python tools\ccsgui.py`). On the very first start it asks whether you want the guided setup. Say yes: it also
 switches on *Simple view*, which tucks the advanced tabs away.
 
 ## The guided setup, step by step

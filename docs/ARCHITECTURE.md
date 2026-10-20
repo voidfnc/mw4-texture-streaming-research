@@ -35,6 +35,9 @@ These are on purpose and are the reason the project can be described as research
 | `tools/ccslib/pack.py` | the "texture pack" model: packages, scope, detail level, size estimates |
 | `tools/ccslib/upstream.py` | how we talk to the CDN: edge lookup (system resolver, remembered answer, direct DNS query) and a timed pick between candidates, User-Agent, Retry-After parsing, back-off |
 | `tools/ccsgui.py` | tkinter control window (runs unelevated; children are detached processes tracked by pid files with creation-time checks) |
+| `tools/ccs.py`, `ccslib/launch.py` | the packaged app's one entry point and the single function (`argv_for`) that starts every helper: `python script.py` from source, `ccs-cli.exe --ccs-run <tool>` when packaged |
+| `ccslib/uninstall.py`, `ccslib/selfcheck.py` | the installer's hooks (stop helpers, remove our hosts block, report state by exit code) and an end-to-end check of the helper start-up, both tested without touching the real hosts file |
+| `packaging/` | `build.bat` / `build.py` (PyInstaller program folder, portable zip, Inno Setup installer, smoke tests, checksums), `installer.iss`, `test_installer.py` (install, upgrade, uninstall), `release.py` (draft GitHub release), pinned build requirements |
 | `tools/ccslib/guide.py` | the optional guided setup, with no GUI code in it: finding the game folder, the checklist as a function of facts about the PC, the spotlight target, help cards, the "what happened" text, the before/after test steps and the glossary. `ccsgui.py` only draws it, so it is tested as tables (`tests/test_guide.py`) |
 | `tools/netwatch.py`, `tools/cachewatch.py` | read-only observers (DNS/TCP log of the game, install-tree snapshot) |
 | `tools/cdnxpak.py`, `tools/xpakrec.py` | parsers for the shipped chunk lists and for the engine's cache index |

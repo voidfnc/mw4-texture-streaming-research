@@ -1,8 +1,24 @@
 # Using the control window
 
-Start it with `tools\ccs-gui.bat` (no console window) or `python tools\ccsgui.py`. It runs **unelevated**; only changes to the hosts file ask for administrator
-rights (UAC). Python 3.10+ with tkinter is the only requirement. The first time it opens it shows a short notice about what the tools are and are not. Before the first bulk download (Texture pack or Mirror tab) it shows a second notice
+Start it from the Start menu or desktop shortcut (installer), by double-clicking `MW4 Texture Streaming.exe` (portable zip), or with `tools\ccs-gui.bat` (no console window) or
+`python tools\ccsgui.py` (source). It runs **unelevated**; only changes to the hosts file ask for administrator rights (UAC). The installer and the zip need no Python; from source
+you need Python 3.10+ with tkinter. The first time it opens it shows a short notice about what the tools are and are not. Before the first bulk download (Texture pack or Mirror tab) it shows a second notice
 that you have to accept once per version; on the command line the same thing is `ccsmirror.py run ... --accept-notice`.
+
+## Installed, portable or from source
+
+| | Program | Settings, logs, reports (`work` below) | Helpers and command line |
+|---|---|---|---|
+| Installer | `%LOCALAPPDATA%\Programs\MW4 Texture Streaming` (or Program Files for "all users") | `%LOCALAPPDATA%\MW4TextureStreaming` | `ccs-cli.exe --ccs-run <tool> ...` |
+| Portable zip | where you unzipped it | a `data` folder next to the program (because of `portable.txt`) | `ccs-cli.exe --ccs-run <tool> ...` |
+| Source | the cloned repository | `tools\work` | `python tools\<tool>.py ...` |
+
+`CCS_WORK` overrides the settings location in all three. Tools you can run with `--ccs-run`: `ccsproxy`, `ccsmirror`, `diskguard`, `ccshosts`, `netwatch`, `ccsreport`, plus `selfcheck` (starts and
+stops the proxy and disk guard and makes a shortcut, without touching the hosts file) and `uninstall-prep` (what the installer calls). `ccs-cli.exe --version` prints the version.
+
+**Update:** run the newer Setup.exe over the old one (the zip: unzip over the old folder, keeping `data`). Setup stops the helpers and puts the hosts file back first if a session is on.
+**Uninstall:** *Apps & features*. If the hosts override is on, it is removed first; you are asked before settings are deleted; a texture mirror and the game folder are never deleted.
+**Silent install** (for scripts): `Setup.exe /VERYSILENT /DIR="D:\Tools\MW4 Texture Streaming" /MERGETASKS="!desktopicon"`; add `/ALLUSERS` for all users.
 
 ## Guided setup (optional)
 
@@ -138,7 +154,7 @@ hosts file at all, add the two lines the *Hosts* tab shows yourself (`ccshosts.p
 
 Every tool has `--help`, and prints the same short notice at the bottom.
 
-## Files the tools write (under `tools/work/`)
+## Files the tools write (under `work`: see the table above; from source `tools/work/`)
 
 | Path | What |
 |---|---|
