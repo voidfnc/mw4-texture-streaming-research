@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.5-beta
+**The installer installs for all users by default.** "For me only" stays an option on its first screen.
+
+- **Program Files by default.** The program runs as administrator, so its files should be somewhere only an administrator can change: setup now asks for one Windows permission prompt and
+  installs into Program Files for all users (uninstall entry and shortcuts for everyone). "For me only" installs into your own profile without administrator rights, as before; the
+  README's *Administrator rights* section says what that choice means. Silent installs: all users is the default, `/CURRENTUSER` for the current user only. If you switch from one to the
+  other, uninstall the old copy first.
+- **The installer test covers both.** `packaging\build.bat` installs, upgrades (with the hosts block on) and uninstalls once for the current user and once for all users (when the build
+  window is elevated), and refuses to run if shortcuts of a real installed copy are in the way.
+- The installer's four README screenshots are retaken for this version; the program's screenshots are still from 0.2.3-beta.
+
 ## 0.2.4-beta
 **The program runs as administrator by default.** It asks for permission once, when it starts, instead of per action.
 

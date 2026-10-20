@@ -9,7 +9,7 @@ that you have to accept once per version; on the command line the same thing is 
 
 | | Program | Settings, logs, reports (`work` below) | Helpers and command line |
 |---|---|---|---|
-| Installer | `%LOCALAPPDATA%\Programs\MW4 Texture Streaming` (or Program Files for "all users") | `%LOCALAPPDATA%\MW4TextureStreaming` | `ccs-cli.exe --ccs-run <tool> ...` |
+| Installer | `C:\Program Files\MW4 Texture Streaming` (all users, the default) or `%LOCALAPPDATA%\Programs\MW4 Texture Streaming` ("for me only") | `%LOCALAPPDATA%\MW4TextureStreaming` | `ccs-cli.exe --ccs-run <tool> ...` |
 | Portable zip | where you unzipped it | a `data` folder next to the program (because of `portable.txt`) | `ccs-cli.exe --ccs-run <tool> ...` |
 | Source | the cloned repository | `tools\work` | `python tools\<tool>.py ...` |
 
@@ -18,7 +18,7 @@ stops the proxy and disk guard and makes a shortcut, without touching the hosts 
 
 **Update:** run the newer Setup.exe over the old one (the zip: unzip over the old folder, keeping `data`). Setup stops the helpers and puts the hosts file back first if a session is on.
 **Uninstall:** *Apps & features*. If the hosts override is on, it is removed first; you are asked before settings are deleted; a texture mirror and the game folder are never deleted.
-**Silent install** (for scripts): `Setup.exe /VERYSILENT /DIR="D:\Tools\MW4 Texture Streaming" /MERGETASKS="!desktopicon"`; add `/ALLUSERS` for all users.
+**Silent install** (for scripts): `Setup.exe /VERYSILENT /DIR="D:\Tools\MW4 Texture Streaming" /MERGETASKS="!desktopicon"`; all users is the default (administrator rights needed); add `/CURRENTUSER` for the current user only, without administrator rights. If you change from one to the other, uninstall the old copy first.
 
 ## Guided setup (optional)
 

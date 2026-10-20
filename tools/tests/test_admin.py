@@ -50,6 +50,13 @@ class Packaging(unittest.TestCase):
         line = next(l for l in read('packaging', 'installer.iss').splitlines() if l.startswith('Filename: "{app}\\{#AppExe}"') and 'postinstall' in l)
         self.assertIn('shellexec', line); self.assertIn('skipifsilent', line)
 
+    def test_setup_installs_for_all_users_by_default_and_still_offers_the_current_user(self):
+        iss = read('packaging', 'installer.iss'); self.assertRegex(iss, r'(?m)^PrivilegesRequired=admin$'); self.assertRegex(iss, r'(?m)^PrivilegesRequiredOverridesAllowed=dialog$')
+
+    def test_the_build_tests_both_ways_of_installing(self):
+        bat = read('packaging', 'build.bat'); self.assertIn('--current-user', bat); self.assertIn('--all-users', bat)
+        ti = read('packaging', 'test_installer.py'); self.assertIn("'/ALLUSERS' if allusers else '/CURRENTUSER'", ti), self.assertIn('HKEY_LOCAL_MACHINE', ti)
+
     def test_the_build_checks_the_manifest(self):
         self.assertIn('requireAdministrator', read('packaging', 'build.py'))
 
