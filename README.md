@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.2.0 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
+Beta 0.2.1 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
 I started this because the Modern Warfare campaign on my PC looked blurry no matter what I did in the graphics menu. Walls and character gear sat on the lowest
 texture tier even with every setting maxed out. The game is supposed to download higher-resolution texture pieces from a CDN while you play, and on my machine
@@ -66,7 +66,7 @@ offers the shortcuts. Cancelling at any point installs nothing.
 ![What setup does and does not do](docs/images/installer-2-info.png)
 ![Shortcut options](docs/images/installer-3-options.png)
 
-**The program.** Screenshots of version **0.2.0-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them. They are
+**The program.** Screenshots of version **0.2.1-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them. They are
 regenerated for each release (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`), so the version in the title bar is the version they belong to.
 
 **Guided setup in Simple view**: the checklist ticks the steps it can verify and highlights the next button (here *Start session*).

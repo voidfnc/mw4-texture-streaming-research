@@ -111,6 +111,10 @@ The *Doctor* shows a *Game setup* row and the guide's *Check this PC* step offer
 It does nothing while the game is running, does nothing the second time, and asks Windows for permission only when the game folder is somewhere that needs it (Program Files, for
 example). It is not offered when the game folder has no `sp26\steam_settings` (a different layout). Start the game from its launcher afterwards.
 
+It stops with a plain message, and changes nothing more, when `configs.main.ini` is read-only or not a plain text file, when something else is using `sp26\xpak_cache`, or when
+`sp26\xpak_cache` is already a link to somewhere else (that is your own setup, so it is left alone; a link to a folder that no longer exists is replaced). If making the link
+fails after a folder was moved aside, the folder is moved back.
+
 ```
 ccs-cli.exe --ccs-run gamefix status       what is set now (from source: python tools\ccs.py --ccs-run gamefix status)
 ccs-cli.exe --ccs-run gamefix apply        make both changes

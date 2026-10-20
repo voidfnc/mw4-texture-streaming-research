@@ -1200,6 +1200,7 @@ class App(tk.Tk):
             ok, msg = session.run_fix(self.cfg, ('game_fix', None), self.say); self.say(f"game setup: {'ok' if ok else 'FAILED'} - {msg}", 'OK' if ok else 'ERR')
             self._gfc = None
             if ok: self.q.put(('ask', lambda: messagebox.showinfo('Game setup', 'Done: ' + msg + '\n\nStart (or restart) the game from its launcher now.', parent=self)))
+            else: self.q.put(('ask', lambda: messagebox.showerror('Game setup', 'The setup could not be finished (the Doctor shows what is still missing):\n\n' + msg, parent=self)))
         self.bg('game setup', go)
 
     def do_bundle(self):

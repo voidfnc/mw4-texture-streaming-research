@@ -40,7 +40,7 @@ def layout(root=None):
 
 # ------------------------------------------------------------------------------------------------ the settings file (pure text functions)
 
-_SECTION_RE = re.compile(r'^\s*\[(.*?)\]\s*$')
+_SECTION_RE = re.compile(r'^\s*\[(.*?)\]\s*(?:[;#].*)?$')
 
 
 def _split(text):
@@ -73,7 +73,7 @@ def set_keys(text):
         if not add: return
         at = len(out)
         while at > start and not out[at - 1].strip(): at -= 1
-        if at > start and not out[at - 1].endswith(('\n', '\r')): out[at - 1] += nl
+        if at >= start and not out[at - 1].endswith(('\n', '\r')): out[at - 1] += nl
         out[at:at] = add
     for line in lines:
         m = _SECTION_RE.match(line.rstrip('\r\n'))
@@ -97,9 +97,20 @@ def _read(path):
 
 
 def _write(path, text):
+    """Replace `path` with `text` through a temporary file. A read-only file is refused (with a plain OSError: asking for administrator rights would not help)."""
+    if os.path.exists(path) and not os.access(path, os.W_OK): raise OSError(f'{os.path.basename(path)} is read-only: clear the read-only attribute (file properties) and try again')
     tmp = path + '.tmp'
-    with open(tmp, 'wb') as f: f.write(text.encode('utf-8', 'surrogateescape'))
-    os.replace(tmp, path)
+    try:
+        with open(tmp, 'wb') as f: f.write(text.encode('utf-8', 'surrogateescape'))
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp): os.remove(tmp)
+
+
+def _backup_once(path, backup):
+    """Copy the original aside the first time only; written through a temporary name so an interrupted copy is never mistaken for a backup."""
+    if os.path.exists(path) and not os.path.exists(backup):
+        shutil.copy2(path, backup + '.tmp'); os.replace(backup + '.tmp', backup)
 
 
 # ------------------------------------------------------------------------------------------------ the cache link
@@ -111,9 +122,10 @@ def is_reparse(p):
 
 
 def link_state(link, target):
-    """'ok' | 'missing' | 'wrong' (a link to somewhere else, or a broken one) | 'dir' (a real folder) | 'file'."""
+    """'ok' | 'missing' | 'wrong' (a working link to somewhere else) | 'broken' (a link to nothing) | 'dir' (a real folder) | 'file'."""
     if not os.path.lexists(link): return 'missing'
     if is_reparse(link):
+        if not os.path.exists(link): return 'broken'
         try: return 'ok' if os.path.exists(target) and os.path.samefile(link, target) else 'wrong'
         except OSError: return 'wrong'
     return 'dir' if os.path.isdir(link) else 'file'
@@ -140,25 +152,28 @@ def _empty(d):
 
 # ------------------------------------------------------------------------------------------------ status / apply / undo
 
-def status(root=None):
-    """What is set now (read-only, never raises): dict(applicable, why, ok, config_ok, link, problems, ...). `applicable` is False when this is not the layout the
-    two settings are about (no sp26/steam_settings next to the game)."""
+def status(root=None, check_game=True):
+    """What is set now (read-only, never raises): dict(applicable, why, ok, config_ok, link_state, problems, ...). `applicable` is False when this is not the layout the
+    two settings are about (no sp26/steam_settings next to the game). `check_game` looks for a running game (starts `tasklist`, so the window's own timer skips it)."""
     L = layout(root); s = dict(L, applicable=False, why='', ok=True, config_ok=True, keys={}, problems=[], game_running=False, link_state='missing')
     if not os.path.isdir(L['settings']):
         s['why'] = 'no sp26/steam_settings folder in the game folder, so nothing to set up'; return s
     s['applicable'] = True
-    try: s['game_running'] = bool(procs.image_running(*paths.GAME_EXES))
-    except Exception: pass
+    if check_game:
+        try: s['game_running'] = bool(procs.image_running(*paths.GAME_EXES))
+        except Exception: pass
     try: s['keys'] = read_keys(_read(L['config'])) if os.path.exists(L['config']) else {}
     except OSError as e: s['keys'] = {}; s['problems'].append(f'cannot read {CONFIG_NAME}: {e}')
     s['config_ok'] = keys_ok(s['keys'])
     if not s['config_ok']:
         off = s['keys'].get('offline')
-        s['problems'].append(f"the game's Steam emulator is in offline mode ({CONFIG_NAME}: offline={off})" if off != '0' else f'{CONFIG_NAME} is missing disable_lan_only=1')
+        s['problems'].append(f"the game's Steam emulator is in offline mode ({CONFIG_NAME}: offline=1)" if off == '1' else
+                             f'{CONFIG_NAME} does not set online mode (offline=0)' if off != '0' else f'{CONFIG_NAME} is missing disable_lan_only=1')
     s['link_state'] = link_state(L['link'], L['target'])
     if s['link_state'] != 'ok':
         s['problems'].append({'missing': 'sp26\\xpak_cache does not exist, so the game does not look in the cache the helper fills',
-                              'wrong': 'sp26\\xpak_cache is a link to somewhere other than the game cache',
+                              'wrong': 'sp26\\xpak_cache is a link to somewhere other than the game cache (' + os.path.realpath(L['link']) + ')',
+                              'broken': 'sp26\\xpak_cache is a link to a folder that no longer exists',
                               'dir': 'sp26\\xpak_cache is a separate folder, not the cache the helper fills',
                               'file': 'sp26\\xpak_cache is a file'}[s['link_state']])
     s['ok'] = s['config_ok'] and s['link_state'] == 'ok'
@@ -167,7 +182,7 @@ def status(root=None):
 
 def state(root=None):
     """'ok' | 'needed' | 'na' - the short answer for the guide and the Doctor."""
-    s = status(root); return 'na' if not s['applicable'] else ('ok' if s['ok'] else 'needed')
+    s = status(root, check_game=False); return 'na' if not s['applicable'] else ('ok' if s['ok'] else 'needed')
 
 
 def apply(root=None):
@@ -177,21 +192,34 @@ def apply(root=None):
     if s['ok']: return dict(done=[], aside='', status=s)
     if s['game_running']: raise GameBusy('the game is running: close it, then apply the game setup')
     if s['link_state'] == 'file': raise OSError(f"{s['link']} is a file, not a folder: move it away first")
+    if s['link_state'] == 'wrong': raise OSError(f"sp26\\xpak_cache is already a link, to {os.path.realpath(s['link'])}: that is your own setup, so it was left alone. Remove that link if you want this tool to set it up")
+    text = ''
+    if not s['config_ok']:                                                                              # checked before anything is changed
+        text = _read(s['config']) if os.path.exists(s['config']) else ''
+        if '\x00' in text: raise OSError(f'{CONFIG_NAME} is not a plain text file (UTF-16?): edit it by hand, see docs/USAGE.md')
+        if os.path.exists(s['config']) and not os.access(s['config'], os.W_OK): raise OSError(f'{CONFIG_NAME} is read-only: clear the read-only attribute (file properties) and try again')
     done = []; aside = ''
     if not s['config_ok']:
-        text = _read(s['config']) if os.path.exists(s['config']) else ''
-        if os.path.exists(s['config']) and not os.path.exists(s['backup']): shutil.copy2(s['config'], s['backup'])
-        _write(s['config'], set_keys(text)); done.append(CONFIG_NAME)
+        _backup_once(s['config'], s['backup']); _write(s['config'], set_keys(text)); done.append(CONFIG_NAME)
     if s['link_state'] != 'ok':
         os.makedirs(s['target'], exist_ok=True)
-        if s['link_state'] == 'wrong': os.rmdir(s['link'])                                            # removes the link only, whatever it pointed at
+        if s['link_state'] == 'broken': os.rmdir(s['link'])                                           # removes the link only
         elif s['link_state'] == 'dir':
             if _empty(s['link']): os.rmdir(s['link'])
             else:
                 aside = os.path.join(s['sp26'], ASIDE_NAME)
                 if os.path.exists(aside): aside += time.strftime('-%Y%m%d-%H%M%S')
-                os.rename(s['link'], aside)
-        make_junction(s['link'], s['target']); done.append('sp26\\xpak_cache')
+                try: os.rename(s['link'], aside)
+                except PermissionError as e:
+                    if getattr(e, 'winerror', 0) == 32: raise OSError(f'sp26\\xpak_cache is in use by another program (is the game still closing?): {e}') from e   # asking for rights would not help
+                    raise
+        try: make_junction(s['link'], s['target'])
+        except BaseException:
+            if aside and not os.path.lexists(s['link']):
+                try: os.rename(aside, s['link'])                                                         # put the folder back where it was
+                except OSError: pass
+            raise
+        done.append('sp26\\xpak_cache')
     return dict(done=done, aside=aside, status=status(root))
 
 
@@ -204,7 +232,8 @@ def undo(root=None):
     if os.path.exists(s['backup']):
         shutil.copy2(s['backup'], s['config']); os.remove(s['backup']); done.append(CONFIG_NAME)
     else: notes.append('no backup of ' + CONFIG_NAME + ' was found, so it was left as it is')
-    if s['link_state'] in ('ok', 'wrong') and is_reparse(s['link']): os.rmdir(s['link']); done.append('sp26\\xpak_cache')
+    if s['link_state'] == 'ok' and is_reparse(s['link']): os.rmdir(s['link']); done.append('sp26\\xpak_cache')
+    elif s['link_state'] in ('wrong', 'broken'): notes.append('sp26\\xpak_cache is a link this tool did not make, so it was left as it is')
     elif s['link_state'] == 'dir': notes.append('sp26\\xpak_cache is a real folder, so it was left as it is')
     aside = os.path.join(s['sp26'], ASIDE_NAME)
     if os.path.isdir(aside): notes.append(f'the folder that was in the way is still at {aside}; rename it back to xpak_cache if you want it')

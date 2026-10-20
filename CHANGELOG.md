@@ -1,11 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.2.1-beta
+**Game setup: helps the game use the textures it is sent.** One new check and one-click fix, nothing else changes.
+
 - **Game setup check and fix.** Some repacks run the game's Steam emulator in offline mode and the game looks for its cache in `sp26\xpak_cache` while the engine fills
   `xpak_cache` in the game folder, so streamed textures can arrive without ever showing. The Doctor has a new *Game setup* row and the guide's *Check this PC* step asks for it
   when it is needed; *Set up the game* (one click, after a confirmation) sets `offline=0` and `disable_lan_only=1` in `sp26\steam_settings\configs.main.ini` (a copy of the
   original is kept next to it, other lines are left alone) and makes `sp26\xpak_cache` a folder link (junction) to `xpak_cache`. A real folder in the way is renamed aside, never
-  deleted. Nothing is changed while the game runs, applying twice changes nothing, and Windows is asked for permission only when the game folder needs it.
+  deleted. Nothing is changed while the game runs, applying twice changes nothing, and Windows is asked for permission only when the game folder needs it. A link of your own at `sp26\xpak_cache`, a read-only settings file or a failed link step are
+  reported in plain words and left as they were (a moved-aside folder is put back).
   Command line: `ccs-cli.exe --ccs-run gamefix status | apply | undo`.
 
 ## 0.2.0-beta

@@ -1,6 +1,6 @@
 """Tests for the game setup (ccslib/gamefix.py): the settings-file edit, the cache link, apply / undo, and how the Doctor and the guide use it.
 Everything runs in temp folders that look like a game folder; the real game folder is never touched and no game process is looked at."""
-import copy, json, os, shutil, sys, tempfile, unittest
+import copy, json, os, shutil, stat, sys, tempfile, unittest
 from unittest import mock
 
 TOOLS = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -57,6 +57,10 @@ class SettingsText(unittest.TestCase):
         out = self.check(text)
         self.assertEqual(out, '[main::connectivity]\r\n; keep me\r\noffline=0\r\nfoo=2\r\ndisable_lan_only=1\r\n\r\n[other]\r\nz=1\r\n')
 
+    def test_a_header_alone_and_a_header_with_a_comment(self):
+        self.assertEqual(self.check('[main::connectivity]'), '[main::connectivity]\r\noffline=0\r\ndisable_lan_only=1\r\n')
+        out = self.check('[main::connectivity] ; the network\noffline=1\n'); self.assertEqual(out.count('[main::connectivity]'), 1)
+
     def test_case_spaces_and_a_bom(self):
         self.assertEqual(self.check('[Main::Connectivity]\ndisable_lan_only = 0\nOffline = 1\n'), '[Main::Connectivity]\ndisable_lan_only=1\noffline=0\n')
         self.assertTrue(self.check('\ufeff[main::connectivity]\noffline=1\n').startswith('\ufeff[main::connectivity]'))
@@ -80,12 +84,19 @@ class Status(Quiet):
         s = gamefix.status(root); self.assertFalse(s['applicable']); self.assertEqual(gamefix.state(root), 'na'); self.assertEqual(gamefix.describe(s), s['why'])
         self.assertEqual(gamefix.state(os.path.join(TMP, 'does-not-exist')), 'na')
 
+    def test_the_checklist_timer_never_starts_a_process(self):
+        """state() is called from the window's refresh loop every few seconds: it must not look for the game (that starts tasklist)."""
+        root = make_game('s4')
+        with mock.patch.object(procs, 'image_running', side_effect=AssertionError('tasklist was started')): self.assertEqual(gamefix.state(root), 'needed')
+
     def test_it_never_raises_on_a_broken_config(self):
         root = make_game('s3', config=None); self.assertEqual(gamefix.status(root)['keys'], {}); self.assertEqual(gamefix.state(root), 'needed')
 
     def test_link_states(self):
         for how, want in (('dir', 'dir'), ('file', 'file'), ('other', 'wrong'), (None, 'missing')):
             L = gamefix.layout(make_game('ls_' + str(how), link=how)); self.assertEqual(gamefix.link_state(L['link'], L['target']), want, how)
+        L = gamefix.layout(make_game('ls_broken', link='other')); shutil.rmtree(os.path.join(L['root'], 'elsewhere')); self.assertEqual(gamefix.link_state(L['link'], L['target']), 'broken')
+        L = gamefix.layout(make_game('ls_gone')); gamefix.apply(L['root']); shutil.rmtree(L['target']); self.assertEqual(gamefix.link_state(L['link'], L['target']), 'broken', 'our own link, cache folder deleted')
 
 
 class Apply(Quiet):
@@ -102,8 +113,8 @@ class Apply(Quiet):
 
     def test_the_backup_is_made_once_and_keeps_the_very_first_original(self):
         root = make_game('a3'); gamefix.apply(root); L = gamefix.layout(root)
-        put(L['config'], '[main::connectivity]\noffline=1\n'); gamefix.apply(root)                  # the setting was changed back by something else
-        self.assertEqual(slurp(L['backup']), '[main::connectivity]\noffline=1\n'); self.assertEqual(gamefix.state(root), 'ok')
+        put(L['config'], '[main::connectivity]\noffline=1\nx=2\n'); gamefix.apply(root)             # the setting was changed back (and a line added) by something else
+        self.assertEqual(slurp(L['backup']), '[main::connectivity]\noffline=1\n', 'the backup is still the very first original'); self.assertEqual(gamefix.state(root), 'ok')
 
     def test_a_missing_cache_folder_is_created_and_a_missing_config_is_written(self):
         root = make_game('a4', config=None, cache=False); gamefix.apply(root); L = gamefix.layout(root)
@@ -115,9 +126,30 @@ class Apply(Quiet):
         root = make_game('a6', link='dir'); r = gamefix.apply(root); self.assertTrue(r['status']['ok']); self.assertEqual(slurp(os.path.join(r['aside'], 'old.xpak'), 'rb'), b'old')
         self.assertIn('is now', gamefix._message(r))
 
-    def test_a_wrong_link_is_repointed_without_touching_what_it_pointed_at(self):
+    def test_a_users_own_link_elsewhere_is_left_alone_and_the_reason_is_given(self):
         root = make_game('a7', link='other'); other = os.path.join(root, 'elsewhere'); put(os.path.join(other, 'keep.txt'), 'k')
-        gamefix.apply(root); self.assertEqual(gamefix.state(root), 'ok'); self.assertTrue(os.path.exists(os.path.join(other, 'keep.txt')))
+        with self.assertRaises(OSError) as c: gamefix.apply(root)
+        self.assertIn('your own setup', str(c.exception)); self.assertNotIn(type(c.exception), (PermissionError,))
+        self.assertTrue(os.path.exists(os.path.join(other, 'keep.txt'))); self.assertEqual(slurp(gamefix.layout(root)['config']), '[main::connectivity]\noffline=1\n', 'nothing was changed')
+        self.assertIn('did not make', ' '.join(gamefix.undo(root)['notes'])); self.assertTrue(gamefix.is_reparse(gamefix.layout(root)['link']), 'undo leaves a link it did not make')
+
+    def test_a_broken_link_and_our_own_link_to_a_deleted_cache_are_made_again(self):
+        root = make_game('a7b', link='other'); shutil.rmtree(os.path.join(root, 'elsewhere')); gamefix.apply(root); self.assertEqual(gamefix.state(root), 'ok')
+        root = make_game('a7c'); gamefix.apply(root); shutil.rmtree(os.path.join(root, 'xpak_cache')); self.assertEqual(gamefix.state(root), 'needed'); gamefix.apply(root); self.assertEqual(gamefix.state(root), 'ok')
+
+    def test_a_failed_link_puts_the_real_folder_back(self):
+        root = make_game('a7d', link='dir'); L = gamefix.layout(root)
+        with mock.patch.object(gamefix, 'make_junction', side_effect=OSError('no reparse points here')):
+            with self.assertRaises(OSError): gamefix.apply(root)
+        self.assertEqual(slurp(os.path.join(L['link'], 'old.xpak'), 'rb'), b'old', 'the real folder is back where it was'); self.assertFalse(os.path.exists(os.path.join(L['sp26'], gamefix.ASIDE_NAME)))
+
+    def test_a_read_only_settings_file_is_refused_cleanly(self):
+        root = make_game('a7e', link='dir'); L = gamefix.layout(root)
+        os.chmod(L['config'], stat.S_IREAD); self.addCleanup(os.chmod, L['config'], stat.S_IWRITE)
+        with self.assertRaises(OSError) as c: gamefix.apply(root)
+        self.assertNotIsInstance(c.exception, PermissionError, 'no Windows prompt for something rights cannot fix'); self.assertIn('read-only', str(c.exception))
+        self.assertEqual(sorted(os.listdir(L['settings'])), ['configs.main.ini'], 'no temporary or backup file is left behind')
+        self.assertTrue(os.path.isdir(L['link']) and not gamefix.is_reparse(L['link']))
 
     def test_a_file_in_the_way_is_refused_and_nothing_is_changed(self):
         root = make_game('a8', link='file')
@@ -130,6 +162,12 @@ class Apply(Quiet):
             with self.assertRaises(gamefix.GameBusy): gamefix.apply(root)
             with self.assertRaises(gamefix.GameBusy): gamefix.undo(root)
         self.assertEqual(gamefix.state(root), 'needed')
+
+    def test_a_binary_or_utf16_settings_file_is_refused_untouched(self):
+        root = make_game('a11'); L = gamefix.layout(root)
+        with open(L['config'], 'wb') as f: f.write('[main::connectivity]\noffline=1\n'.encode('utf-16'))
+        with self.assertRaises(OSError): gamefix.apply(root)
+        self.assertEqual(slurp(L['config'], 'rb'), '[main::connectivity]\noffline=1\n'.encode('utf-16')); self.assertFalse(os.path.lexists(L['link']))
 
     def test_not_applicable_raises(self):
         with self.assertRaises(gamefix.NotApplicable): gamefix.apply(os.path.join(TMP, 'nowhere'))
