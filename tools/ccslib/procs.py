@@ -81,7 +81,7 @@ def _clear(name):
 def image_running(*exes):
     """Names (lowercase) from `exes` that currently have a running process."""
     try:
-        out = subprocess.run(['tasklist', '/FO', 'CSV', '/NH'], capture_output=True, text=True, timeout=15, creationflags=CREATE_NO_WINDOW).stdout.lower()
+        out = subprocess.run(['tasklist', '/FO', 'CSV', '/NH'], capture_output=True, text=True, errors='replace', timeout=15, creationflags=CREATE_NO_WINDOW).stdout.lower()
     except Exception:
         return []
     return [e for e in exes if f'"{e.lower()}"' in out]
@@ -90,12 +90,13 @@ def image_running(*exes):
 def port_owner(port, addrs=('127.0.0.1', '[::1]')):
     """-> list of dict(addr, pid, name) listening on `port` for the given local addresses (or wildcard)."""
     try:
-        out = subprocess.run(['netstat', '-ano', '-p', 'tcp'], capture_output=True, text=True, timeout=15, creationflags=CREATE_NO_WINDOW).stdout
+        out = subprocess.run(['netstat', '-ano', '-p', 'tcp'], capture_output=True, text=True, errors='replace', timeout=15, creationflags=CREATE_NO_WINDOW).stdout
     except Exception:
         return []
     res = []
-    for l in out.splitlines():
-        m = re.match(r'\s*TCP\s+(\S+):(\d+)\s+\S+\s+LISTENING\s+(\d+)', l)
+    for l in (out or '').splitlines():
+        # a listening socket has no peer (0.0.0.0:0 / [::]:0); the state word is localised on non-English Windows, so it is not matched
+        m = re.match(r'\s*TCP\s+(\S+):(\d+)\s+(?:0\.0\.0\.0|\[::\]):0\s+\S+\s+(\d+)', l)
         if m and int(m.group(2)) == port:
             a = m.group(1)
             if a in addrs or a in ('0.0.0.0', '[::]'):
@@ -105,7 +106,7 @@ def port_owner(port, addrs=('127.0.0.1', '[::1]')):
 
 def _pid_name(pid):
     try:
-        out = subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/FO', 'CSV', '/NH'], capture_output=True, text=True, timeout=15, creationflags=CREATE_NO_WINDOW).stdout
+        out = subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/FO', 'CSV', '/NH'], capture_output=True, text=True, errors='replace', timeout=15, creationflags=CREATE_NO_WINDOW).stdout
         m = re.match(r'"([^"]+)"', out.strip())
         return m.group(1) if m else '?'
     except Exception:

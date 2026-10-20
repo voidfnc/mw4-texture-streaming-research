@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1-beta
+Fixes from a user report (non-English Windows, hosts file protected).
+
+- Start session, Doctor and proxy start no longer crash with `'NoneType' object has no attribute 'splitlines'`. Output of `netstat` and other Windows tools is now
+  decoded tolerantly, and the port check no longer depends on the English word `LISTENING`.
+- A refused hosts write now says what happened ("the file was not changed") and points at the likely cause (read-only attribute, security software) instead of
+  claiming a failed rollback. Tooltips on the Hosts tab buttons and a Troubleshooting section in `docs/USAGE.md` explain the fix.
+- Two new tests (91 in total).
+
 ## 0.1.0-beta
 First public-ready beta.
 

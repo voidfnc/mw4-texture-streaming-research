@@ -35,7 +35,7 @@ def candidates():
     for res in PUBLIC_RESOLVERS:
         if len(out) >= 3: break
         try:
-            txt = subprocess.run(['nslookup', paths.HOST, res], capture_output=True, text=True, timeout=15).stdout
+            txt = subprocess.run(['nslookup', paths.HOST, res], capture_output=True, text=True, errors='replace', timeout=15).stdout
             for ip in re.findall(r'Address(?:es)?:\s+(\d+\.\d+\.\d+\.\d+)', txt.split('Name:')[-1]):
                 if ip not in out: out.append(ip)
         except Exception: pass

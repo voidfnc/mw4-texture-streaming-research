@@ -63,10 +63,25 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 |---|---|
 | Red *SETUP NEEDED* | Game tab, set the game folder, *Save locations* |
 | Game never streams, hosts light red or amber | Doctor, Fix: apply hosts (UAC). The Hosts tab's *Test resolution* should show `127.0.0.1` and `::1` |
+| *Permission denied* when writing the hosts file, even as admin | See [Hosts file: permission denied](#hosts-file-permission-denied) below |
+| *'NoneType' object has no attribute 'splitlines'* | Fixed in 0.1.1-beta (a non-English Windows printed text the old code could not decode). Update, or open an issue with the support bundle |
 | Port 80 is taken | The Doctor names the owner; the fix asks before ending it |
 | Proxy not answering | Doctor, Fix: restart proxy. The traceback is in `tools\work\run\proxy.out` |
 | Report missing | Reports are written when the game process exits; if you stopped the session first, press *Generate report* in the Report tab |
 | Want help | Doctor, *Export support bundle* (a zip with logs and settings, no game files) and attach it to an issue after checking its contents |
+
+### Hosts file: permission denied
+
+The hosts file is protected on purpose, so a write can be refused even when the window says it runs as admin. The tool writes the file in place, reads it back, and
+a refused write leaves it untouched (the message says so and names the backup). Usual causes:
+
+1. **Read-only attribute.** In an admin Command Prompt: `attrib -r "%SystemRoot%\System32\drivers\etc\hosts"`, then try again.
+2. **Security software with hosts-file protection** (several antivirus suites have it, Windows Security can too). Pause that protection for a moment, or allow
+   `python.exe`, apply the override, and turn it back on.
+3. **A changed ACL** on the file (rare). Check the Security tab of the file's properties.
+
+The toolkit never switches off security software and never changes permissions on system files for you; that stays your decision. If you would rather not touch the
+hosts file at all, add the two lines the *Hosts* tab shows yourself (`ccshosts.py diff apply` prints them) or use a DNS tool you already trust.
 
 ## Command line
 

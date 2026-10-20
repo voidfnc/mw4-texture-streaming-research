@@ -55,6 +55,17 @@ class HostsTests(unittest.TestCase):
         t = open(paths.hosts_path()).read(); self.assertEqual(t.count(f'127.0.0.1 {paths.HOST}'), 1)
         hosts.remove(flush=False); self.assertEqual(hosts.status()['state'], 'ABSENT')
 
+    def test_read_only_hosts_gives_a_clear_error_and_is_untouched(self):
+        import stat
+        orig = put(WIN_HOSTS); hp = paths.hosts_path()
+        os.chmod(hp, stat.S_IREAD)                                        # the read-only attribute: refused even for an admin
+        try:
+            with self.assertRaises(hosts.HostsError) as cm: hosts.apply(flush=False)
+        finally: os.chmod(hp, stat.S_IWRITE | stat.S_IREAD)
+        msg = str(cm.exception)
+        self.assertIn('read-only attribute', msg); self.assertIn('was not changed', msg); self.assertNotIn('rollback failed', msg)
+        self.assertEqual(open(hp, 'rb').read().decode(), orig)
+
     def test_refuses_foreign_non_loopback_mapping(self):
         put(WIN_HOSTS + f'203.0.113.9 {paths.HOST}\r\n')
         with self.assertRaises(hosts.HostsError): hosts.apply(flush=False)
@@ -102,6 +113,18 @@ class ProcTests(unittest.TestCase):
         s = socket.socket(); s.bind(('127.0.0.1', 0)); s.listen(1); port = s.getsockname()[1]
         try: self.assertTrue(any(o['pid'] == os.getpid() for o in procs.port_owner(port)))
         finally: s.close()
+
+    def test_port_owner_survives_undecodable_and_localised_netstat(self):
+        # a non-English Windows prints bytes the ANSI codepage cannot decode: subprocess then returns stdout=None (no exception) -> used to crash with
+        # "'NoneType' object has no attribute 'splitlines'" in Start session, Doctor and proxy start
+        import subprocess as sp
+        from unittest import mock
+        none = sp.CompletedProcess([], 0, stdout=None, stderr='')
+        with mock.patch.object(procs.subprocess, 'run', return_value=none): self.assertEqual(procs.port_owner(8443), [])
+        fr = ('  Proto  Adresse locale   Adresse distante   État   PID\n  TCP    127.0.0.1:8443   0.0.0.0:0   ÉCOUTE   4242\n'
+              '  TCP    127.0.0.1:8443   127.0.0.1:50000   ÉTABLI   4242\n')
+        with mock.patch.object(procs.subprocess, 'run', return_value=sp.CompletedProcess([], 0, stdout=fr, stderr='')), mock.patch.object(procs, '_pid_name', return_value='x.exe'):
+            self.assertEqual(procs.port_owner(8443), [dict(addr='127.0.0.1', pid=4242, name='x.exe')])   # state word ignored, established sockets not listed
 
     def test_image_running(self):
         self.assertIn('python.exe', procs.image_running('python.exe', 'definitely-not-a-process.exe'))

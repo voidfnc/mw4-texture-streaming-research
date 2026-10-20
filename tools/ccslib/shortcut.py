@@ -8,13 +8,13 @@ def create(folder=None, name='CCS Control'):
     py = paths.PY; pyw = os.path.join(os.path.dirname(py), 'pythonw.exe'); target = pyw if os.path.exists(pyw) else py
     script = os.path.join(paths.TOOLS, 'ccsgui.py')
     if folder is None:
-        folder = subprocess.run(['powershell', '-NoProfile', '-Command', "[Environment]::GetFolderPath('Desktop')"], capture_output=True, text=True, timeout=30,
+        folder = subprocess.run(['powershell', '-NoProfile', '-Command', "[Environment]::GetFolderPath('Desktop')"], capture_output=True, text=True, errors='replace', timeout=30,
                                 creationflags=procs.CREATE_NO_WINDOW).stdout.strip()
     if not folder or not os.path.isdir(folder): raise OSError('desktop folder not found')
     lnk = os.path.join(folder, name + '.lnk')
     ps = ("$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:CCS_LNK);$s.TargetPath=$env:CCS_TARGET;$s.Arguments='\"'+$env:CCS_SCRIPT+'\"';"
           "$s.WorkingDirectory=$env:CCS_WD;$s.Description='MW4 Texture Streaming Toolkit';$s.Save()")
-    r = subprocess.run(['powershell', '-NoProfile', '-Command', ps], capture_output=True, text=True, timeout=30, creationflags=procs.CREATE_NO_WINDOW,
+    r = subprocess.run(['powershell', '-NoProfile', '-Command', ps], capture_output=True, text=True, errors='replace', timeout=30, creationflags=procs.CREATE_NO_WINDOW,
                        env=dict(os.environ, CCS_LNK=lnk, CCS_TARGET=target, CCS_SCRIPT=script, CCS_WD=paths.TOOLS))
     if r.returncode != 0 or not os.path.exists(lnk): raise OSError((r.stderr or r.stdout).strip() or 'shortcut creation failed')
     return lnk

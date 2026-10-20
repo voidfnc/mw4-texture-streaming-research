@@ -10,7 +10,7 @@ Rules: never touch other lines (except adopting our own hand-added loopback line
 timestamped backup before every write; in-place write (keeps the file's ACL) with read-back verify + rollback;
 refuse to replace a foreign mapping of HOST to a non-loopback address unless force=True.
 """
-import difflib, glob, os, re, shutil, socket, subprocess, time
+import difflib, glob, os, re, shutil, socket, stat, subprocess, time
 from . import paths
 
 BEGIN = '# >>> ccs-managed (MW4 texture CDN loopback) >>>'
@@ -132,14 +132,26 @@ def list_backups():
     return sorted(glob.glob(os.path.join(paths.HOSTS_BACKUPS, 'hosts.*')), reverse=True)
 
 
+def _denied_hint(p):
+    """Why a write to the hosts file may be refused even when running as admin."""
+    try:
+        if os.stat(p).st_file_attributes & stat.FILE_ATTRIBUTE_READONLY:
+            return f'the hosts file has the read-only attribute set (clear it with: attrib -r "{p}")'
+    except (OSError, AttributeError): pass
+    return 'something is blocking writes to it - usually security software with hosts-file protection (pause it, or allow python.exe), or a changed file ACL'
+
+
 def write(new_text, path=None):
     """Backup, write in place, read back and verify; roll back on mismatch. Returns the backup path."""
     p = path or paths.hosts_path()
     old = open(p, 'rb').read()
     bk = backup(p)
     data = new_text.encode('utf-8')
+    try: f = open(p, 'wb')
+    except PermissionError as e:       # refused before anything was truncated: nothing to roll back
+        raise HostsError(f'cannot write {p} ({e}); {_denied_hint(p)}. The file was not changed; backup at {bk}')
     try:
-        with open(p, 'wb') as f: f.write(data)
+        with f: f.write(data)
         if open(p, 'rb').read() != data: raise HostsError('read-back mismatch')
     except Exception as e:
         try:
@@ -179,7 +191,7 @@ def restore_backup(name, path=None, flush=True):
 
 def flush_dns():
     try:
-        r = subprocess.run(['ipconfig', '/flushdns'], capture_output=True, text=True, timeout=20, creationflags=0x08000000)
+        r = subprocess.run(['ipconfig', '/flushdns'], capture_output=True, text=True, errors='replace', timeout=20, creationflags=0x08000000)
         return r.returncode == 0
     except Exception:
         return False

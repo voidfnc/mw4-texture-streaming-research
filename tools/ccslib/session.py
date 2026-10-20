@@ -104,7 +104,7 @@ def run_fix(cfg, fix, say=print):
         proxyctl.start_proxy(cfg); return _wait_proxy_ready(port, say)
     if act == 'kill_port_owner':
         for pid, name in arg:
-            r = subprocess.run(['taskkill', '/PID', str(pid), '/F'], capture_output=True, text=True, creationflags=procs.CREATE_NO_WINDOW)
+            r = subprocess.run(['taskkill', '/PID', str(pid), '/F'], capture_output=True, text=True, errors='replace', creationflags=procs.CREATE_NO_WINDOW)
             say(f'killed {name} pid {pid}: ' + ('ok' if r.returncode == 0 else (r.stdout + r.stderr).strip()))
         return True, 'port owner(s) terminated'
     return False, f'unknown fix {act}'

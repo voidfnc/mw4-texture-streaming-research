@@ -21,6 +21,27 @@ LOG_SOURCES = (('proxy', proxyctl.PROXY_LOG), ('guard', proxyctl.GUARD_LOG), ('m
                ('gui', os.path.join(paths.WORK, 'ccsgui.log')))
 
 
+HOSTS_HINT = ('Permission denied? The hosts file is protected on purpose. Things that block this tool even as admin: the read-only attribute (attrib -r on the hosts file), or security software with hosts-file protection (pause it for a moment or allow python.exe). The tool never turns off security software and never changes file permissions for you; a failed write leaves the file unchanged. See docs/USAGE.md, Troubleshooting.')
+
+
+class Tip:
+    """Small hover tooltip (one per widget)."""
+    def __init__(self, widget, text, delay=500, wrap=360):
+        self.w, self.text, self.delay, self.wrap, self.win, self.job = widget, text, delay, wrap, None, None
+        widget.bind('<Enter>', self._enter, add='+'); widget.bind('<Leave>', self._hide, add='+'); widget.bind('<ButtonPress>', self._hide, add='+')
+
+    def _enter(self, _e=None): self._hide(); self.job = self.w.after(self.delay, self._show)
+
+    def _show(self):
+        self.win = tk.Toplevel(self.w); self.win.wm_overrideredirect(True)
+        self.win.wm_geometry(f'+{self.w.winfo_rootx() + 12}+{self.w.winfo_rooty() + self.w.winfo_height() + 6}')
+        tk.Label(self.win, text=self.text, justify='left', wraplength=self.wrap, bg=PANEL, fg=FG, relief='solid', borderwidth=1, padx=8, pady=6, font=('Segoe UI', 9)).pack()
+
+    def _hide(self, _e=None):
+        if self.job: self.w.after_cancel(self.job); self.job = None
+        if self.win: self.win.destroy(); self.win = None
+
+
 def fmt_dur(s):
     s = int(s); return f'{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}'
 
@@ -528,8 +549,8 @@ class App(tk.Tk):
         self.hosts_lbl = ttk.Label(f, text='', style='H.TLabel'); self.hosts_lbl.pack(anchor='w', pady=(10, 2))
         ttk.Label(f, text=f'File: {paths.hosts_path()}   Only the marked CCS block is ever modified; a backup is written before each change.', style='Dim.TLabel').pack(anchor='w')
         row = ttk.Frame(f); row.pack(fill='x', pady=8)
-        ttk.Button(row, text='Apply override (UAC)', style='Accent.TButton', command=self.do_hosts_apply).pack(side='left', padx=4)
-        ttk.Button(row, text='Remove override (UAC)', style='Danger.TButton', command=self.do_hosts_remove).pack(side='left', padx=4)
+        b = ttk.Button(row, text='Apply override (UAC)', style='Accent.TButton', command=self.do_hosts_apply); b.pack(side='left', padx=4); Tip(b, HOSTS_HINT)
+        b = ttk.Button(row, text='Remove override (UAC)', style='Danger.TButton', command=self.do_hosts_remove); b.pack(side='left', padx=4); Tip(b, HOSTS_HINT)
         ttk.Button(row, text='Test resolution', command=self.do_resolve).pack(side='left', padx=4)
         ttk.Button(row, text='Flush DNS (UAC)', command=lambda: self.bg('flush dns', self._hosts_simple, 'flush')).pack(side='left', padx=4)
         ttk.Button(row, text='Open hosts folder', command=lambda: os.startfile(os.path.dirname(paths.hosts_path()))).pack(side='left', padx=4)
