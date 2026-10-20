@@ -63,13 +63,14 @@ def keys_ok(keys):
     return all(keys.get(k) == v for k, v in WANT)
 
 
-def set_keys(text):
-    """`text` with offline=0 and disable_lan_only=1 in [main::connectivity]. Other lines, comments, other sections, the line endings and a BOM are kept."""
-    bom, lines = _split(text); nl = '\r\n' if '\r\n' in text else ('\n' if '\n' in text else '\r\n'); want = dict(WANT)
+def set_keys(text, want=WANT, drop=()):
+    """`text` with the `want` keys (default: offline=0 and disable_lan_only=1) set in [main::connectivity] and the `drop` keys removed from it. Other lines, comments, other
+    sections, the line endings and a BOM are kept."""
+    bom, lines = _split(text); nl = '\r\n' if '\r\n' in text else ('\n' if '\n' in text else '\r\n'); wd = dict(want); dropped = {k.lower() for k in drop}
     out = []; inside = found = False; seen = set(); start = 0
     def close_section():
         """Add the keys the section did not have, after its last non-blank line."""
-        add = [f'{k}={v}{nl}' for k, v in WANT if k not in seen]
+        add = [f'{k}={v}{nl}' for k, v in want if k not in seen]
         if not add: return
         at = len(out)
         while at > start and not out[at - 1].strip(): at -= 1
@@ -83,13 +84,25 @@ def set_keys(text):
             out.append(line); continue
         if inside and '=' in line and not line.lstrip().startswith((';', '#')):
             k = line.split('=', 1)[0].strip().lower()
-            if k in want: out.append(f'{k}={want[k]}' + (line[len(line.rstrip('\r\n')):] or nl)); seen.add(k); continue
+            if k in wd: out.append(f'{k}={wd[k]}' + (line[len(line.rstrip('\r\n')):] or nl)); seen.add(k); continue
+            if k in dropped: continue
         out.append(line)
     if inside: close_section()
-    if not found:
+    if not found and want:
         if out and not out[-1].endswith(('\n', '\r')): out[-1] += nl
-        out += [f'[{SECTION}]{nl}'] + [f'{k}={v}{nl}' for k, v in WANT]
-    return ('﻿' if bom else '') + ''.join(out)
+        out += [f'[{SECTION}]{nl}'] + [f'{k}={v}{nl}' for k, v in want]
+    return ('\ufeff' if bom else '') + ''.join(out)
+
+
+def restore_keys(text, original):
+    """`text` with the two keys back to what `original` (their values before the setup, from read_keys of the backup) had; a key that was not there is removed again.
+    Everything else in `text`, including edits made since, stays."""
+    return set_keys(text, want=[(k, original[k]) for k, _ in WANT if k in original], drop=[k for k, _ in WANT if k not in original])
+
+
+def only_headers(text):
+    """True when `text` has nothing but blank lines and section headers."""
+    return all(not l.strip() or _SECTION_RE.match(l.strip()) for l in _split(text)[1])
 
 
 def _read(path):
@@ -108,9 +121,13 @@ def _write(path, text):
 
 
 def _backup_once(path, backup):
-    """Copy the original aside the first time only; written through a temporary name so an interrupted copy is never mistaken for a backup."""
-    if os.path.exists(path) and not os.path.exists(backup):
-        shutil.copy2(path, backup + '.tmp'); os.replace(backup + '.tmp', backup)
+    """Keep the original the first time only (an empty backup file means the settings file did not exist). Written through a temporary name, so an interrupted copy is
+    never mistaken for a backup."""
+    if os.path.exists(backup): return
+    tmp = backup + '.tmp'
+    if os.path.exists(path): shutil.copy2(path, tmp)
+    else: open(tmp, 'wb').close()
+    os.replace(tmp, backup)
 
 
 # ------------------------------------------------------------------------------------------------ the cache link
@@ -158,9 +175,11 @@ def status(root=None, check_game=True):
     L = layout(root); s = dict(L, applicable=False, why='', ok=True, config_ok=True, keys={}, problems=[], game_running=False, link_state='missing')
     if not os.path.isdir(L['settings']):
         s['why'] = 'no sp26/steam_settings folder in the game folder, so nothing to set up'; return s
+    if os.path.normcase(os.path.normpath(paths.XPAK_CACHE)) == os.path.normcase(L['link']):
+        s['why'] = 'the engine cache folder setting points at sp26\\xpak_cache itself, so it is not linked to anything else (change that setting first)'; return s
     s['applicable'] = True
     if check_game:
-        try: s['game_running'] = bool(procs.image_running(*paths.GAME_EXES))
+        try: s['game_running'] = bool(procs.image_running(*dict.fromkeys(tuple(paths.GAME_EXES) + tuple(paths.DEFAULT_EXES))))
         except Exception: pass
     try: s['keys'] = read_keys(_read(L['config'])) if os.path.exists(L['config']) else {}
     except OSError as e: s['keys'] = {}; s['problems'].append(f'cannot read {CONFIG_NAME}: {e}')
@@ -224,13 +243,20 @@ def apply(root=None):
 
 
 def undo(root=None):
-    """Put the settings file back from its backup and remove the link (only a link, never a real folder). -> dict(done=[...], notes=[...])."""
+    """Put the two settings back to what they were before (from the backup; edits made since to other lines stay) and remove the link (only a link, never a real
+    folder). -> dict(done=[...], notes=[...])."""
     s = status(root)
     if not s['applicable']: raise NotApplicable(s['why'])
     if s['game_running']: raise GameBusy('the game is running: close it first')
     done = []; notes = []
     if os.path.exists(s['backup']):
-        shutil.copy2(s['backup'], s['config']); os.remove(s['backup']); done.append(CONFIG_NAME)
+        text = _read(s['config']) if os.path.exists(s['config']) else ''
+        if '\x00' in text: raise OSError(f'{CONFIG_NAME} is not a plain text file (UTF-16?): edit it by hand, see docs/USAGE.md')
+        was = _read(s['backup']); new = restore_keys(text, read_keys(was))
+        if os.path.exists(s['config']) and new != text and not os.access(s['config'], os.W_OK): raise OSError(f'{CONFIG_NAME} is read-only: clear the read-only attribute (file properties) and try again')
+        if os.path.exists(s['config']) and not was.strip() and only_headers(new): os.remove(s['config'])        # it did not exist before: it does not exist now
+        elif new != text: _write(s['config'], new)
+        os.remove(s['backup']); done.append(CONFIG_NAME)
     else: notes.append('no backup of ' + CONFIG_NAME + ' was found, so it was left as it is')
     if s['link_state'] == 'ok' and is_reparse(s['link']): os.rmdir(s['link']); done.append('sp26\\xpak_cache')
     elif s['link_state'] in ('wrong', 'broken'): notes.append('sp26\\xpak_cache is a link this tool did not make, so it was left as it is')
@@ -247,22 +273,32 @@ def describe(s):
     return '; '.join(s['problems']) + (' (close the game first)' if s['game_running'] else '')
 
 
-def apply_elevating(root=None, say=print):
-    """Apply; when the game folder needs administrator rights run the same command elevated (one Windows prompt). -> (ok, message)."""
-    try: r = apply(root)
+def run_elevating(cmd, root=None, say=print):
+    """Run `apply` or `undo`; when the game folder needs administrator rights run the same command elevated (one Windows prompt). -> (ok, message)."""
+    try: r = (apply if cmd == 'apply' else undo)(root)
     except (NotApplicable, GameBusy) as e: return False, str(e)
     except PermissionError:
         rf = os.path.join(paths.RUN, 'gamefix-result.json'); paths.ensure_dirs()
         if os.path.exists(rf): os.remove(rf)
         say('game setup: the game folder needs administrator rights, asking Windows for permission')
-        argv = launch.argv_for('gamefix', 'apply', '--root', layout(root)['root'], '--result-file', rf); code = procs.run_elevated(argv)
+        argv = launch.argv_for('gamefix', cmd, '--root', layout(root)['root'], '--result-file', rf); code = procs.run_elevated(argv)
         if code is None: return False, 'permission was declined: nothing was changed'
         try:
             with open(rf, encoding='utf-8') as f: res = json.load(f)
         except (OSError, ValueError): return False, f'the elevated run ended with code {code} and no result'
         return bool(res.get('ok')), res.get('message') or res.get('error') or ''
     except OSError as e: return False, str(e)
-    return True, _message(r)
+    return True, _message(r) if cmd == 'apply' else _undo_message(r)
+
+
+def apply_elevating(root=None, say=print): return run_elevating('apply', root, say)
+
+
+def undo_elevating(root=None, say=print): return run_elevating('undo', root, say)
+
+
+def _undo_message(r):
+    return ('restored: ' + ', '.join(r['done']) if r['done'] else 'nothing to undo') + ''.join('; ' + n for n in r['notes'])
 
 
 def _message(r):
@@ -277,7 +313,7 @@ def main(argv=None):
     try:
         if a.cmd == 'status': s = status(a.root); res.update(status=s, message=describe(s), ok=s['ok'] or not s['applicable'])
         elif a.cmd == 'apply': r = apply(a.root); res.update(message=_message(r), done=r['done'], aside=r['aside'], ok=True)
-        else: r = undo(a.root); res.update(message=('restored: ' + ', '.join(r['done']) if r['done'] else 'nothing to undo') + ''.join('; ' + n for n in r['notes']), done=r['done'])
+        else: r = undo(a.root); res.update(message=_undo_message(r), done=r['done'])
     except PermissionError as e: res.update(ok=False, error=f'permission denied (run as administrator): {e}', message=str(e))
     except (NotApplicable, GameBusy, OSError) as e: res.update(ok=False, error=str(e), message=str(e))
     if a.result_file:

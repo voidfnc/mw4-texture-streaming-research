@@ -1170,12 +1170,13 @@ class App(tk.Tk):
             tk.Label(self.doc_frame, text='●', fg=col[r['level']], bg=BG, font=('Segoe UI', 12)).grid(row=i, column=0, padx=(8, 4), pady=3, sticky='n')
             ttk.Label(self.doc_frame, text=r['name'], style='H.TLabel', width=20).grid(row=i, column=1, sticky='nw', pady=3)
             ttk.Label(self.doc_frame, text=r['detail'], wraplength=640, justify='left').grid(row=i, column=2, sticky='nw', pady=3, padx=6)
-            if r.get('fix'): ttk.Button(self.doc_frame, text='Fix: ' + {'hosts_apply': 'apply hosts (UAC)', 'flush_dns': 'flush DNS (UAC)', 'start_proxy': 'start proxy', 'restart_proxy': 'restart proxy', 'kill_port_owner': 'stop port owner', 'game_fix': 'set up the game'}[r['fix'][0]],
+            if r.get('fix'): ttk.Button(self.doc_frame, text='Fix: ' + {'hosts_apply': 'apply hosts (UAC)', 'flush_dns': 'flush DNS (UAC)', 'start_proxy': 'start proxy', 'restart_proxy': 'restart proxy', 'kill_port_owner': 'stop port owner', 'game_fix': 'set up the game', 'game_undo': 'undo the game setup'}[r['fix'][0]],
                                            command=lambda fx=r['fix'], n=r['name']: self.do_fix(fx, n)).grid(row=i, column=3, padx=8, pady=2, sticky='ne')
         self.doc_frame.columnconfigure(2, weight=1)
 
     def do_fix(self, fix, name):
         if fix[0] == 'game_fix': return self.do_game_setup()
+        if fix[0] == 'game_undo': return self.do_game_undo()
         if fix[0] == 'kill_port_owner':
             who = ', '.join(f'{n} (pid {p})' for p, n in fix[1])
             if not messagebox.askyesno('Stop port owner', f'Terminate {who}?\n\nOnly do this if it is a stale proxy or something you do not need.', parent=self): return
@@ -1202,6 +1203,19 @@ class App(tk.Tk):
             if ok: self.q.put(('ask', lambda: messagebox.showinfo('Game setup', 'Done: ' + msg + '\n\nStart (or restart) the game from its launcher now.', parent=self)))
             else: self.q.put(('ask', lambda: messagebox.showerror('Game setup', 'The setup could not be finished (the Doctor shows what is still missing):\n\n' + msg, parent=self)))
         self.bg('game setup', go)
+
+    def do_game_undo(self):
+        """Put the game folder back as it was before the setup (after a confirmation); the Doctor is refreshed afterwards."""
+        s = gamefix.status()
+        if s['game_running']: messagebox.showinfo('Undo game setup', 'The game is running. Close it, then try again.', parent=self); return
+        if not messagebox.askyesno('Undo game setup',
+                                   'This puts the two settings in configs.main.ini back to what they were before (your other edits to that file stay) and removes the sp26\\xpak_cache link. '
+                                   "The game's real cache is not touched.\n\nWindows may ask for permission if the game is in Program Files.\n\nContinue?", parent=self): return
+        def go():
+            ok, msg = session.run_fix(self.cfg, ('game_undo', None), self.say); self.say(f"undo game setup: {'ok' if ok else 'FAILED'} - {msg}", 'OK' if ok else 'ERR')
+            self._gfc = None
+            self.q.put(('ask', lambda: (messagebox.showinfo if ok else messagebox.showerror)('Undo game setup', msg, parent=self))); self.do_doctor(switch=False)
+        self.bg('undo game setup', go)
 
     def do_bundle(self):
         def go():

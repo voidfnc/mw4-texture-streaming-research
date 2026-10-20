@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+- **Game setup: a better undo.** It puts only the two settings back (to their earlier values, or removes them if they were not there; a settings file that did not exist is removed),
+  so other edits to `configs.main.ini` since then stay. It asks Windows for permission when the game folder needs it, and the Doctor's *Game setup* row has an *Undo the game setup*
+  button after a setup made by this tool.
+- The game-running check also knows the default game process names when the setting was edited, and the setup is not offered when the engine cache folder setting points at
+  `sp26\xpak_cache` itself.
+
 ## 0.2.1-beta
 **Game setup: helps the game use the textures it is sent.** One new check and one-click fix, nothing else changes.
 

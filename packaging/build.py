@@ -85,8 +85,10 @@ def smoke(app, v):
     fake = os.path.join(tmp, 'game'); os.makedirs(os.path.join(fake, 'sp26', 'steam_settings')); os.makedirs(os.path.join(fake, 'xpak_cache'))
     open(os.path.join(fake, 'sp26', 'steam_settings', 'configs.main.ini'), 'w').write('[main::connectivity]\noffline=1\n')
     c, out, _ = call('--ccs-run', 'gamefix', 'status', '--root', fake); check(c == 1 and 'offline mode' in out, 'game setup sees an offline game folder')
-    c, out, _ = call('--ccs-run', 'gamefix', 'apply', '--root', fake); c2, _, _ = call('--ccs-run', 'gamefix', 'status', '--root', fake); check(c == 0 and c2 == 0, 'game setup applies (settings file + cache link)')
-    c, out, _ = call('--ccs-run', 'gamefix', 'undo', '--root', fake); check(c == 0 and not os.path.lexists(os.path.join(fake, 'sp26', 'xpak_cache')), 'game setup undoes it and leaves the real cache')
+    if 'sp26-cod.exe' in subprocess.run(['tasklist'], capture_output=True, text=True, errors='replace').stdout.lower(): print('  skip game setup apply/undo: the game is running (it refuses to change anything then, as it should)')
+    else:
+        c, out, _ = call('--ccs-run', 'gamefix', 'apply', '--root', fake); c2, _, _ = call('--ccs-run', 'gamefix', 'status', '--root', fake); check(c == 0 and c2 == 0, 'game setup applies (settings file + cache link)')
+        c, out, _ = call('--ccs-run', 'gamefix', 'undo', '--root', fake); check(c == 0 and not os.path.lexists(os.path.join(fake, 'sp26', 'xpak_cache')), 'game setup undoes it and leaves the real cache')
     port = 18000 + os.getpid() % 1000; log = os.path.join(tmp, 'proxy.log')
     p = subprocess.Popen([cli, '--ccs-run', 'ccsproxy', '--port', str(port), '--offline', '--log', log, '--stats-json', os.path.join(tmp, 'stats.json')], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     try:

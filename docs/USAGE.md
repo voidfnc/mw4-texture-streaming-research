@@ -118,11 +118,16 @@ fails after a folder was moved aside, the folder is moved back.
 ```
 ccs-cli.exe --ccs-run gamefix status       what is set now (from source: python tools\ccs.py --ccs-run gamefix status)
 ccs-cli.exe --ccs-run gamefix apply        make both changes
-ccs-cli.exe --ccs-run gamefix undo         put the settings file back from its backup and remove the link (a real folder is never removed)
+ccs-cli.exe --ccs-run gamefix undo         put the two settings back to what they were and remove the link (a real folder is never removed)
 ```
 
 Doing it by hand gives the same result: edit `configs.main.ini` as above, and in a Command Prompt in the game folder run `mklink /J sp26\xpak_cache xpak_cache`.
-Online mode means the emulator no longer reports offline, so it may try to reach the network; if you would rather not, run `undo`.
+Online mode means the emulator no longer reports offline, so it may try to reach the network; if you would rather not, undo it: after a setup made by this tool the
+Doctor's *Game setup* row has an *Undo the game setup* button (it asks first, and asks Windows for permission only if needed), or run `undo`. Undo changes only
+`offline` and `disable_lan_only` back to their earlier values (or removes them again if they were not there; a settings file that did not exist is removed), so any other edit you made to
+the file since stays. It removes `sp26\xpak_cache` only when it is a link to `xpak_cache`, never a real folder.
+
+The setup is not offered when the *Engine cache folder* setting (Game tab) points at `sp26\xpak_cache` itself; change that setting first.
 
 ## Tabs
 
