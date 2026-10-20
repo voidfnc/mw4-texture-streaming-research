@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- **Docs:** `docs/FINDINGS.md` has a new section 9 on the game folder settings (online mode and the cache link) with what was observed in one session, what was not tested separately, and
+  what is still unchecked. No program change. (One older changelog line no longer refers to where a fix came from.)
+
 ## 0.2.5-beta
 **The installer installs for all users by default.** "For me only" stays an option on its first screen.
 
@@ -114,7 +118,7 @@ Fixes for slow mirror downloads (a user on a 100 Mbit/s line saw about 1 Mbit/s)
 - 8 new tests (99 in total). The GUI tests free their Tk objects on the main thread, which fixes an occasional crash of the combined test run.
 
 ## 0.1.1-beta
-Fixes from a user report (non-English Windows, hosts file protected).
+Fixes for non-English Windows and a protected hosts file.
 
 - Start session, Doctor and proxy start no longer crash with `'NoneType' object has no attribute 'splitlines'`. Output of `netstat` and other Windows tools is now
   decoded tolerantly, and the port check no longer depends on the English word `LISTENING`.

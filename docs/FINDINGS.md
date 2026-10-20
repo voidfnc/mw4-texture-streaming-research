@@ -76,11 +76,38 @@ counts refused requests and how often the same id is asked for again, which is h
 - **Hand-built caches.** I wrote a throw-away tool that builds cache shards from a mirror in the engine's format. I never got far enough to show that the engine
   accepts such a cache (the commit value mentioned above is the likely obstacle), and the tool is not part of this release.
 - **A second machine.** The IPv6-only behaviour is reproduced on one PC and one ISP. Reports from other setups would help a lot.
-- **Online modes.** I only used the single-player campaign and did not look at anything that talks to online services.
+- **Online modes.** I only used the single-player campaign and did not look at what the game's online connections carry (see section 9: with the emulator in online mode
+  the game opens several outbound HTTPS connections).
 - **An occasional crash** in the campaign (once, in the user-interface layer of one mission) did not recur in later sessions and I have no evidence it is related.
 
 ## 8. Reproducing
 
 1. Check whether you are affected: run the DNS-Client capture and `pktmon` as in [ISSUE-ipv6-cdn-lookup.md](ISSUE-ipv6-cdn-lookup.md).
-2. Install the toolkit as described in the README, start a session from the control window, and play. The *Report* tab writes a summary after every game launch.
+2. Install the toolkit as described in the README. If the game runs through a Steam emulator (a `sp26\steam_settings` folder), let the Doctor's *Game setup* row set it up
+   (section 9), then start a session from the control window and play. The *Report* tab writes a summary after every game launch.
 3. Compare the report's tier table and cache section with your own numbers.
+
+## 9. A second layer: the game folder settings on a repack
+
+On my PC the game is a repack that runs through a Steam emulator, and even with the proxy working I could see requests being answered while the result in the game was
+not what I expected. Two things in the game folder looked wrong:
+
+- **The emulator was in offline mode.** `sp26\steam_settings\configs.main.ini` had `offline=1`.
+- **Two cache locations.** The cache lived in `xpak_cache` in the game's root folder, and there was no `sp26\xpak_cache`, the folder next to the game's executable.
+
+I changed both together: `offline=0` and `disable_lan_only=1` in that file, and `sp26\xpak_cache` as a directory junction to `xpak_cache`. The toolkit's *Game setup* does exactly this
+(with a backup of the settings file and an undo). I did not test the two changes separately, so I cannot say which one matters, or whether both do.
+
+What I saw in one session afterwards (2560x1440, the single-player campaign, a complete local mirror of all 103,631 chunks, about 44 active minutes):
+
+- With the emulator online, the game opened four outbound HTTPS connections, a listener on a local port and a UDP socket. I did not look at what they carry.
+- The game made 4,543 requests (4,505 distinct chunks), all answered from the mirror (4.32 GiB), with no errors and no chunk missing from the mirror. 378 distinct chunks were above 4 MiB:
+  187 in the 8 MiB class and 191 in the 16 MiB class, none above 16 MiB. The earlier sessions in section 4 had different content and a different length, so the request counts are
+  not comparable.
+- Only a few requests a minute (one burst of 81) in the first twelve minutes (menus and shader preload), then 470 to 600 requests a minute for about five minutes when I loaded into gameplay,
+  then mostly 30 to 200 a minute. A first launch of about two minutes in the same sitting sent no requests at all, so reaching gameplay may be needed before streaming starts; I have not tested that.
+- The engine cache grew by 4,500 distinct ids, and 4,489 of the 4,505 requested ids were in it afterwards. By eye the textures looked as expected during play; as in section 7, this is not
+  a controlled comparison.
+
+What I have not checked: whether a second session asks for fewer chunks now that the cache holds them (the report's "already in cache" figure will show it), whether the same two changes help
+on a machine whose game does not run through a Steam emulator, and whether the online mode has any other effect on the game.
