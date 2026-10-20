@@ -12,7 +12,7 @@ also a short test to compare it on your own PC.
 
 ## Install
 
-Download from the [Releases page](https://github.com/voidfnc/mw4-texture-streaming-research/releases/latest) and pick one:
+Download from the [Releases page](https://github.com/voidfnc/mw4-texture-streaming-research/releases) and pick one:
 
 - **The installer** (`...-Setup.exe`, recommended): double-click, accept the notice, press Next and Install. It installs for you only, so Windows does not ask for an administrator
   password; "for all users" is an option on its first screen. It adds a Start menu entry (and a desktop shortcut if you leave that ticked) and a normal uninstall entry in

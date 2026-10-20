@@ -34,7 +34,7 @@ unmodified game start streaming. The whole story, with the captures that show it
 - **Mirror** (`tools/ccsmirror.py`): downloads the chunks once, checks each one (size and MD5 against the server's ETag), and can be paused and resumed. You can
   limit bandwidth, set a daily quota, pick a detail level, and it waits patiently if your connection drops. Defaults are deliberately gentle (4 connections, 50
   requests per second, a User-Agent that names the tool, back-off on HTTP 429/503).
-- **Control window** (`tools/ccsgui.py`, started with `tools\ccs-gui.bat`): one place for all of the above, plus a doctor that checks your setup, live
+- **Control window** (`tools/ccsgui.py`; in the installer and the zip it is `MW4 Texture Streaming.exe`): one place for all of the above, plus a doctor that checks your setup, live
   statistics, and a report for every game session (what the game asked for, how fast, how much was already in its cache).
 - **Guided setup and Simple view**: an optional checklist that finds your game folder, checks the PC and ticks each step off, with hover help, plain-language help cards
   for the usual failures and a before/after test. New here? See [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
@@ -45,7 +45,7 @@ The proxy and mirror never touch the game process. Details of how the pieces fit
 
 ## Download
 
-Pick one. The files are on the [Releases page](https://github.com/voidfnc/mw4-texture-streaming-research/releases/latest).
+Pick one. The files are on the [Releases page](https://github.com/voidfnc/mw4-texture-streaming-research/releases) (while the versions are betas they are marked *Pre-release*).
 
 | | What you get | Who it is for |
 |---|---|---|
@@ -67,7 +67,7 @@ offers the shortcuts. Cancelling at any point installs nothing.
 ![Shortcut options](docs/images/installer-3-options.png)
 
 **The program.** Screenshots of version **0.2.0-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them. They are
-regenerated for each release with `python tools\make_screenshots.py`, so the version in the title bar is the version they belong to.
+regenerated for each release (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`), so the version in the title bar is the version they belong to.
 
 **Guided setup in Simple view**: the checklist ticks the steps it can verify and highlights the next button (here *Start session*).
 
@@ -106,13 +106,13 @@ The tests don't need the game: `python -m unittest discover -s tools/tests` (196
 
 ## If something doesn't work
 
-Most problems show up in the *Doctor* tab, which tells you what is wrong and offers a fix. Two I have seen from real users:
+Most problems show up in the *Doctor* tab, which tells you what is wrong and offers a fix. Problems that have come up:
 
 **"Permission denied" when the hosts file is written.** Windows protects that file on purpose, and a write can be refused even when the window says it runs as
 administrator. The usual causes are the read-only attribute on the file (run `attrib -r "%SystemRoot%\System32\drivers\etc\hosts"` in an admin Command Prompt) or
-security software with hosts-file protection (pause it briefly or allow `python.exe`, apply the override, turn it back on). A refused write leaves the file
+security software with hosts-file protection (pause it briefly or allow `MW4 Texture Streaming.exe` and `ccs-cli.exe`, or `python.exe` when running from source, apply the override, turn it back on). A refused write leaves the file
 untouched, and the message says so. I don't turn off anyone's security software and I don't change permissions on system files for you; that is your call. If you
-would rather not let the tool write the file at all, you can add the two lines yourself (`python tools\ccshosts.py diff apply` shows them).
+would rather not let the tool write the file at all, you can add the two lines yourself (`ccs-cli.exe --ccs-run ccshosts diff apply`, or `python tools\ccshosts.py diff apply` from source, shows them).
 
 **"'NoneType' object has no attribute 'splitlines'" when starting a session.** That was a bug on Windows installs with a non-English language, fixed in 0.1.1.
 Update to the latest version. If you still see it, open an issue with the support bundle from the Doctor tab (check its contents first).
@@ -121,7 +121,7 @@ Update to the latest version. If you still see it, open an issue with the suppor
 the candidate servers before a run and uses the fastest. Check the speed line on the Texture pack tab (it shows MiB/s and Mbps; 100 Mbps is about 11.9 MiB/s), set *My
 line speed* so it re-checks by itself, and see [docs/TEXTURE-PACK.md](docs/TEXTURE-PACK.md#download-speed). There is no hidden bandwidth cap.
 
-More in [docs/USAGE.md](docs/USAGE.md#troubleshooting). To put your hosts file back to how it was, run `tools\restore-hosts.bat`.
+More in [docs/USAGE.md](docs/USAGE.md#troubleshooting). To put your hosts file back to how it was, use *Restore hosts* (Start menu, or `Restore hosts.bat` next to the program; from source `tools\restore-hosts.bat`).
 
 ## What I know and what I don't
 
