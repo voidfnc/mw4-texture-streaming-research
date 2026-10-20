@@ -5,7 +5,7 @@ stop():  diskguard + proxy (+ hosts per policy)
 `say(msg)` is a callback for progress lines. Hosts writes go through tools/ccshosts.py elevated via UAC.
 """
 import json, os, subprocess, sys, time
-from . import config, doctor, hosts, logrot, paths, procs, proxyctl
+from . import config, doctor, hosts, logrot, paths, procs, proxyctl, upstream
 
 SESSION_FILE = lambda: os.path.join(paths.RUN, 'session.json')
 
@@ -38,6 +38,8 @@ def start(cfg, say=print):
     paths.ensure_dirs(); paths.reload(); eff = config.effective(cfg); port = eff['proxy']['port']
     bad = [r for r in paths.validate() if r['level'] == 'fail']
     if bad: return False, 'setup needed - ' + '; '.join(f"{r['name']}: {r['detail']}" for r in bad) + '  (Game tab -> Locations)'
+    try: upstream.system_edges() and upstream.remember(upstream.system_edges())      # nearest edge, while the system resolver still gives it (the override hides it)
+    except Exception: pass
     st = hosts.status()['state']; rc = hosts.resolve_check()
     if st in ('FOREIGN', 'MIXED') and rc['ok']:
         say(f'hosts: override active as {st} lines (works; use Hosts tab -> Apply to adopt them into the managed block)')

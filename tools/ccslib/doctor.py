@@ -99,8 +99,11 @@ def check_pack(cfg):
 
 def check_upstream():
     try:
-        ip = upstream.resolve(check=False); c = http.client.HTTPConnection(ip, 80, timeout=4); c.request('HEAD', '/', headers=upstream.headers()); r = c.getresponse(); r.read(); c.close()
-        return _c('Upstream CDN', 'ok', f'edge answers (HTTP {r.status}); only needed for mirror misses')
+        ip, src = upstream.candidates_info()[0]; c = http.client.HTTPConnection(ip, 80, timeout=4); c.request('HEAD', '/', headers=upstream.headers()); r = c.getresponse(); r.read(); c.close()
+        if src == 'fallback':
+            return _c('Upstream CDN', 'warn', f'only the built-in fallback edge {ip} was found (no system or DNS answer); it may be far from you and slow. Remove the hosts override once, '
+                                              'let the tool look the name up, and it will remember the nearest edge')
+        return _c('Upstream CDN', 'ok', f'edge {ip} ({src}) answers (HTTP {r.status}); the mirror measures the candidates before it downloads')
     except Exception as e:
         return _c('Upstream CDN', 'warn', f'edge not reachable ({e}); mirror-only operation still works')
 

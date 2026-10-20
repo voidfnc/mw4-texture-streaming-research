@@ -47,6 +47,21 @@ Ideal numbers, no overhead (whole pack at Ultra is 110.7 GiB):
 | 50 Mbps | 2.6 h | 3.9 h | 5.3 h |
 | 100 Mbps | 1.3 h | 1.9 h | 2.6 h |
 
+## Download speed
+
+What decides how fast the mirror is, in order of importance:
+
+1. **Which edge server you talk to.** The CDN has many servers and the nearest one can be 10 times faster than a far one. Before a run the tool downloads two small
+   real chunks from each candidate address and keeps the fastest one that answers correctly; the log shows each test (`edge test ...`) and the pick (`run: upstream=...`).
+   The nearest address comes from your system's DNS while the hosts override is **off**, and is remembered for a week in `tools/work/edge_cache.json`. If only
+   the built-in fallback address is left, the log and the window say so, because it may be far from you. Turning the override off once and starting a run fixes that.
+2. **Connections.** Each connection fetches one chunk at a time, so a long round trip limits it. The default is 4 (the polite setting). On a long-distance link 8
+   helps (*Texture pack* tab, *Connections*). There is no hidden bandwidth cap; the only limit you can set yourself is *Download cap*, and `1` there means 1 Mbps.
+3. **Units.** The window shows MiB/s and Mbps. A 100 Mbps line is at most about 11.9 MiB/s, and 1 MiB/s is only about 8 Mbps.
+
+If you tell the tool your line speed (*My line speed*), it also watches itself: when the rate stays under 20 % of that for a minute it measures the edges again and
+switches if another one is clearly better.
+
 ## For slow or metered connections
 
 - `--limit-mbps N` caps the total download rate (shared by all connections), so you can keep using the line.

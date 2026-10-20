@@ -65,6 +65,7 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 | Game never streams, hosts light red or amber | Doctor, Fix: apply hosts (UAC). The Hosts tab's *Test resolution* should show `127.0.0.1` and `::1` |
 | *Permission denied* when writing the hosts file, even as admin | See [Hosts file: permission denied](#hosts-file-permission-denied) below |
 | *'NoneType' object has no attribute 'splitlines'* | Fixed in 0.1.1-beta (a non-English Windows printed text the old code could not decode). Update, or open an issue with the support bundle |
+| Mirror downloads are far below your line speed | Look at the `edge test` / `run: upstream=` lines in `tools\work\ccsmirror.log` and at the speed line on the Texture pack tab (it shows MiB/s **and** Mbps and the edge in use). Set *My line speed* so the tool re-checks the edge by itself, try 8 connections, and see [docs/TEXTURE-PACK.md](TEXTURE-PACK.md#download-speed) |
 | Port 80 is taken | The Doctor names the owner; the fix asks before ending it |
 | Proxy not answering | Doctor, Fix: restart proxy. The traceback is in `tools\work\run\proxy.out` |
 | Report missing | Reports are written when the game process exits; if you stopped the session first, press *Generate report* in the Report tab |

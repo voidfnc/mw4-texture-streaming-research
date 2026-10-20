@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.2-beta
+Fixes for slow mirror downloads (a user on a 100 Mbit/s line saw about 1 Mbit/s).
+
+- The mirror no longer depends on one built-in CDN address. While the hosts override is on, the old code asked `nslookup` for the edge address and could not read
+  the answer (this host lists IPv6 first, and the labels are translated on non-English Windows), so every run silently used a fixed address that can be far away.
+  Now: the system resolver's answer is remembered (`tools/work/edge_cache.json`), otherwise the tool asks public resolvers directly over UDP, and before a run it
+  downloads two small real chunks from each candidate and keeps the fastest one that answers correctly. A server that answers 403 or the wrong length is rejected.
+- A stall watchdog: with *My line speed* set, if the rate stays under 20 % of it for a minute (and it is not a cap, a quota, a lost link or a 429), the edge
+  addresses are measured again and the run switches if another one is clearly better. At most once every three minutes.
+- If only the built-in fallback address is left, the log, the Texture pack tab and the Doctor say so.
+- The progress line shows a rolling 30-second speed in MiB/s **and Mbps** (100 Mbps is about 11.9 MiB/s) and the edge address in use.
+- The "Connections" hint now matches the code (automatic is 4, not 12).
+- 8 new tests (99 in total). The GUI tests free their Tk objects on the main thread, which fixes an occasional crash of the combined test run.
+
 ## 0.1.1-beta
 Fixes from a user report (non-English Windows, hosts file protected).
 

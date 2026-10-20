@@ -23,7 +23,7 @@ Safety:   verifies len == wire size (from the URL) and md5 == ETag (ETag may be 
           not recorded as failed chunks.
 Source:   public unauthenticated CDN host only; the hosts override is bypassed by connecting to the edge IP with a Host header.
 """
-import argparse, glob, hashlib, http.client, json, os, random, re, shutil, socket, sqlite3, subprocess, sys, threading, time
+import argparse, collections, glob, hashlib, http.client, json, os, random, re, shutil, socket, sqlite3, subprocess, sys, threading, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ccslib import paths, pack, upstream, version      # locations come from the GUI settings (Game tab), not from hard-coded paths
 ROOT = paths.GAME_ROOT
@@ -112,7 +112,29 @@ def cmd_plan(a):
     print(f"scope {pl['scope']} ({', '.join(pl['packages'])}), level {pl['level']} (<= {pl['tier_mib']:g} MiB raw)\n  " + pack.describe(pl))
     for lv, b in pl['levels'].items(): print(f"  {lv:9s} {b['chunks']:7,} chunks {b['gib']:7.2f} GiB   stored {b['stored']:7,} ({b['stored_gib']:7.2f} GiB)   to download {b['pending']:7,} ({b['pending_gib']:7.2f} GiB)")
 
-def resolve_upstream(): return upstream.resolve()      # DNS via a public resolver first (the hosts override points the name at us); built-in edge address only as a last resort
+RECHECK_S = 180      # seconds between edge re-measurements by the stall watchdog
+
+
+def stalled(elapsed, since_check, line_mbps, limit_mbps, rate_mbps, throttled, state, recheck_s=RECHECK_S):
+    """True when the run is far below the user's line speed for reasons the tool can influence (not a cap, a quota, a lost link or a 429)."""
+    if not line_mbps or line_mbps <= 0 or elapsed < 90 or since_check < recheck_s or throttled or state != 'running': return False
+    if limit_mbps and limit_mbps <= line_mbps * 0.2: return False
+    return rate_mbps < line_mbps * 0.2
+
+
+def edge_tests(rows):
+    """[(path, wire_len)] for pending chunk rows: real objects used to time an edge."""
+    return [(f"/pc/iw9_3/23/{(sid & (2**64 - 1)) & 0xff:02x}/{sid & (2**64 - 1):016x}_{wire:08x}_{flag}", wire) for sid, wire, raw, flag, prio in rows]
+
+def choose_edge(port, tests):
+    """Measure every candidate edge address with real chunks. -> (ip, note, passed). `note` is non-empty when the address is a poor choice (built-in fallback, or nothing passed)."""
+    info = upstream.candidates_info(); src = dict(info); cands = [ip for ip, _ in info]
+    if not tests: return cands[0], ('built-in fallback address (may be far from you)' if upstream.is_fallback(cands[0]) else ''), False
+    best, res = upstream.pick(cands, port, tests)
+    for r in res: log(f"edge test {r['ip']} ({src[r['ip']]}): " + (f"{r['mbps']:.1f} Mbit/s in {r['secs']:.2f} s" if r['ok'] else f"rejected ({r['error']})"))
+    if best is None: return cands[0], 'no edge address passed the test, using the first candidate', False
+    return best, ('built-in fallback address (may be far from you)' if upstream.is_fallback(best) else ''), True
+
 
 class Rate:
     def __init__(self, per_s): self.per = 1.0 / per_s; self.t = time.time(); self.l = threading.Lock()
@@ -170,10 +192,15 @@ def cmd_run(a):
     c = db(); sc, pk, mask = args_scope(a); tier = args_tier(a)
     if mask: ensure_loaded(c, mask)
     elif int(meta_get(c, 'loaded', 0)) == 0 and c.execute('select count(*) from chunks').fetchone()[0] == 0: ensure_loaded(c, pack.scope_mask('sp'))
-    ip = a.upstream_ip or resolve_upstream()
     where = 'status!=1 and raw<=?'; prm = [tier * 2**20]
     if mask: where += ' and (pkgs & ?) != 0'; prm.append(mask)
     rows = c.execute(f'select id, wire, raw, flag, prio from chunks where {where} order by prio, id', prm).fetchall()
+    edge = dict(ip=a.upstream_ip, note='', checked=time.time())
+    if not edge['ip']:
+        trows = c.execute(f'select id, wire, raw, flag, prio from chunks where {where} and status=0 order by abs(wire - 262144) limit 2', prm).fetchall() if rows else []
+        edge['ip'], edge['note'], _ = choose_edge(a.upstream_port, edge_tests(trows))
+        if edge['note']: log('WARNING: ' + edge['note'] + f" - {edge['ip']}")
+    ip = edge['ip']
     qgib = sum(r[1] for r in rows) / 2**30; budget = a.budget_gib if a.budget_gib and a.budget_gib > 0 else qgib * 1.02 + 0.1
     log(f'run: upstream={ip} workers={a.workers} scope={sc or "index"} tier<={tier:g}MiB budget={budget:.1f}GiB{" (auto)" if budget != a.budget_gib else ""} min-free={a.min_free_gib}GiB'
         f'{f" limit={a.limit_mbps:g}Mbps" if a.limit_mbps else ""}{f" daily={a.daily_gib:g}GiB" if a.daily_gib else ""}')
@@ -186,7 +213,12 @@ def cmd_run(a):
     try: os.remove(stopf)                                   # stale pause request from a previous run
     except OSError: pass
     def free(): return shutil.disk_usage(MIR if os.path.isdir(MIR) else ROOT).free / 2**30     # the mirror may live on another drive than the game
-    def probe(): return upstream.probe(ip, a.upstream_port)
+    def probe(): return upstream.probe(edge['ip'], a.upstream_port)
+    hist = collections.deque(maxlen=400)         # (time, bytes) once a second: the rolling speed and the stall watchdog
+    def now_rate(window=30):
+        if len(hist) < 2: return 0.0
+        t1, b1 = hist[-1]; t0_, b0 = next(((t, b) for t, b in hist if t1 - t <= window), hist[0])
+        return (b1 - b0) / max(t1 - t0_, 1e-6)
     pen = dict(until=0.0)                       # shared slow-down: set when the CDN answers 429 / 503, honoured by every worker before its next request
     def wait_link():
         """The upstream stopped answering: wait (no chunk is marked failed) until it is back, --link-wait-s expires, or STOP."""
@@ -216,13 +248,13 @@ def cmd_run(a):
             tmp = a.progress_json + '.tmp'
             with open(tmp, 'w', encoding='utf-8') as f:
                 json.dump(dict(state=st, pid=os.getpid(), started=t0, now=time.time(), queued=total_q, left=len(q), ok=stat['ok'], fail=stat['fail'], retry=stat['retry'], throttled=stat['throttled'],
-                               bytes=stat['bytes'], mibps=stat['bytes'] / el / 2**20, free_gib=free(), budget_gib=budget, workers=a.workers, scope=sc, tier_mib=tier,
+                               bytes=stat['bytes'], mibps=stat['bytes'] / el / 2**20, mibps_now=now_rate() / 2**20, edge=edge['ip'], edge_note=edge['note'], free_gib=free(), budget_gib=budget, workers=a.workers, scope=sc, tier_mib=tier,
                                limit_mbps=a.limit_mbps or 0, daily_gib=a.daily_gib or 0, used_today_gib=(quota.used / 2**30) if quota else None,
                                resume_at=quota.resume_at() if quota and quota.exceeded() else None), f)
             os.replace(tmp, a.progress_json)
         except OSError: pass
     def worker(k):
-        conn = None
+        conn = None; conn_ip = None
         while not stop.is_set():
             while quota and quota.exceeded() and not stop.is_set(): time.sleep(0.5)
             if stop.is_set(): return
@@ -239,7 +271,11 @@ def cmd_run(a):
                     d = pen['until'] - time.time()
                     if d > 0: stop.wait(d)
                     rate.wait()
-                    if conn is None: conn = http.client.HTTPConnection(ip, a.upstream_port, timeout=60)
+                    if conn is not None and conn_ip != edge['ip']:      # the edge was switched by the watchdog
+                        try: conn.close()
+                        except Exception: pass
+                        conn = None
+                    if conn is None: conn_ip = edge['ip']; conn = http.client.HTTPConnection(conn_ip, a.upstream_port, timeout=60)
                     conn.request('GET', path, headers=upstream.headers()); r = conn.getresponse()
                     if r.status in (429, 503): r.read(); raise Throttled(upstream.retry_after(r))
                     body = read_body(r, lim)
@@ -280,13 +316,23 @@ def cmd_run(a):
             else:
                 with dbl: c.execute('update chunks set status=? where id=?', (3 if good else 2, sid))   # 3 = 404, 2 = failed
                 with lock: stat['fail'] += 1
+    def watchdog():
+        """Far below the user's line speed for a minute (and not because of a cap, a quota, a link loss or a 429): measure the edges again, switch if one is clearly better."""
+        now = time.time()
+        if a.upstream_ip or not stalled(now - t0, now - edge['checked'], a.line_mbps, a.limit_mbps, now_rate(60) * 8 / 1e6, now < pen['until'], state()): return
+        edge['checked'] = now; cur = edge['ip']
+        log(f"slow: {now_rate(60) * 8 / 1e6:.1f} Mbit/s over the last minute (line {a.line_mbps:g}) - measuring the edge addresses again")
+        trows = c.execute(f'select id, wire, raw, flag, prio from chunks where {where} and status=0 order by abs(wire - 262144) limit 2', prm).fetchall()
+        best, note, passed = choose_edge(a.upstream_port, edge_tests(trows))
+        if passed and best != cur: log(f'switching edge {cur} -> {best}'); edge['ip'], edge['note'] = best, note
+        else: log(f'staying on {cur}')
     ths = [threading.Thread(target=worker, args=(k,), daemon=True) for k in range(a.workers)]
     for t in ths: t.start()
     last = 0; qstate = None
     try:
         n_tick = 0
         while any(t.is_alive() for t in ths):
-            time.sleep(1); n_tick += 1; progress(state())
+            time.sleep(1); n_tick += 1; hist.append((time.time(), stat['bytes'])); watchdog(); progress(state())
             if quota and quota.roll(): log('new day - daily quota reset')
             s = state()
             if s != qstate and {s, qstate} == {'quota-wait', 'running'}: log('daily quota reached - waiting until local midnight (Pause to stop)' if s == 'quota-wait' else 'quota available again - resuming')
@@ -401,6 +447,7 @@ if __name__ == '__main__':
     r.add_argument('--budget-gib', type=float, default=0, help='0 = automatic (queue size + 2 %%)'); r.add_argument('--min-free-gib', type=float, default=40)
     r.add_argument('--retries', type=int, default=4); r.add_argument('--max-rps', type=float, default=50, help='request rate cap (default 50/s)')
     r.add_argument('--limit-mbps', type=float, default=0, help='total download cap in Mbit/s shared by all workers (0 = unlimited)')
+    r.add_argument('--line-mbps', type=float, default=0, help='your line speed in Mbit/s; if the rate stays under 20 %% of it for a minute the edge addresses are measured again (0 = off)')
     r.add_argument('--daily-gib', type=float, default=0, help='pause after this many GiB per local day (0 = unlimited)')
     r.add_argument('--accept-notice', action='store_true', help='confirm the bulk-download notice (asked once per version; the GUI asks in a dialog)')
     r.add_argument('--link-wait-s', type=float, default=0, help='give up (state offline) when the upstream is unreachable this long; 0 = wait forever')

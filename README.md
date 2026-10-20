@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.1.1 · Windows · Python 3.10+ (standard library only)
+Beta 0.1.2 · Windows · Python 3.10+ (standard library only)
 
 I started this because the Modern Warfare campaign on my PC looked blurry no matter what I did in the graphics menu. Walls and character gear sat on the lowest
 texture tier even with every setting maxed out. The game is supposed to download higher-resolution texture pieces from a CDN while you play, and on my machine
@@ -56,7 +56,7 @@ On first start the window asks where your game folder is. Nothing is assumed, an
 launch the game, and watch the Dashboard. [docs/USAGE.md](docs/USAGE.md) walks through each tab, and the command-line versions of everything are listed there too.
 To undo the hosts change at any time run `tools\restore-hosts.bat`.
 
-The tests don't need the game: `python -m unittest discover -s tools/tests` (91 tests, about a minute and a half).
+The tests don't need the game: `python -m unittest discover -s tools/tests` (99 tests, about two minutes).
 
 ## If something doesn't work
 
@@ -70,6 +70,10 @@ would rather not let the tool write the file at all, you can add the two lines y
 
 **"'NoneType' object has no attribute 'splitlines'" when starting a session.** That was a bug on Windows installs with a non-English language, fixed in 0.1.1.
 Update to the latest version. If you still see it, open an issue with the support bundle from the Doctor tab (check its contents first).
+
+**The mirror downloads far slower than your line.** Fixed in 0.1.2: older versions could end up on one fixed CDN address that may be far away. The tool now measures
+the candidate servers before a run and uses the fastest. Check the speed line on the Texture pack tab (it shows MiB/s and Mbps; 100 Mbps is about 11.9 MiB/s), set *My
+line speed* so it re-checks by itself, and see [docs/TEXTURE-PACK.md](docs/TEXTURE-PACK.md#download-speed). There is no hidden bandwidth cap.
 
 More in [docs/USAGE.md](docs/USAGE.md#troubleshooting). To put your hosts file back to how it was, run `toolsestore-hosts.bat`.
 

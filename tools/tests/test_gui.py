@@ -1,6 +1,6 @@
 """GUI interaction tests: build the real window (tkinter) and drive its handlers without a human. Dialogs are patched; everything uses the temp
 work dir / hosts file from test_ccs (never the real settings, hosts file or game folders)."""
-import json, os, shutil, sys, tempfile, time, unittest
+import gc, json, os, shutil, sys, tempfile, time, unittest
 import test_ccs                                    # sets CCS_WORK / CCS_HOSTS_PATH before ccslib is imported
 from test_ccs import TMP, WIN_HOSTS, put
 import tkinter as tk
@@ -30,6 +30,7 @@ class GuiTests(unittest.TestCase):
     def cleanup(self):
         try: self.app.stop_poll.set(); self.app.destroy()
         except Exception: pass
+        self.app = None; gc.collect()                  # free the Tk variables here, on the main thread (a later test's worker thread would otherwise crash Tcl)
         for (mod, name), fn in self.patches.items(): setattr(mod, name, fn)
         try: os.remove(paths.SETTINGS_FILE)
         except OSError: pass
@@ -88,6 +89,8 @@ class GuiTests(unittest.TestCase):
         v = ccsgui.App._prog_view
         self.assertIn('DAILY QUOTA REACHED', v(dict(base, state='quota-wait', used_today_gib=5.0, resume_at=time.time() + 3600), True)[1])
         self.assertIn('NO CONNECTION', v(dict(base, state='offline-wait'), True)[1]); self.assertIn('cap 2 Mbps', v(dict(base, state='running', limit_mbps=2.0), True)[1])
+        txt = v(dict(base, state='running', mibps_now=11.9, edge='203.0.113.7', edge_note='built-in fallback address (may be far from you)'), True)[1]      # rolling speed, in Mbps too, and where it comes from
+        self.assertIn('11.9 MiB/s (100 Mbps)', txt); self.assertIn('via 203.0.113.7', txt); self.assertIn('[built-in fallback address', txt); self.assertIn('3.0 MiB/s (25 Mbps)', v(dict(base, state='running'), True)[1])
         self.assertIn('verifying', v(None, False, dict(done=5, total=10, bad=1), True)[1]); self.assertEqual(v(None, False)[1], 'no run in progress'); self.assertIn('last run done', v(dict(base, state='done'), False)[1])
 
     def test_first_run_notice_shows_once_per_version(self):
@@ -219,7 +222,7 @@ class GuiTests(unittest.TestCase):
 
 
 def tearDownModule():
-    shutil.rmtree(TMP, ignore_errors=True)
+    gc.collect(); shutil.rmtree(TMP, ignore_errors=True)
 
 
 if __name__ == '__main__':
