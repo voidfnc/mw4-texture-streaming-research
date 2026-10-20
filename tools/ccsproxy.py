@@ -22,7 +22,7 @@ import argparse, collections, glob, http.client, json, os, re, socket, sys, thre
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cdnxpak
-from ccslib import paths, upstream, version            # game folder / work dir come from the GUI settings (tools/work/gui_settings.json), not from hard-coded paths
+from ccslib import mirrordb, paths, upstream, version          # game folder / work dir come from the GUI settings (tools/work/gui_settings.json), not from hard-coded paths
 ROOT = paths.GAME_ROOT
 LOG = os.path.join(paths.WORK, 'ccsproxy.log')
 HOST = 'cod-assets.cdn.callofduty.com'
@@ -64,7 +64,8 @@ def load_mirror(origin):
     import sqlite3
     db = os.path.join(origin, 'index.sqlite')
     if not os.path.isfile(db): log(f"mirror: no index in {origin} yet - every chunk comes from the CDN until a mirror is built"); return      # a first-time user has no mirror: not an error
-    c = sqlite3.connect(db)
+    try: c = mirrordb.connect_read(db)                                  # also works when this user cannot write to the mirror folder (see ccslib/mirrordb.py)
+    except sqlite3.Error as e: log(f"mirror: index unreadable ({e}) - chunks that are not on disk come from the CDN"); return
     try:
         for sid, et, ck in c.execute('select id, etag, cod_key from chunks where status=1'):
             MKEY[sid & (2**64 - 1)] = ((et or '').split(':')[0] or None, ck)

@@ -12,7 +12,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ccslib import cachectl, config, doctor, gamefix, guide, hosts, launch, logtail, mirrorctl, pack, paths, procs, proxyctl, report, session, version
+from ccslib import cachectl, config, doctor, gamefix, guide, hosts, launch, logtail, mirrorctl, mirrordb, pack, paths, procs, proxyctl, report, session, version
 
 BG, PANEL, FG, DIM, ACC = '#16181d', '#1e2128', '#d7dae0', '#8b93a1', '#4c8dff'
 OK, WARN, BAD, OFF = '#3ecf6e', '#e8b43a', '#ec5b5b', '#555b66'
@@ -367,6 +367,8 @@ class App(tk.Tk):
     def do_mirror_start(self):
         try: self._m_save()
         except ValueError as e: messagebox.showerror('Mirror', f'invalid number: {e}', parent=self); return
+        if not mirrordb.writable(paths.MIRROR):
+            messagebox.showerror('Mirror', f'You cannot write to the mirror folder:\n{paths.MIRROR}\n\nChoose a folder you can write to (Game tab, Mirror folder, then Save locations). A mirror that is already there is still used as it is.', parent=self); return
         if not self._bulk_ack(): return
         if not os.path.exists(os.path.join(paths.MIRROR, 'index.sqlite')): self.say('mirror not initialised - running init first', 'WARN'); self._m_oneshot(['init']); return
         kw = dict(self.cfg['mirror']); kw['tier'] = config.effective(self.cfg)['mirror']['tier']          # the Texture pack detail level sets the cap unless it is unlinked
