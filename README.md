@@ -23,7 +23,7 @@ I made a short video (about five and a half minutes) that goes through the whole
 main window from the first start to a finished session, the Settings, the offline copy and Advanced mode. It should play right here. If it doesn't load for you, you can
 [download the file from the 0.3.0-beta release](https://github.com/voidfnc/mw4-texture-streaming-research/releases/download/v0.3.0-beta/MW4-Texture-Streaming-Walkthrough.mp4) (about 65 MB).
 
-<video src="https://github.com/user-attachments/assets/fac3321a-d121-41ef-a557-5f91ab40022c" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/657c18d9-4f7b-48df-a57a-848f10939335" controls width="100%"></video>
 
 The program window in it is the real thing (version 0.3.0-beta, demo numbers, a throw-away folder), next to a few simple diagrams and the two in-game frames, with captions on top. The voice is computer-generated, and so are the music and
 sound effects, so don't expect a polished production. The in-game frames were taken with the earlier window design and aren't a measured before/after comparison,
