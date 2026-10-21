@@ -29,7 +29,7 @@ It is a short checklist at the top of the Dashboard. You pick a path first, then
 
 | Step | What it checks | Ticks when |
 |---|---|---|
-| 1. Choose how to start | your choice | you pick *Quick fix* (no big download) or *Offline copy* (download the texture pack once) |
+| 1. Choose how to start | your choice | you pick *Quick fix* (no big download) or *Offline copy* (download the texture pack once); a button on the finished step switches to the other one |
 | 2. Find your game folder | the game folder setting | the folder exists and looks like the game |
 | 3. Check this PC | port 80, free disk space, game closed, [game setup](#game-setup-online-mode-and-the-cache-link) | nothing in the way |
 | 4. Texture pack (offline path only) | the mirror | the pack is complete, or a download is running (the next steps do not wait for it), or you skipped it |
@@ -43,7 +43,11 @@ what it found. Nothing is set until you pick one. You can always browse to any f
 anyway*.
 
 The guide never changes anything by itself: its buttons run the same actions as the normal ones (*Start session*, *Stop session*, the Doctor, the tabs). If something
-goes wrong, the last problem is shown in the panel as well as in the Activity log. *Start over* runs the checklist again from the session step, and *Hide* closes it.
+goes wrong, the last problem is shown in the panel as well as in the Activity log. *Start over* runs the checklist again from the session step (it keeps your choice of path, which the button on step 1
+changes), and *Hide* closes it.
+
+The choice of path only shapes the checklist (the offline path adds step 4 and asks for more free disk space). It does not switch the helper between modes: whether an offline copy is used is decided by the
+profile and the mirror folder, see [using an offline copy](#using-an-offline-copy-you-have-already-downloaded).
 
 Around the checklist:
 
@@ -93,6 +97,19 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 | Standard HD (1440p class) / Ultra (4K class) | sets the detail level, see [TEXTURE-PACK.md](TEXTURE-PACK.md) |
 | Slow link - offline mirror | play only from the mirror; nothing goes to the internet |
 | your own | *Save as...* stores the current proxy / guard / watcher settings under a name |
+
+## Using an offline copy you have already downloaded
+
+The copy is served by the same helper as everything else, so nothing changes about a play session: start the program, press **Start session**, launch the game, keep the window open, and press **Stop session**
+afterwards. The game asks for its textures at the content server's name and the hosts entry sends that to the helper; without a session the game cannot reach the copy.
+
+1. **Where it is.** The Texture pack tab shows *Stored in: ...*. By default that is `mirror` inside the game folder (the pieces are under `mirror\objects`, with an index next to them). The Game tab, *Mirror folder*, changes
+   it (Full view shows that tab); press *Save locations* after changing it. The Texture pack tab's table (*stored* column) shows how many pieces are there.
+2. **Which profile.** *Default* serves from the copy first and goes to the internet only for what is missing. *Slow link - offline mirror* (the *Play offline (profile)* button on the Texture pack tab) serves only from the
+   copy, so nothing is fetched from the internet and a missing piece is a 404. Restart the session after changing the profile.
+3. **How to tell it is used.** The Dashboard's *Mirror* light shows the number of pieces it found (for example `103,631 ids`); *From mirror* counts the pieces served from it, and the *What happened* summary says how many
+   came from your offline copy. If the *Mirror* light says "off" while the session runs, no copy was found in the mirror folder: check the folder, and that the profile is not *Capture* (which uses no mirror).
+4. **The guide's first step.** *Quick fix* or *Offline copy* there only changes the checklist; the button on that step switches between them at any time.
 
 ## Game setup: online mode and the cache link
 

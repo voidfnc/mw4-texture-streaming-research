@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.2.5 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
+Beta 0.2.6 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
 I started this because the Modern Warfare campaign on my PC looked blurry no matter what I did in the graphics menu. Walls and character gear sat on the lowest
 texture tier even with every setting maxed out. The game is supposed to download higher-resolution texture pieces from a CDN while you play, and on my machine
@@ -93,6 +93,13 @@ The frames are copyrighted game art, shown here only to illustrate the toolkit.
 ![The game next to the toolkit window during a session](docs/ingame/ingame-1.jpg)
 ![A close-up of a character in a shop](docs/ingame/ingame-2.jpg)
 
+## Video walkthrough
+
+A narrated walkthrough of the problem, the fix and the program, about four minutes: [MW4-Texture-Streaming-Walkthrough.mp4](https://github.com/voidfnc/mw4-texture-streaming-research/releases/download/v0.2.6-beta/MW4-Texture-Streaming-Walkthrough.mp4)
+(about 59 MB, attached to the 0.2.6-beta release). It is made of the screenshots on this page, a few animated diagrams and the two in-game frames above, with captions; the narration is a synthetic (text-to-speech)
+voice, and the music and sound effects are generated, not recorded. The same notes apply: the program windows are version 0.2.3-beta, the installer pages 0.2.5-beta, the in-game frames are not a
+measured comparison, and the game art belongs to its owners.
+
 ## Running from source
 
 You need a PC install of the game, Python 3.10 or newer with tkinter (the normal python.org installer has it), and a few GiB of free disk space at the very least.
@@ -138,6 +145,15 @@ would rather not let the tool write the file at all, you can add the two lines y
 cache in `sp26\xpak_cache` while the engine fills `xpak_cache`. The Doctor's *Game setup* row (and the guide's *Check this PC* step) fixes both after you confirm: it sets
 `offline=0` and `disable_lan_only=1` in `sp26\steam_settings\configs.main.ini` (a copy of the original is kept) and links `sp26\xpak_cache` to `xpak_cache`. Close the game first,
 and start it again afterwards. Details and the command line: [docs/USAGE.md](docs/USAGE.md#game-setup-online-mode-and-the-cache-link).
+
+**I built an offline copy. Can I play without the program?** No. The game still asks for its textures through the helper, so each time you play: start the program, press *Start session*, launch the game and
+keep the window open. The copy only means the pieces come from your disk instead of the internet; the game does not read it on its own. The copy is kept in the mirror folder (the Texture pack tab shows where; by default a
+`mirror` folder inside the game folder). With the Default profile it is used first, and *Play offline (profile)* on the Texture pack tab makes sure nothing goes to the internet. The Dashboard's Mirror light shows how many
+pieces it found; "off" while a session runs means none were found, so check the Mirror folder in the Game tab (Full view shows that tab). The guided setup's first step (*Quick fix* or *Offline copy*) only changes the checklist,
+and can be switched with the button on that step. More in [docs/USAGE.md](docs/USAGE.md#using-an-offline-copy-you-have-already-downloaded).
+
+**The counters stay at zero right after the game starts.** In my sessions the game began asking for texture pieces once it had loaded into gameplay, not at the launcher or the main menu. Load a mission and give it a minute before judging;
+if the counters are still at zero a minute or two later, the Doctor tells you why.
 
 **"'NoneType' object has no attribute 'splitlines'" when starting a session.** That was a bug on Windows installs with a non-English language, fixed in 0.1.1.
 Update to the latest version. If you still see it, open an issue with the support bundle from the Doctor tab (check its contents first).

@@ -1,8 +1,21 @@
 # Changelog
 
-## Unreleased
-- **Docs:** the README shows two in-game frames (`docs/ingame/`, with the game folder path covered in the first and no metadata in either). `docs/FINDINGS.md` has a new section 9 on the game folder settings (online mode and the cache link) with what was observed in one session, what was not tested separately, and
-  what is still unchecked. No program change. (One older changelog line no longer refers to where a fix came from.)
+## 0.2.6-beta
+**You can switch between the quick fix and the offline copy, and the offline copy's text now says the program still has to run.**
+
+- **Step 1 of the guided setup can be changed.** The choice between *Quick fix* and *Offline copy* could not be undone before: *Start over* keeps it on purpose, and a finished step 1 showed no
+  buttons. It now has one button that switches to the other path (*Use offline copy* or *Use quick fix*), and the checklist follows (the Texture pack step appears or goes away). The choice
+  only shapes the checklist: with the Default profile the helper serves an offline copy you already have first, whichever path is chosen.
+- **The offline copy needs a session too.** The helper has to run every time you play (*Start session*, then the game), because the game still asks for its textures through it; the copy
+  replaces the download, not the helper. The path texts, the glossary, the Texture pack tab and the docs say so. The Texture pack tab also names the folder the copy is kept in (it was only
+  in the Game tab, which Simple view hides), and the hover text of the *Mirror* light explains that "off" while a session runs means no copy was found there.
+- **Docs:** USAGE has a section on using an offline copy you have already downloaded; the README has two new troubleshooting entries (the offline copy and the program, and counters that stay at
+  zero until a mission has loaded) and a link to a narrated walkthrough video (attached to the release). The README shows two in-game frames (`docs/ingame/`, with the game folder path covered in
+  the first and no metadata in either), and `docs/FINDINGS.md` has a section 9 on the game folder settings (online mode and the cache link): what was observed in one session, what was not
+  tested separately, and what is still unchecked.
+- **Wording:** the program's own messages about the game's Steam settings use the same neutral wording as the docs (the 0.2.5-beta files still use the older wording in a few messages). One older
+  changelog line no longer refers to where a fix came from.
+- The screenshots in the README are unchanged (program windows from 0.2.3-beta, installer pages from 0.2.5-beta): this version changes one button and some text.
 
 ## 0.2.5-beta
 **The installer installs for all users by default.** "For me only" stays an option on its first screen.

@@ -37,7 +37,8 @@ switches on *Simple view*, which tucks the advanced tabs away.
 A checklist at the top of the Dashboard. Each step ticks itself when the real state of your PC says it is done, and the control to press next is highlighted in amber.
 
 1. **Choose how to start.** *Quick fix* needs no big download: the helper fetches texture pieces while you play. *Offline copy* downloads the whole texture pack once and
-   plays from disk, which suits a slow or metered connection. If you are unsure, take the quick fix; you can build an offline copy later.
+   plays from disk, which suits a slow or metered connection. If you are unsure, take the quick fix; you can build an offline copy later, and a button on this step switches between the two at any time.
+   Either way the program has to run a session whenever you play: the offline copy replaces the download, not the helper.
 2. **Find your game folder.** Press *Find my game folder*. The tool looks in the folder around itself, in your game libraries and in the usual places on every drive, and
    shows what looks like the game. It never picks one for you: choose the right one, or press *Browse...* and point at any folder. If the folder does not look like the
    game, you can still say *Use it anyway*.
@@ -119,7 +120,7 @@ Loading textures while you play instead of all at the start. What the game asks 
 No big download. The helper fetches the pieces the game asks for while you play.
 
 **Offline copy (mirror)**  
-A copy of the texture pieces on your own drive (about 54 to 82 GB). The game is served from it, so playing needs little or no internet.
+A copy of the texture pieces on your own drive (about 54 to 82 GB). The game is served from it, so playing needs little or no internet. The helper still has to run while you play: without it the game cannot reach the copy.
 
 **Detail level**  
 A cut-off for very large pieces (the highest-detail versions). Ultra serves everything; Standard leaves the largest out, and the game keeps the smaller version.

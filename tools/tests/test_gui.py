@@ -119,6 +119,7 @@ class GuiTests(unittest.TestCase):
         self.assertEqual(self.app.setup_banner.cget('text'), ''); self.assertTrue(paths.CONFIGURED); self.assertEqual(paths.GAME_ROOT, os.path.normpath(g))
         self.assertEqual(json.load(open(paths.SETTINGS_FILE))['paths']['game_root'], g)             # persisted for every CLI tool
         self.assertIn(os.path.normpath(os.path.join(TMP, 'mir_gui')), self.app.pv_eff['mirror_dir'].cget('text'))
+        self.assertIn(os.path.normpath(os.path.join(TMP, 'mir_gui')), self.app.pk_where.cget('text'))      # the Texture pack tab names the folder too, and follows a change
 
     def test_save_locations_rejects_missing_folder(self):
         self.app.pv_loc['game_root'].set(os.path.join(TMP, 'nope')); self.app.save_locations()
@@ -280,6 +281,17 @@ class GuiTests(unittest.TestCase):
         self._snap(); app._guide_tick(); self.assertEqual(app._guide_state()['ms'], ['session', 'game', 'after']); self.assertTrue(guide.all_passed(guide.evaluate(app._guide_state(), app._guide_facts())))
         saved = json.load(open(paths.SETTINGS_FILE))['guide']; self.assertEqual((saved['path'], saved['ms'], saved['skipped'], saved['enabled']), ('offline', ['session', 'game', 'after'], ['pack'], True))   # survives a restart
         app.guide_do('restart'); self.assertEqual((app._guide_state()['ms'], app._guide_state()['skipped'], app._guide_state()['path']), ([], [], 'offline'))
+
+    def test_the_chosen_path_can_be_switched_from_the_panel(self):
+        app = self.app; self._freeze(); app.guide_toggle(True); self._snap(); app._guide_tick()
+        app.guide_do('choose_quick'); self.assertEqual(app._guide_state()['path'], 'quick'); self.assertNotIn('pack', app._guide_lbl)
+        app.guide_do('choose_offline'); self.assertEqual(app._guide_state()['path'], 'offline'); self.assertIn('pack', app._guide_lbl)             # the same button the panel now offers on step 1
+        app.guide_do('choose_quick'); self.assertEqual(app._guide_state()['path'], 'quick'); self.assertNotIn('pack', app._guide_lbl)
+        app.guide_do('restart'); self.assertEqual(app._guide_state()['path'], 'quick')                                                              # Start over keeps it, the button changes it
+        self.assertEqual(json.load(open(paths.SETTINGS_FILE))['guide']['path'], 'quick')
+
+    def test_texture_pack_tab_names_the_mirror_folder_and_that_a_session_must_run(self):
+        txt = self.app.pk_where.cget('text'); self.assertIn(paths.MIRROR, txt); self.assertIn('session', txt)
 
     def test_guide_buttons_use_the_normal_handlers(self):
         app = self.app; calls = []

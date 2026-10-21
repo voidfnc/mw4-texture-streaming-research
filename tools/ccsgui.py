@@ -201,7 +201,8 @@ class App(tk.Tk):
         pk = self.cfg['pack']; self.pk_scope = tk.StringVar(value=pk['scope']); self.pk_level = tk.StringVar(value=config.effective(self.cfg)['pack']['level']); self._pack_plan = None
         self.pk_pkgs = {k: tk.BooleanVar(value=k in (pk.get('packages') or ())) for k in pack.ORDER}; self.pk_num = {}
         ttk.Label(f, text='Download the texture chunks to the local mirror once (resumable, any speed), then play offline from it. Chunk lists come from your own game install; '
-                          'the data goes only to this PC and is never shared.', style='Dim.TLabel', wraplength=1120).pack(anchor='w', pady=(8, 4))
+                          'the data goes only to this PC and is never shared.', style='Dim.TLabel', wraplength=1120).pack(anchor='w', pady=(8, 2))
+        self.pk_where = ttk.Label(f, text='', style='Dim.TLabel', wraplength=1120); self.pk_where.pack(anchor='w', pady=(0, 4)); self._pack_where()
         row = ttk.Frame(f); row.pack(fill='x')
         a = ttk.LabelFrame(row, text='1. What to download (pack scope)'); a.pack(side='left', fill='both', expand=True, padx=(0, 8))
         for val, lab in (('sp', 'SP campaign (default)'), ('all', 'Whole pack (all packages)'), ('custom', 'Custom packages')):
@@ -269,8 +270,13 @@ class App(tk.Tk):
             if key in vars_ and linked: vars_[key].set(f'{val:g}')
             if key in ents: ents[key].configure(state='disabled' if linked else 'normal')
 
+    def _pack_where(self):
+        """Where the copy is kept, so a finished download can be found (and checked) without the Game tab, which Simple view hides."""
+        self.pk_where.configure(text=f'Stored in: {paths.MIRROR}   (change it in the Game tab, Mirror folder; Full view shows that tab). The program has to be running a session while you play: it serves this copy to the game.')
+
     def pack_refresh(self):
         if not hasattr(self, 'pk_est'): return
+        self._pack_where()
         try: self._pack_collect(soft=True)
         except Exception: pass
         e = config.effective(self.cfg)['pack']; scope, pkgs, level, line = e['scope'], e.get('packages'), e['level'], float(e.get('line_mbps') or 0)
@@ -537,7 +543,7 @@ class App(tk.Tk):
         new = {k: v.get().strip() for k, v in self.pv_loc.items()}
         if new['game_root'] and not os.path.isdir(new['game_root']): messagebox.showerror('Locations', 'The game folder does not exist.', parent=self); return
         self.cfg['paths'] = new; config.save(self.cfg); self.say(f"locations saved: game={paths.GAME_ROOT} cache={paths.XPAK_CACHE} mirror={paths.MIRROR}", 'OK')
-        self.show_validation(); self.show_player_cfg(); self.refresh_cache(); self.refresh_mirror(); self._refresh_runs()
+        self.show_validation(); self.show_player_cfg(); self.refresh_cache(); self.refresh_mirror(); self._refresh_runs(); self._pack_where()
 
     def show_validation(self):
         paths.reload()

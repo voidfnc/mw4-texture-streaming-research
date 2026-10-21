@@ -29,8 +29,9 @@ PATHS = ('quick', 'offline')
 TITLES = dict(path='Choose how to start', folder='Find your game folder', preflight='Check this PC', pack='Texture pack (optional)', session='Start the session',
               game='Play', after='When you are done')
 PATH_TEXT = dict(
-    quick='Quick fix (recommended): no big download. The game streams its texture pieces through a small helper on this PC while you play.',
-    offline='Offline copy: download the texture pack once (about 54 to 82 GB) and play from disk. Good for slow or metered connections.')
+    quick='Quick fix (recommended): no big download. The game streams its texture pieces through a small helper on this PC while you play. An offline copy you already have is used first.',
+    offline='Offline copy: download the texture pack once (about 54 to 82 GB) and play from disk. Good for slow or metered connections. The helper still runs during every session.')
+PATH_SWITCH = dict(quick=('choose_offline', 'Use offline copy'), offline=('choose_quick', 'Use quick fix'))           # what step 1 offers once a path is chosen: the other one, one click
 PATH_SHORT = 'Quick fix (recommended): no big download, the game streams its textures while you play. Offline copy: download the pack once (54 to 82 GB) and play from disk.'
 MIN_FREE_GIB = dict(quick=2.0, offline=20.0)
 GAME_REQUESTS = 20            # a game start asks for hundreds of pieces; the Doctor's own checks ask for one or two
@@ -196,7 +197,7 @@ def skip(state, step):
 
 
 def restart(state):
-    """Run the guide again from the session step (keeps the chosen path, the game folder confirmation and the on/off setting)."""
+    """Run the guide again from the session step (keeps the chosen path, the game folder confirmation and the on/off setting; the path can be switched on step 1)."""
     s = clean_state(state); s['ms'] = []; s['skipped'] = []; s['summary'] = {}; return s
 
 
@@ -216,7 +217,7 @@ def evaluate(state, f):
         rows.append(dict(id=id, n=len(rows) + 1, title=TITLES[id], done=bool(done), running=bool(running) and not done, skipped=id in sk and not done, detail=detail,
                          actions=list(actions), skippable=id in SKIPPABLE))
     # 1 path
-    add('path', path in PATHS, PATH_SHORT if not path else PATH_TEXT[path].split(':')[0] + ' chosen.', [('choose_quick', 'Quick fix'), ('choose_offline', 'Offline copy')] if not path else [])
+    add('path', path in PATHS, PATH_SHORT if not path else PATH_TEXT[path].split(':')[0] + ' chosen.', [('choose_quick', 'Quick fix'), ('choose_offline', 'Offline copy')] if not path else [PATH_SWITCH[path]])
     # 2 folder
     fok = folder_ok(st, f)
     if fok:
@@ -297,7 +298,7 @@ GLOSSARY = (
     ('Texture piece (chunk)', 'The game streams its textures in many small pieces. Each request from the game is for one piece.'),
     ('Streaming', 'Loading textures while you play instead of all at the start. What the game asks for depends on where you are and what it decides to show.'),
     ('Quick fix', 'No big download. The helper fetches the pieces the game asks for while you play.'),
-    ('Offline copy (mirror)', 'A copy of the texture pieces on your own drive (about 54 to 82 GB). The game is served from it, so playing needs little or no internet.'),
+    ('Offline copy (mirror)', 'A copy of the texture pieces on your own drive (about 54 to 82 GB). The game is served from it, so playing needs little or no internet. The helper still has to run while you play: without it the game cannot reach the copy.'),
     ('Detail level', 'A cut-off for very large pieces (the highest-detail versions). Ultra serves everything; Standard leaves the largest out, and the game keeps the smaller version.'),
     ('Connections (workers)', 'How many downloads run at the same time when building an offline copy. More is not always faster; the default is a safe starting point.'),
     ('Requests per second (req/s)', 'How often the tool asks the CDN for a piece. It is capped so it does not hammer the servers.'),
@@ -313,7 +314,7 @@ LIGHT_HELP = dict(
     resolve='Resolver: what Windows answers when asked for the game\'s content address. "loopback" means it points at this PC (the redirect works). "not ours" means it does not (yet).',
     proxy='Proxy (the helper): the small program that hands the game its texture pieces. Green while it runs and answers.',
     port='Port: the helper listens on port 80, the normal web port. Red means another program is already using it.',
-    mirror='Mirror: your local copy of texture pieces, and how many pieces it holds. "off" is normal with the quick fix.',
+    mirror='Mirror: your local copy of texture pieces, and how many pieces it holds. "off" while a session runs means no copy was found: normal with the quick fix, but if you downloaded an offline copy check the Mirror folder (Game tab, Full view).',
     guard='Guard: the disk guard watches the game cache and stops the game if it grows past your limit.',
     game='Game: whether the game is running right now.',
     disk='Disk: free space on the game\'s drive.')

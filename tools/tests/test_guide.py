@@ -87,6 +87,18 @@ class ChecklistTests(unittest.TestCase):
         self.assertEqual(acts(row(rows, 'path')), ['choose_quick', 'choose_offline'])
         self.assertEqual(sum(r['status'] == 'current' for r in rows), 1)
 
+    def test_a_chosen_path_offers_the_other_one_in_one_click(self):
+        r = row(guide.evaluate(guide.new_state(path='quick'), F()), 'path'); self.assertEqual((r['status'], r['actions'], r['detail']), ('done', [('choose_offline', 'Use offline copy')], 'Quick fix (recommended) chosen.'))
+        rows = guide.evaluate(guide.new_state(path='offline'), F()); r = row(rows, 'path'); self.assertEqual((r['status'], r['actions'], r['detail']), ('done', [('choose_quick', 'Use quick fix')], 'Offline copy chosen.'))
+        self.assertIn('pack', [x['id'] for x in rows]); self.assertNotIn('pack', [x['id'] for x in guide.evaluate(guide.new_state(path='quick'), F())])      # the switch changes the checklist
+        self.assertEqual({p: guide.PATH_SWITCH[p][0] for p in guide.PATHS}, dict(quick='choose_offline', offline='choose_quick'))
+        for p in guide.PATHS: self.assertEqual(guide.restart(guide.new_state(path=p))['path'], p)                                                         # Start over keeps the choice; the button is how it changes
+
+    def test_the_path_texts_say_what_the_helper_does_either_way(self):
+        self.assertIn('already have is used first', guide.PATH_TEXT['quick']); self.assertIn('helper still runs during every session', guide.PATH_TEXT['offline'])
+        self.assertIn('helper still has to run while you play', dict(guide.GLOSSARY)['Offline copy (mirror)'])
+        self.assertIn('check the Mirror folder', guide.LIGHT_HELP['mirror'])
+
     def test_quick_path_in_order(self):
         s = guide.new_state(path='quick')
         r = guide.evaluate(s, F(configured=False, folder_exists=False, folder_score=0)); self.assertEqual(status(r)['path'], 'done'); self.assertEqual(status(r)['folder'], 'current'); self.assertEqual(acts(row(r, 'folder')), ['find_folder'])
