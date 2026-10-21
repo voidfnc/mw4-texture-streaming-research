@@ -18,4 +18,4 @@ labels: bug
 - How you run it (installer / portable zip / from source) and the Python version if from source:
 - Internet connection (IPv4-only / dual-stack):
 
-**Doctor output** (Doctor tab, or `python tools\ccsgui.py --doctor`) and the relevant lines of the log. Please check them for personal paths before posting.
+**Doctor output** (*Check my PC* in Settings or the Doctor page in Advanced mode, or `python tools\ccsgui.py --doctor`) and the relevant lines of the log. Please check them for personal paths before posting.

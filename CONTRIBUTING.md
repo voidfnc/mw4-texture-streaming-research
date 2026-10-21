@@ -17,4 +17,4 @@ Thanks for looking. A few ground rules, mostly to keep the project on the right 
   screenshots name the current version, and `release.py` refuses stale files or source that is not on `origin/main`.
 - Python 3.10+, Windows paths and behaviour first. Linux/Wine reports are interesting but not supported yet.
 
-Useful reports: another PC where the IPv6-only lookup shows up (or does not), which Windows version and ISP type, and what the Doctor tab says.
+Useful reports: another PC where the IPv6-only lookup shows up (or does not), which Windows version and ISP type, and what *Check my PC* says (Settings; it is the Doctor page in Advanced mode).

@@ -1,7 +1,7 @@
 # Texture pack: what to mirror and how big
 
-The mirror can hold just the single-player chunks or everything the chunk lists mention, and you can leave out the largest chunks. The *Texture pack* tab in the
-control window and the command-line `ccsmirror.py` do the same thing; this page explains the two choices and what they cost.
+The mirror can hold just the single-player chunks or everything the chunk lists mention, and you can leave out the largest chunks. The offline copy page (Settings, *Offline copy*), the *Texture pack*
+page in Advanced mode and the command-line `ccsmirror.py` do the same thing (the page has the most options); this page explains the two choices and what they cost.
 
 > **Before you download:** the chunks are the publisher's content. The tool asks you to accept a notice before the first bulk run (GUI dialog, or `--accept-notice`
 > on the command line, once per version): use it only with your own copy of the game, keep the files on your PC, do not share them, and check that this is allowed

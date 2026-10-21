@@ -84,7 +84,7 @@ counts refused requests and how often the same id is asked for again, which is h
 
 1. Check whether you are affected: run the DNS-Client capture and `pktmon` as in [ISSUE-ipv6-cdn-lookup.md](ISSUE-ipv6-cdn-lookup.md).
 2. Install the toolkit as described in the README. If the game folder has a `sp26\steam_settings` folder, let the Doctor's *Game setup* row set it up
-   (section 9), then start a session from the control window and play. The *Report* tab writes a summary after every game launch.
+   (section 9), then press *Turn on HD textures* in the control window (*Start session* in Advanced mode) and play. A summary is written after every game launch (*See the full report*, or the *Report* page in Advanced mode).
 3. Compare the report's tier table and cache section with your own numbers.
 
 ## 9. A second layer: the game folder settings

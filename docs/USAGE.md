@@ -2,7 +2,7 @@
 
 Start it from the Start menu or desktop shortcut (installer), by double-clicking `MW4 Texture Streaming.exe` (portable zip), or with `tools\ccs-gui.bat` (no console window) or
 `python tools\ccsgui.py` (source). It asks for administrator rights when it starts (the Windows UAC prompt; from source it relaunches itself elevated once) and then needs no further prompts for the hosts file, the game folder or a mirror inside Program Files. If you decline, it still starts and asks for each hosts-file change as before. `CCS_NO_ELEVATE=1` or `--no-elevate` keeps a source run unelevated on purpose. The installer and the zip need no Python; from source
-you need Python 3.10+ with tkinter. The first time it opens it shows a short notice about what the tools are and are not. Before the first bulk download (Texture pack or Mirror tab) it shows a second notice
+you need Python 3.10+ with tkinter. The first time it opens it shows a short notice about what the tools are and are not (a full screen, once per version: press *I understand, continue*). Before the first bulk download (Texture pack or Mirror tab) it shows a second notice
 that you have to accept once per version; on the command line the same thing is `ccsmirror.py run ... --accept-notice`.
 
 ## Installed, portable or from source
@@ -20,10 +20,38 @@ stops the proxy and disk guard and makes a shortcut, without touching the hosts 
 **Uninstall:** *Apps & features*. If the hosts override is on, it is removed first; you are asked before settings are deleted; a texture mirror and the game folder are never deleted.
 **Silent install** (for scripts): `Setup.exe /VERYSILENT /DIR="D:\Tools\MW4 Texture Streaming" /MERGETASKS="!desktopicon"`; all users is the default (administrator rights needed); add `/CURRENTUSER` for the current user only, without administrator rights. If you change from one to the other, uninstall the old copy first.
 
-## Guided setup (optional)
+## The Home screen
 
-If the window looks like a lot, turn on the guided setup. On the very first start, with no game folder set yet, the window offers it once ("New here?"). It can also be
-switched on or off at any time with the *Guide* button on the Dashboard or in *Settings -> Help*.
+The window opens on Home. It shows one thing at a time, always the next thing to do:
+
+| Screen | What it shows | Button |
+|---|---|---|
+| Before you start | the research notice, once per version | *I understand, continue* |
+| Step 1: find your game | the folder the tool found in the usual places. It judges folders by what is inside (a `cod26` or `sp26` folder, the chunk lists, or a known game program), not by name | *Yes, use this one*, *Choose another folder* (a folder that does not look right is accepted if you say *Use it anyway*) |
+| Step 2: how should textures load? | *While I play* (no big download, the default) or *Download them once* (the offline copy, about 54 to 82 GB) | *Continue* |
+| Step 3: one small change in your game folder | only when the folder needs the [game setup](#game-setup-online-mode-and-the-cache-link) | *Make the change* |
+| Ready when you are | a grey ring, the step strip and three cards (game folder, how textures load, free space) | *Turn on HD textures* |
+| HD textures are on | a lit ring that pulses, "waiting for the game" | *Turn off* |
+| Playing with HD textures | textures delivered, speed, failed requests, where they come from, a three-minute graph | *Turn off when you are done* |
+| All done | what the game asked for and that it was delivered (nothing about how the picture looks) | *Done*, *See the full report*, *Compare before / after* |
+| A problem | a card with the likely cause and a button: a refused hosts write, a closed permission prompt, a busy port, a hosts entry that disappeared, a game that runs for a minute and a half without any request reaching the helper, an unreachable CDN, a nearly full disk | the fix |
+
+*Turn on HD textures* is **Start session** and *Turn off* is **Stop session**: the same actions as in Advanced mode (the hosts entry, the helper, the disk guard, the doctor run and the report). Turning off still asks what to do with the
+hosts entry when your settings say "ask". Nothing on Home changes anything without a click. Tab moves between the buttons, Enter or Space presses one.
+
+- **Hover help.** The ring, the step strip, the cards, the numbers, the footer line and the main buttons have a tooltip. The *words* list is the same one as at the end of [GETTING-STARTED.md](GETTING-STARTED.md).
+- **Settings** (top right) slides in a panel: *How textures load* (switches between the two ways at any time), *Offline copy* (its own page), *Game folder*, *One-time game setup*, *Check my PC* (the Doctor), *What do the words mean?*,
+  *Reports and logs*, *Before / after test*, *Reduce motion* and *Advanced mode*. Esc or a click outside closes it.
+- **The offline copy page** shows how much of the texture pack is on this PC as a ring and a bar, the pieces and gigabytes, the speed and the time left. *Start the download* / *Resume* / *Pause* use the same downloader as the Texture pack tab (the bulk-download notice and the size
+  confirmation are shown first, once per version). Two choices sit below: *How much* (campaign only, or everything; a custom list is set in Advanced mode) and *Detail level* (Standard, High or Ultra, see [TEXTURE-PACK.md](TEXTURE-PACK.md)). They are locked while a download runs. When everything is stored
+  the page offers *Use only this copy* (the profile *Slow link - offline mirror*) and *Check the files*.
+- **Reduce motion.** The ring pulses and spins and the panel slides while something is happening. *Reduce motion* in Settings turns that off, and the program follows the Windows setting too (Settings, Accessibility, Visual effects, Animation effects).
+- **Sharp on any display.** The program tells Windows it scales itself, so text and icons are crisp at 125 or 150 percent. `CCS_NO_DPI=1` keeps Windows' own stretching if a display driver misbehaves.
+
+## Guided setup in Advanced mode (the older checklist)
+
+The Dashboard in Advanced mode still has the optional checklist the earlier versions had. It is switched on or off with the *Guide* button on the Dashboard or in *Settings -> Help*, and the old yes/no offer ("New here?") appears
+only when Advanced mode is the first thing opened. The Home screen covers the same steps.
 
 It is a short checklist at the top of the Dashboard. You pick a path first, then each step ticks itself off when the real state of the PC says it is done:
 
@@ -38,9 +66,7 @@ It is a short checklist at the top of the Dashboard. You pick a path first, then
 | 7. When you are done | the session | you stopped it; the report is in the Report tab |
 
 *Find my game folder* looks in the folder around this tool, your Steam libraries and the usual places on every fixed drive (the drive root, `Games`, `Program Files`,
-one or two folder levels down). It judges folders by what is inside (a `cod26` or `sp26` folder, the chunk lists, or a known game program), not by name, and shows you
-what it found. Nothing is set until you pick one. You can always browse to any folder instead, and a folder that does not look right is accepted if you say *Use it
-anyway*.
+one or two folder levels down). Nothing is set until you pick one. You can always browse to any folder instead.
 
 The guide never changes anything by itself: its buttons run the same actions as the normal ones (*Start session*, *Stop session*, the Doctor, the tabs). If something
 goes wrong, the last problem is shown in the panel as well as in the Activity log. *Start over* runs the checklist again from the session step (it keeps your choice of path, which the button on step 1
@@ -53,9 +79,9 @@ Around the checklist:
 
 - **Spotlight.** The control the current step points at is highlighted in amber (*Start session*, *Stop session*, *Doctor*) or marked with an arrow (a tab). It is shown only
   while the guide is on, and never for *Stop session* while the game is still running.
-- **Simple view.** The guide's header button (also *Settings -> Help*) hides the advanced tabs (Proxy, Mirror, Cache, Game, Hosts / DNS, Logs), the profile picker, the
+- **Simple view** (older display option). The guide's header button (also *Settings -> Help*) hides the advanced tabs (Proxy, Mirror, Cache, Game, Hosts / DNS, Logs), the profile picker, the
   throughput graph and eight of the twelve counters, and names the remaining counters in plainer words. *Full view* shows everything again. The first-run offer turns it on
-  together with the guide; it is a display setting only and is kept between runs. A guide button that points at a hidden tab (for example *Open the Doctor*) shows that tab.
+  together with the guide; it is a display setting only and is kept between runs. A guide button that points at a hidden tab (for example *Open the Doctor*) shows that tab. Entering Advanced mode from Home turns Simple view off.
 - **Hover help.** Every status light and counter has a tooltip that says what it means. The *Words* button opens the same plain-language list as the end of
   [GETTING-STARTED.md](GETTING-STARTED.md).
 - **Help cards.** For the usual failures the panel shows a short card (cause and a button) above the raw last problem: a refused hosts write, a closed permission prompt, a busy port,
@@ -67,7 +93,7 @@ Around the checklist:
 
 ## First run: tell it where things are (Game tab)
 
-Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SETUP NEEDED* banner and *Start session* refuses.
+Nothing is assumed. Until the game folder is set, Home shows *Let's find your game* and, in Advanced mode, the Dashboard shows a red *SETUP NEEDED* banner and *Start session* refuses. These settings are in Advanced mode, *Game* page.
 
 | Setting | Meaning | If left blank |
 |---|---|---|
@@ -83,7 +109,7 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 
 ## A play session
 
-1. Dashboard: pick a profile and press **Start session**. It applies the hosts override if needed, saves a snapshot of the engine cache, starts the proxy and the
+1. Home: press **Turn on HD textures**. (Advanced mode, Dashboard: pick a profile and press **Start session**.) It applies the hosts override if needed, saves a snapshot of the engine cache, starts the proxy and the
    disk guard, and runs the doctor.
 2. Start the game as you normally do. The status strip should show Proxy, Port and Mirror in green and Game in amber.
 3. Quit the game. The window notices and writes a report for that launch (Report tab, saved under `tools\work\sessions\`).
@@ -103,13 +129,13 @@ Nothing is assumed. Until the game folder is set, the Dashboard shows a red *SET
 The copy is served by the same helper as everything else, so nothing changes about a play session: start the program, press **Start session**, launch the game, keep the window open, and press **Stop session**
 afterwards. The game asks for its textures at the content server's name and the hosts entry sends that to the helper; without a session the game cannot reach the copy.
 
-1. **Where it is.** The Texture pack tab shows *Stored in: ...*. By default that is `mirror` inside the game folder (the pieces are under `mirror\objects`, with an index next to them). The Game tab, *Mirror folder*, changes
-   it (Full view shows that tab); press *Save locations* after changing it. The Texture pack tab's table (*stored* column) shows how many pieces are there.
+1. **Where it is.** The Texture pack tab (Advanced mode) shows *Stored in: ...*. By default that is `mirror` inside the game folder (the pieces are under `mirror\objects`, with an index next to them). The Game tab, *Mirror folder*, changes
+   it (Advanced mode); press *Save locations* after changing it. The Texture pack tab's table (*stored* column) shows how many pieces are there.
 2. **Which profile.** *Default* serves from the copy first and goes to the internet only for what is missing. *Slow link - offline mirror* (the *Play offline (profile)* button on the Texture pack tab) serves only from the
    copy, so nothing is fetched from the internet and a missing piece is a 404. Restart the session after changing the profile.
 3. **How to tell it is used.** The Dashboard's *Mirror* light shows the number of pieces it found (for example `103,631 ids`); *From mirror* counts the pieces served from it, and the *What happened* summary says how many
    came from your offline copy. If the *Mirror* light says "off" while the session runs, no copy was found in the mirror folder: check the folder, and that the profile is not *Capture* (which uses no mirror).
-4. **The guide's first step.** *Quick fix* or *Offline copy* there only changes the checklist; the button on that step switches between them at any time.
+4. **How textures load.** *While I play* or *From my offline copy* (the first-run question, or Settings) only changes what the window shows; the button switches between them at any time.
 
 ## Game setup: online mode and the cache link
 
@@ -118,7 +144,7 @@ Streaming only helps if the game then uses what it received. In a game folder th
 1. The Steam settings are in offline mode (`sp26\steam_settings\configs.main.ini` has `offline=1`), so the game does not ask for additional content.
 2. The engine fills `<game folder>\xpak_cache`, but the game looks for its cache in `<game folder>\sp26\xpak_cache`.
 
-The *Doctor* shows a *Game setup* row and the guide's *Check this PC* step offers *Set up the game*. After you confirm, it:
+The *Doctor* shows a *Game setup* row, and the first-run step *One small change in your game folder* (or the guide's *Check this PC* step) offers it. After you confirm, it:
 
 - sets `offline=0` and `disable_lan_only=1` under `[main::connectivity]` in `configs.main.ini`; the first time, the original is copied to `configs.main.ini.mw4ts-backup`, and every
   other line stays as it was;
@@ -146,7 +172,10 @@ the file since stays. It removes `sp26\xpak_cache` only when it is a link to `xp
 
 The setup is not offered when the *Engine cache folder* setting (Game tab) points at `sp26\xpak_cache` itself; change that setting first.
 
-## Tabs
+## Advanced mode
+
+*Settings -> Advanced mode* (or the *Advanced mode* link at the bottom of Home) shows every page behind a side navigation: **Live** (Dashboard, Report, Logs), **Textures** (Texture pack, Mirror, Cache), **Game and PC** (Game, Doctor, Hosts / DNS) and
+**Setup** (Proxy, Settings). Each page opens with its name and one line saying what it is for; a page taller than the window scrolls. *Home* (top left) goes back. The status strip at the top shows the eight lights (hover for what each means).
 
 - **Dashboard**: live counters, throughput graph, activity log.
 - **Proxy**: options (tier cap, budget, retries, port, mirror first, offline), restart, request-size histogram, recent requests.
@@ -171,8 +200,8 @@ The setup is not offered when the *Engine cache folder* setting (Game tab) point
 
 | Symptom | What to try |
 |---|---|
-| Red *SETUP NEEDED* | Game tab, set the game folder, *Save locations* |
-| Doctor: *Mirror: unable to open database file* (older versions), or *Mirror folder: you can read it but not write to it* | The mirror is in a folder only an administrator can write to (for example inside Program Files). A stored mirror is read as it is, without writing next to it; building or extending one needs a folder you can write to: set another *Mirror folder* in the Game tab |
+| Home says *Let's find your game*, or the Dashboard shows a red *SETUP NEEDED* | Let the tool look, or in Advanced mode open the Game page, set the game folder and press *Save locations* |
+| Doctor: *Mirror: unable to open database file* (older versions), or *Mirror folder: you can read it but not write to it* | The mirror is in a folder only an administrator can write to (for example inside Program Files). A stored mirror is read as it is, without writing next to it; building or extending one needs a folder you can write to: set another *Mirror folder* in the Game page of Advanced mode |
 | The report says the game asked for textures and got them, but they still look low | Doctor, *Game setup* row, Fix: set up the game (see [Game setup](#game-setup-online-mode-and-the-cache-link)); close the game first and start it again afterwards |
 | Game never streams, hosts light red or amber | Doctor, Fix: apply hosts (a UAC prompt only if the program is not running as administrator). The Hosts tab's *Test resolution* should show `127.0.0.1` and `::1` |
 | *Permission denied* when writing the hosts file, even as admin | See [Hosts file: permission denied](#hosts-file-permission-denied) below |

@@ -11,7 +11,7 @@ What it does NOT do
 What the program does afterwards
 
   - It asks Windows for administrator permission each time it starts, because it edits the protected hosts file and the game folder.
-  - It changes the hosts file only when you press "Start session", with a backup first. "Stop session" or "Restore hosts" puts it back.
+  - It changes the hosts file only when you press "Turn on HD textures", with a backup first. "Turn off" or "Restore hosts" puts it back.
 
 Your settings, logs and reports are kept in "%LOCALAPPDATA%\MW4TextureStreaming", separate from the program, so updating or reinstalling never loses them.
 Uninstalling takes the hosts override out first (if it is on), asks before deleting your settings, and never deletes a texture mirror you built or your game folder.

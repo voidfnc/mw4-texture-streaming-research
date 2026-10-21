@@ -2,11 +2,11 @@ MW4 Texture Streaming Toolkit - start here
 
 1. Close the game.
 2. Double-click "MW4 Texture Streaming.exe". Windows asks for administrator permission (the program needs it for the hosts file and the game folder): answer Yes.
-   The window offers a short guided setup: say yes.
-3. Follow the checklist at the top. It finds your game folder (you confirm it), then you press Start session and start the game.
-4. When you are done: Stop session.
+3. The first time, read the short notice. The window then asks where your game is (you confirm what it finds), how textures should load, and, only if the game folder needs it, for one small change in it.
+4. Press "Turn on HD textures", start the game and keep the window open while you play.
+5. When you are done: press "Turn off".
 
-Something wrong? Open the Doctor tab, or double-click "Restore hosts.bat" to undo the only system change this tool makes.
+Something wrong? Open Settings (top right) and choose "Check my PC", or double-click "Restore hosts.bat" to undo the only system change this tool makes.
 More: docs\GETTING-STARTED.md (plain words), docs\USAGE.md (everything).
 
 This is research code, not affiliated with the game's publisher. Read DISCLAIMER.md and LICENSE.

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0-beta
+**A new main window.** Everyday use is one screen with one button; every old tab is still there in Advanced mode.
+
+- **Home screen.** *Turn on HD textures*, start the game, *Turn off*. A ring shows the state (off, turning on, on, playing, done, needs attention), a step strip says where you are, and three cards show the game folder, how textures load and the free
+  space. While you play it shows the textures delivered, the speed, failed requests, where they come from and a three-minute graph. Problems appear as a card that says what happened and has the button that fixes it. Every part has a hover tip.
+- **First start in three questions.** The research notice (a full screen now, not a dialog), where the game is, how textures should load, and, only if needed, the one-time game setup. The old yes/no offer of the checklist now appears only when Advanced mode is opened first.
+- **Settings panel.** Slides in from the right: how textures load, the offline copy, game folder, game setup state, Check my PC, the word list, reports, the before/after test, reduced motion, Advanced mode.
+- **Offline copy page.** A progress ring and bar, pieces and gigabytes, speed and time left, Pause and Resume, *How much* and *Detail level*, and *Use only this copy* when the download is complete. It drives the same downloader as the Texture pack tab, with the same notices.
+- **Advanced mode.** Every tab kept, now behind a side navigation grouped as Live, Textures, Game and PC, Setup. Each page has a title and one line saying what it is for, long texts wrap to the window, a page taller than the window scrolls, and the check boxes, radio buttons, lists and buttons use the
+  same dark look. The Dashboard's profile and action rows no longer run off the side.
+- **Look and feel.** Anti-aliased rounded shapes, line icons and a progress ring drawn by the program itself (still no extra libraries). The program tells Windows it scales itself, so it is sharp at 125 and 150 percent (`CCS_NO_DPI=1` turns that off). *Reduce motion*
+  in Settings stops the animations, and the Windows animation switch is honoured.
+- **Under the hood.** New `tools/ccslib/ui.py` (the drawing kit), `home.py` (what each screen says, as plain data, fully tested) and `homeui.py` (the screens). The window cancels its timers when it closes. About 50 new tests (323 in total).
+- **Docs.** README, USAGE, GETTING-STARTED, ARCHITECTURE and TEXTURE-PACK describe the new window, and so do the installer's start page and its "what setup does" text. The program screenshots and the four installer pages are new, and the walkthrough video now shows the new window.
+
 ## 0.2.6-beta
 **You can switch between the quick fix and the offline copy, and the offline copy's text now says the program still has to run.**
 

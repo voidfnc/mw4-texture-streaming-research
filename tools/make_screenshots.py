@@ -13,7 +13,8 @@ import argparse, ctypes, math, os, shutil, struct, sys, time, zlib
 from ctypes import wintypes
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SHOTS = ('guide-start', 'guide-playing', 'guide-summary', 'full-view')
+SHOTS = ('first-run', 'home-ready', 'home-playing', 'home-finished', 'settings', 'offline-copy', 'advanced')
+ADVANCED = {'advanced': 'Dashboard'}
 
 
 # ------------------------------------------------------------------------------------------------ PNG + screen grab (no Pillow)
@@ -91,34 +92,38 @@ def main(argv=None):
 
 def shoot(name, out, game, version):
     import ccsgui
-    from ccslib import config, guide, paths
-    app = ccsgui.App(selftest=True); app.geometry('1180x760+40+30'); app.stop_poll.set(); time.sleep(1.3)
+    from ccslib import config, guide, paths, ui
+    ui.system_reduces_motion = lambda: False                                              # shown as it runs on a PC with animations on
+    app = ccsgui.App(selftest=True); app.geometry(('1200x780' if name in ADVANCED else '1100x760') + '+40+30'); app.stop_poll.set(); time.sleep(1.3)
     try:
         now = time.time(); cfg = app.cfg; cfg['notice_ack'] = version.__version__; cfg['paths']['game_root'] = game; config.save(cfg)
-        simple = name != 'full-view'; st = guide.new_state(enabled=simple, simple=simple, path='quick', offered=version.__version__)
+        st = guide.new_state(enabled=False, simple=False, path='' if name == 'first-run' else 'quick', offered=version.__version__)
         base = dict(t=now, hosts='ABSENT', resolve=dict(ok=False), game=[], owners=[], free=412.0, pproc=dict(alive=False), gproc=dict(alive=False), pstat=None, mproc=dict(alive=False))
         live = dict(base, hosts='OK', resolve=dict(ok=True), pproc=dict(alive=True, pid=7412), gproc=dict(alive=True), gstat=dict(cache_gib=12.4, limit_gib=100, hit=False),
-                    pstat=dict(pid=7412, now=now, started=now - 1062, hist={'<=64K': 310, '<=256K': 1480, '<=1M': 1710, '<=4M': 640, '<=8M': 58, '<=16M': 14}, recent=[],
-                               stat=dict(req=4212, mirror=0, ok=4198, err=3, retry=6, cliabort=21, skip=0, miss=0, bytes=int(2.6 * 2 ** 30), mbytes=0)))
-        if name == 'guide-start': st['ms'] = []; snap = base
-        elif name == 'guide-playing': st['ms'] = ['session', 'game']; snap = dict(live, game=['sp26-cod.exe'])
-        elif name == 'guide-summary':
-            st['ms'] = ['session', 'game', 'after']; st['summary'] = dict(req=4212, mirror=0, upok=4198, err=3, skip=0, secs=1062); snap = base
-        else: snap = dict(live, game=['sp26-cod.exe'])
-        app.cfg['guide'] = st; app.snap = snap; app._guide_save(st); app._guide_visibility(); app._apply_view()
+                    pstat=dict(pid=7412, now=now, started=now - 1062, hist={'<=64K': 310, '<=256K': 1480, '<=1M': 1710, '<=4M': 640, '<=8M': 58, '<=16M': 14}, recent=[], mirror_ids=0,
+                               stat=dict(req=4212, mirror=0, ok=4198, err=0, retry=3, cliabort=21, skip=0, miss=0, bytes=int(2.6 * 2 ** 30), mbytes=0)))
+        snap = base; plan = dict(total=dict(chunks=57200, gib=76.0, stored=23455, stored_gib=31.0, pending=33745, pending_gib=45.0), fits=True, free_gib=412.0, need_gib=46.0, eta_h=None, levels={}, by_pkg={}, missing=[], scope='sp', level='ultra')
+        if name in ('home-playing', 'advanced'): st['ms'] = ['session', 'game']; snap = dict(live, game=['sp26-cod.exe'])
+        elif name == 'home-finished': st['ms'] = ['session', 'game', 'after']; st['summary'] = dict(req=4543, mirror=0, upok=4543, err=0, skip=0, secs=2640)
+        elif name == 'offline-copy': snap = dict(base, mproc=dict(alive=True), mprog=dict(queued=33745, ok=7900, fail=0, retry=3, left=25845, now=now, started=now - 840, mibps=9.4, state='running', bytes=int(9.1 * 2 ** 30), budget_gib=80.0, free_gib=412.0))
+        app.cfg['guide'] = st; app.snap = snap; app._guide_save(st); app._gfc = None; app.pack_refresh = lambda: None
         app.attributes('-topmost', True); app.lift(); app.focus_force()
+        if name in ADVANCED: app.show_page('advanced'); app._goto(ADVANCED[name])
+        else:
+            app.show_page('home')
+            if name == 'offline-copy': app.home_page.show_page('download')
         end = time.time() + 2.6
         while time.time() < end: app.update(); time.sleep(0.03)
-        if name in ('guide-playing', 'full-view'):                                  # one real pass for the counters, then freeze them and draw the demo trace
-            app.series.clear(); app.series.extend(demo_series(now)); app._refresh_counters = lambda ps, s: None; app._draw_spark(); app.cnt['rps'].configure(text=f'{demo_series(now)[-1][3]:.1f}')
-        log = {'guide-start': [('', 'CCS Control started  (unelevated; hosts changes use UAC)'), ('', 'guide: looking for the game folder in the usual places...'), ('OK', f'game folder set to {game}')],
-               'guide-playing': [('ACC', '--- Start session ---'), ('', 'hosts: apply (UAC prompt may appear)'), ('', f"hosts: OK (backup hosts.{time.strftime('%Y%m%d')}-141502.bak)"), ('', 'proxy: READY'),
-                                 ('OK', 'Session READY: proxy 80 up, hosts override active'), ('OK', 'You can launch the game now.'), ('', 'game detected: sp26-cod.exe')],
-               'guide-summary': [('ACC', '--- Stop session ---'), ('', 'proxy: stopped'), ('', 'hosts: remove (UAC prompt may appear)'), ('OK', 'hosts remove: ok -> state ABSENT'), ('', 'game exited - generating the session report')]}
-        log['full-view'] = log['guide-playing']
+        if name in ('home-playing', 'advanced'):                                         # one real pass for the counters, then freeze them and draw the demo trace
+            app.series.clear(); app.series.extend(demo_series(now)); app._refresh_counters = lambda ps, s: None
+            if name == 'advanced': app._draw_spark(); app.cnt['rps'].configure(text=f'{demo_series(now)[-1][3]:.1f}')
+        if name == 'offline-copy': app._pack_plan = plan; app._pack_err = None
         app.act.configure(state='normal'); app.act.delete('1.0', 'end'); app.act.configure(state='disabled')
-        for i, (tag, text) in enumerate(log[name]): app._put(app.act, f'14:{15 + i:02d}:08 {text}', tag or None, scroll=False)
-        for _ in range(12): app.update(); time.sleep(0.03)
+        for i, (tag, text) in enumerate([('ACC', '--- Start session ---'), ('', 'hosts: apply'), ('', 'proxy: READY'), ('OK', 'Session READY: proxy 80 up, hosts override active'), ('', 'game detected: sp26-cod.exe')]): app._put(app.act, f'14:{15 + i:02d}:08 {text}', tag or None, scroll=False)
+        for _ in range(25): app.update(); time.sleep(0.03)
+        app._home_tick()
+        if name == 'settings': app.home_page.toggle_drawer()
+        for _ in range(20): app.update(); time.sleep(0.03)
         l, t, r, b = window_rect(app); b = min(b, app.winfo_rooty() + app.winfo_height()); w, h, rgb = grab(l, t, r, b)          # not below the client area: the frame's edge shows what is behind
         path = os.path.join(out, name + '.png'); open(path, 'wb').write(png_bytes(w, h, rgb)); print(f'{name}: {w}x{h}, {os.path.getsize(path) // 1024} KiB -> {path}')
     finally:

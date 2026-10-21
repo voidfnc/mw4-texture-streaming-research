@@ -10,8 +10,24 @@ from ccslib import config, doctor, guide, paths, procs, report, session, shortcu
 import ccsgui
 
 
+def _quiet_variable_del(orig=tk.Variable.__del__):
+    """A window that is collected from a worker thread (a garbage collection can start anywhere) makes tkinter print 'main thread is not in main loop' for its variables: harmless, so keep the test log clean."""
+    def __del__(self):
+        try: orig(self)
+        except (RuntimeError, tk.TclError): pass
+    return __del__
+
+
+tk.Variable.__del__ = _quiet_variable_del()
+
+
 def setUpModule():
     os.makedirs(TMP, exist_ok=True); paths.ensure_dirs()
+
+
+def ttk_style(app):
+    from tkinter import ttk
+    return ttk.Style(app)
 
 
 def walk(w):
@@ -35,7 +51,7 @@ class GuiTests(unittest.TestCase):
         for mod, name, fn in ((messagebox, 'askyesno', lambda *a, **k: True), (messagebox, 'askyesnocancel', lambda *a, **k: False), (messagebox, 'showinfo', lambda *a, **k: self.calls.append(('info', a))),
                               (messagebox, 'showerror', lambda *a, **k: self.calls.append(('error', a)))):
             self.patches[(mod, name)] = getattr(mod, name); setattr(mod, name, fn)
-        self.app = ccsgui.App(); self.app.withdraw(); self.app.update()
+        self.app = ccsgui.App(); self.app._notice_pending = False; self.app.withdraw(); self.app.update()          # the notice screen has its own test
         self.addCleanup(self.cleanup)
 
     def cleanup(self):
@@ -104,11 +120,21 @@ class GuiTests(unittest.TestCase):
         self.assertIn('11.9 MiB/s (100 Mbps)', txt); self.assertIn('via 203.0.113.7', txt); self.assertIn('[built-in fallback address', txt); self.assertIn('3.0 MiB/s (25 Mbps)', v(dict(base, state='running'), True)[1])
         self.assertIn('verifying', v(None, False, dict(done=5, total=10, bad=1), True)[1]); self.assertEqual(v(None, False)[1], 'no run in progress'); self.assertIn('last run done', v(dict(base, state='done'), False)[1])
 
-    def test_first_run_notice_shows_once_per_version(self):
+    def test_the_notice_is_a_home_screen_shown_once_per_version(self):
         from ccslib import version
-        self.app.cfg['notice_ack'] = ''; self.calls.clear(); self.app._first_run_notice()
-        self.assertEqual([c[0] for c in self.calls], ['info']); self.assertIn('Research / proof of concept', self.calls[0][1][1]); self.assertEqual(json.load(open(paths.SETTINGS_FILE))['notice_ack'], version.__version__)
-        self.calls.clear(); self.app._first_run_notice(); self.assertEqual(self.calls, [])
+        app = self.app; self._freeze(); app._notice_pending = True; app.cfg['notice_ack'] = ''; self._snap(); app._home_tick()
+        self.assertEqual(app.home_view['mode'], 'notice'); self.assertIn('Research / proof of concept', app.home_view['notice']); self.assertEqual(self.calls, []); self.assertEqual(app.home_page.h1.cget('text'), 'Before you start')   # no dialog
+        app.home_do('notice_ok'); self.assertFalse(app._notice_pending); self.assertEqual(json.load(open(paths.SETTINGS_FILE))['notice_ack'], version.__version__); self.assertNotEqual(app.home_view['mode'], 'notice')
+        a2 = ccsgui.App(); a2.withdraw()
+        try: self.assertFalse(a2._notice_pending)                                                                                      # accepted once for this version: not asked again
+        finally: a2.stop_poll.set(); a2.destroy()
+        a3 = ccsgui.App(selftest=True); a3.withdraw()
+        try: self.assertFalse(a3._notice_pending)                                                                                      # the headless self-test never shows it
+        finally: a3.stop_poll.set(); a3.destroy()
+        c = config.load(); c['notice_ack'] = 'older'; config.save(c); a4 = ccsgui.App(); a4.withdraw()
+        try: self.assertTrue(a4._notice_pending)
+        finally: a4.stop_poll.set(); a4.destroy()
+        a2 = a3 = a4 = None; gc.collect()
 
     def test_all_tabs_exist(self):
         self.assertEqual(list(self.app.tabs), ['Dashboard', 'Proxy', 'Texture pack', 'Mirror', 'Cache', 'Game', 'Doctor', 'Report', 'Hosts / DNS', 'Logs', 'Settings'])
@@ -255,7 +281,7 @@ class GuiTests(unittest.TestCase):
     def test_guide_is_offered_once_to_a_new_user_and_declining_is_remembered(self):
         from ccslib import version
         asked = []; messagebox.askyesno = lambda *a, **k: (asked.append(a), True)[1]
-        self.app.cfg['notice_ack'] = version.__version__; self.assertFalse(paths.CONFIGURED)
+        self.app.cfg['notice_ack'] = version.__version__; self.assertFalse(paths.CONFIGURED); self.app.show_page('advanced')          # the Home screen has its own first-run steps; the checklist offer belongs to Advanced mode
         self.assertEqual(self.app.guide_frame.winfo_manager(), '')                                                      # hidden until someone says yes
         self.app._first_run_notice(); self.assertEqual(len(asked), 1)
         st = self.app._guide_state(); self.assertTrue(st['enabled']); self.assertEqual(st['offered'], version.__version__); self.assertEqual(self.app.guide_frame.winfo_manager(), 'pack')
@@ -443,7 +469,7 @@ class GuiTests(unittest.TestCase):
         app.guide_do('view'); app.update(); self.assertTrue(all(s == 'normal' for s in self.tab_states().values()))
         self.assertEqual((app.prof_box.winfo_manager(), app.spark_box.winfo_manager(), app.prof_desc.winfo_manager(), app.simple_note.winfo_manager()), ('pack', 'pack', 'pack', ''))
         self.assertEqual(len([c for c in app.cnt_cells.values() if c.winfo_manager() == 'grid']), 12); self.assertEqual(app.cnt_lbl['req'].cget('text'), 'Requests'); self.assertEqual(app.btn_view.cget('text'), 'Simple view')
-        slaves = dash.pack_slaves(); self.assertLess(slaves.index(app.cnt_box), slaves.index(app.spark_box))                              # the graph comes back in its old place
+        slaves = app.cnt_box.master.pack_slaves(); self.assertLess(slaves.index(app.cnt_box), slaves.index(app.spark_box))                              # the graph comes back in its old place
         app.sv_simple.set(True); app.set_simple(app.sv_simple.get()); self.assertTrue(app._guide_state()['simple'])                      # the Settings checkbox does the same
 
     def test_goto_brings_a_hidden_tab_back_instead_of_failing(self):
@@ -452,7 +478,7 @@ class GuiTests(unittest.TestCase):
 
     def test_the_offer_turns_simple_view_on_with_the_guide_and_no_turns_both_off(self):
         from ccslib import version
-        self.app.cfg['notice_ack'] = version.__version__; self.app._first_run_notice()
+        self.app.cfg['notice_ack'] = version.__version__; self.app.show_page('advanced'); self.app._first_run_notice()
         self.assertEqual((self.app._guide_state()['enabled'], self.app._guide_state()['simple']), (True, True)); self.assertEqual(str(self.app.nb.tab(self.app.tabs['Proxy'], 'state')), 'hidden')
         self.app.cfg['guide'] = guide.new_state(); messagebox.askyesno = lambda *a, **k: False; self.app._offer_guide(); self.app.set_simple(False)
         self.assertEqual((self.app._guide_state()['enabled'], self.app._guide_state()['simple']), (False, False)); self.assertTrue(all(s == 'normal' for s in self.tab_states().values()))
@@ -537,6 +563,147 @@ class GuiTests(unittest.TestCase):
                 while time.time() - t0 < 0.7: a.update(); time.sleep(0.02)
                 self.assertTrue(a._guide_lbl); self.assertEqual(a.snap, {})
             finally: a.stop_poll.set(); a.destroy()
+
+
+    # ---------------------------------------------------------------- Home (the front window) and Advanced mode
+    def test_home_is_the_front_window_and_advanced_mode_keeps_every_tab_behind_a_side_navigation(self):
+        app = self.app; self.assertEqual(app.page, 'home'); self.assertEqual((app.home_page.winfo_manager(), app.adv.winfo_manager()), ('pack', ''))
+        app.show_page('advanced'); self.assertEqual((app.home_page.winfo_manager(), app.adv.winfo_manager()), ('', 'pack')); app.show_page('home'); self.assertEqual(app.home_page.winfo_manager(), 'pack')
+        names = [n for _, items in app.NAV for n, _ in items]; self.assertEqual(sorted(names), sorted(app.tabs)); self.assertEqual(sorted(app.nav_items), sorted(app.tabs))
+        app.nav_items['Cache'].command(); self.assertEqual((app.page, app.nb.index('current')), ('advanced', app.nb.index(app.tabs['Cache']))); self.assertTrue(app.nav_items['Cache'].sel); self.assertFalse(app.nav_items['Mirror'].sel)
+        app._goto('Logs'); self.assertTrue(app.nav_items['Logs'].sel); self.assertFalse(app.nav_items['Cache'].sel)                         # any way of opening a tab moves the highlight
+
+    def test_the_navigation_follows_simple_view(self):
+        app = self.app; app.set_simple(True); app.update()
+        self.assertEqual({n: it.winfo_manager() for n, it in app.nav_items.items()}, {n: ('grid' if n in guide.SIMPLE_TABS else '') for n in app.tabs})
+        app.set_simple(False); app.update(); self.assertTrue(all(it.winfo_manager() == 'grid' for it in app.nav_items.values()))
+        app._spot('tab:Texture pack'); self.assertTrue(app.nav_items['Texture pack'].lbl.cget('text').startswith('\u25b6')); app._spot(None); self.assertEqual(app.nav_items['Texture pack'].lbl.cget('text'), 'Texture pack')
+
+    def test_the_home_buttons_use_the_normal_handlers(self):
+        app = self.app; calls = []; self._freeze()
+        app.do_start = lambda: calls.append('start'); app.do_stop = lambda: calls.append('stop'); app.do_doctor = lambda switch=True: calls.append('doctor'); app.show_glossary = lambda: calls.append('words'); app.do_hosts_apply = lambda: calls.append('apply')
+        app.home_do('turn_on'); self.assertTrue(app._starting); app.home_do('turn_off'); app.home_do('help'); app.home_do('apply_hosts'); self.assertEqual(calls, ['start', 'stop', 'words', 'apply'])
+        app.home_do('open_check'); self.assertEqual((app.page, app.nb.index('current'), calls[-1]), ('advanced', app.nb.index(app.tabs['Doctor']), 'doctor'))
+        app.show_page('home'); app.home_do('activity'); self.assertEqual((app.page, app.nb.index('current')), ('advanced', app.nb.index(app.tabs['Logs'])))
+        app.show_page('home'); app.home_do('open_settings'); self.assertEqual((app.page, app.home_page.drawer.is_open), ('home', True)); app.home_page.drawer.hide(); app.home_do('open_report'); self.assertEqual(app.nb.index('current'), app.nb.index(app.tabs['Report']))
+        app.set_simple(True); app.show_page('home'); app.home_do('open_advanced'); self.assertEqual((app.page, app._guide_state()['simple']), ('advanced', False))             # Advanced mode shows everything
+        app.show_page('home'); app.home_do('no_such_action')                                                                                                       # unknown names are ignored, not fatal
+        self.assertEqual(calls, ['start', 'stop', 'words', 'apply', 'doctor'])
+
+    def test_every_home_action_has_a_handler(self):
+        import inspect
+        from ccslib import home
+        src = inspect.getsource(ccsgui.App.home_do)
+        for a in home.ACTIONS:
+            if not a.startswith(('set_scope_', 'set_level_')): self.assertIn(f"'{a}'", src, a)
+        self.assertIn("'set_scope_'", src); self.assertIn("'set_level_'", src)                                  # the two segmented choices of the offline-copy page
+
+    def test_the_first_run_choices_and_the_done_button_change_the_guide_state(self):
+        app = self.app; self._freeze(); g = self.game_dir(); app.guide_find_folder = lambda: None
+        self.assertEqual(app.page, 'home'); app._found = [dict(path=g, score=3, source='test')]; self._snap(); app._home_tick(); self.assertEqual(app.home_view['mode'], 'find'); self.assertFalse(app._searching)    # the window is hidden: no search starts
+        app.home_do('use_found'); self.assertEqual(os.path.normcase(paths.GAME_ROOT), os.path.normcase(os.path.normpath(g))); self.assertEqual(app.home_view['mode'], 'choose')
+        app.home_do('pick_offline'); self.assertEqual([c['selected'] for c in app.home_view['choices']], [False, True]); self.assertEqual(app.home_view['primary'][0], 'choose_offline')
+        app.home_do('choose_offline'); self.assertEqual(app._guide_state()['path'], 'offline'); self.assertEqual(app.home_view['mode'], 'ready'); self.assertEqual(app.home_view['cards'][1]['value'], 'From my offline copy')
+        app.home_do('switch_path'); self.assertEqual(app._guide_state()['path'], 'quick'); app.home_do('switch_path'); self.assertEqual(app._guide_state()['path'], 'offline')
+        st = app._guide_state(); st['ms'] = ['session', 'game', 'after']; st['summary'] = dict(req=7, err=0, secs=90); app._guide_save(st); app._home_tick(); self.assertEqual(app.home_view['mode'], 'finished')
+        app.home_do('done'); self.assertEqual((app._guide_state()['ms'], app.home_view['mode']), ([], 'ready'))
+
+    def test_home_shows_the_state_of_the_real_checks(self):
+        app = self.app; self._freeze(); g = self.game_dir(); app._apply_game_folder(g); app.guide_do('choose_quick'); text = lambda: (app.home_view['mode'], app.home_page.h1.cget('text'))
+        self._snap(); app._home_tick(); self.assertEqual(text(), ('ready', 'Ready when you are')); self.assertEqual(app.home_page.btn_primary.text, 'Turn on HD textures')
+        app._starting = True; app._home_tick(); self.assertEqual(app.home_view['mode'], 'starting'); app._starting = False
+        self._snap(**self._live()); app._home_tick(); self.assertEqual(text(), ('waiting', 'HD textures are on')); self.assertEqual(app._guide_state()['ms'], ['session'])
+        self._snap(**self._live(req=120, game=['sp26-cod.exe'])); app._home_tick(); self.assertEqual(text(), ('playing', 'Playing with HD textures')); self.assertEqual(app.home_view['ring']['big'], '120')
+        self._snap(); app._home_tick(); self.assertEqual(text(), ('finished', 'All done. Nice session.')); self.assertIn('120 textures', app.home_page.sub.cget('text'))
+        app.home_do('done'); app.say('Session NOT ready: hosts override not applied:   permission denied', 'ERR'); app._home_tick(); self.assertEqual(text(), ('problem', 'Windows blocked the change'))
+        self.assertEqual([b.text for b in walk(app.home_page.alert_box) if isinstance(b, ccsgui.ui.Button)], ['Try again', 'Check my PC'])
+        app.say('Session READY: session running', 'OK'); app._home_tick(); self.assertEqual(app.home_view['mode'], 'ready')
+
+    def test_milestones_advance_even_while_advanced_mode_is_open(self):
+        app = self.app; self._freeze(); g = self.game_dir(); app._apply_game_folder(g); app.guide_do('choose_quick'); app.show_page('advanced')
+        self._snap(**self._live(req=120, game=['sp26-cod.exe'])); app._home_tick(); self.assertEqual(app._guide_state()['ms'], ['session', 'game']); self._snap(); app._home_tick(); self.assertEqual(app._guide_state()['ms'], ['session', 'game', 'after'])
+
+    def test_a_failing_home_never_breaks_the_refresh_loop(self):
+        from unittest import mock
+        from ccslib import home
+        app = self.app; self._freeze(); self._snap(hosts='OK', resolve=dict(ok=True))
+        with mock.patch.object(home, 'build', side_effect=RuntimeError('boom')): app._refresh(); app._refresh()
+        self.assertEqual(app._home_err, 'boom')
+
+    def test_the_old_yes_no_offer_waits_for_advanced_mode(self):
+        from ccslib import version
+        asked = []; messagebox.askyesno = lambda *a, **k: (asked.append(a), True)[1]; self.app.cfg['notice_ack'] = version.__version__
+        self.app._first_run_notice(); self.assertEqual(asked, []); self.assertFalse(self.app._guide_state()['enabled'])                  # Home walks a new user through the steps itself
+
+    def test_the_whole_window_uses_the_one_palette(self):
+        from ccslib import ui
+        self.assertEqual((ccsgui.BG, ccsgui.PANEL, ccsgui.FG, ccsgui.ACC), (ui.BG, ui.CARD, ui.TEXT, ui.ACCENT)); self.assertEqual(str(ttk_style(self.app).lookup('TFrame', 'background')), ui.BG)
+        self.assertEqual(str(ttk_style(self.app).lookup('Accent.TButton', 'background')), ui.ACCENT); self.assertEqual(self.app.nb.cget('style'), 'Plain.TNotebook')
+
+
+    # ---------------------------------------------------------------- the settings drawer, the offline-copy page, hover help, Advanced mode help
+    def _ready_home(self):
+        app = self.app; self.pump(2.0)                                                                 # let the window's own first plan calculation finish, so it cannot arrive in the middle of a test
+        self._freeze(); app.pack_refresh = lambda: None; app._apply_game_folder(self.game_dir()); app.guide_do('choose_quick'); self._snap(); app._pack_plan = None; app._pack_err = None; app._home_tick(); return app
+
+    def test_the_settings_drawer_lists_the_settings_and_runs_their_actions(self):
+        app = self._ready_home(); hp = app.home_page; calls = []; app.show_glossary = lambda: calls.append('words'); app.abtest = None; hp.toggle_drawer(); app.update()
+        self.assertTrue(hp.drawer.is_open); labels = [w.cget('text') for w in walk(hp.drawer) if w.winfo_class() == 'Label']
+        for text in ('Settings', 'TEXTURES', 'How textures load', 'Offline copy', 'Game folder', 'One-time game setup', 'Check my PC', 'What do the words mean?', 'Reduce motion', 'Advanced mode'): self.assertIn(text, labels)
+        hp._row_action('help'); self.assertEqual(calls, ['words']); self.assertFalse(hp.drawer.is_open)                           # a navigating row closes the drawer
+        hp.toggle_drawer(); hp._row_action('switch_path'); self.assertTrue(hp.drawer.is_open); self.assertEqual(app._guide_state()['path'], 'offline')           # a switch keeps it open
+        app._home_tick(); self.assertIn('From my offline copy', [w.cget('text') for w in walk(hp.drawer) if w.winfo_class() == 'Label'])                      # and the rows follow the state
+        hp.drawer.hide(); self.assertFalse(hp.drawer.is_open); hp.toggle_drawer(); hp._row_action('open_advanced'); self.assertEqual(app.page, 'advanced')
+
+    def test_the_settings_button_and_escape_open_and_close_the_drawer(self):
+        app = self._ready_home(); hp = app.home_page; app.home_do('open_settings'); self.assertTrue(hp.drawer.is_open); app.home_do('open_settings'); self.assertFalse(hp.drawer.is_open)
+        hp.toggle_drawer(); self.assertTrue(hp.drawer.is_open); hp.stage.event_generate('<Button-1>'); hp.drawer.hide(); self.assertFalse(hp.drawer.is_open)
+
+    def test_reduce_motion_stops_the_animations_and_is_remembered(self):
+        from unittest import mock
+        from ccslib import ui
+        app = self._ready_home(); app.cfg['ui']['reduce_motion'] = False
+        with mock.patch.object(ui, 'system_reduces_motion', return_value=False):
+            app._apply_motion(); self.assertTrue(app.ticker.enabled)
+            app.home_do('toggle_motion'); self.assertFalse(app.ticker.enabled); self.assertTrue(json.load(open(paths.SETTINGS_FILE))['ui']['reduce_motion'])
+            app.home_do('toggle_motion'); self.assertTrue(app.ticker.enabled); self.assertFalse(config.load()['ui']['reduce_motion'])
+        with mock.patch.object(ui, 'system_reduces_motion', return_value=True): app._apply_motion(); self.assertFalse(app.ticker.enabled)                    # Windows' own switch counts too
+
+    def test_the_offline_copy_page_shows_the_plan_the_progress_and_drives_the_normal_handlers(self):
+        app = self._ready_home(); hp = app.home_page; app.pack_refresh = lambda: None; calls = []; app.do_pack_start = lambda: calls.append('start'); app.do_mirror_pause = lambda: calls.append('pause'); app.do_pack_verify = lambda r: calls.append(('verify', r))
+        plan = dict(total=dict(chunks=1000, gib=80.0, stored=0, stored_gib=0.0, pending=1000, pending_gib=80.0), fits=True, free_gib=400.0, need_gib=80.0)
+        app.home_do('open_download'); self.assertEqual(hp.page, 'download'); app.update(); self.assertEqual(hp.dview['mode'], 'loading')
+        app._pack_plan = plan; app._home_tick(); app.update(); self.assertEqual(hp.dview['mode'], 'idle'); self.assertEqual(hp.dl_h1.cget('text'), 'Download the texture pack')
+        buttons = {b.text: b for b in walk(hp.dl_col) if isinstance(b, ccsgui.ui.Button)}; self.assertIn('Start the download', buttons); self.assertIn('Home', buttons); buttons['Start the download'].invoke(); self.assertEqual(calls, ['start'])
+        app.home_do('set_level_standard'); self.assertEqual(app.pk_level.get(), 'standard'); self.assertEqual(config.load()['pack']['level'], 'standard'); app.home_do('set_scope_all'); self.assertEqual(app.pk_scope.get(), 'all'); self.assertEqual(config.load()['pack']['scope'], 'all')
+        app._pack_plan = plan; self._snap(mproc=dict(alive=True), mprog=dict(queued=1000, ok=250, fail=0, left=750, now=1100.0, started=1000.0, mibps=9.4, state='running')); app._home_tick(); app.update()
+        self.assertEqual((hp.dview['mode'], hp.dl_h1.cget('text'), hp.dl_ring.cfg[3]), ('running', 'Downloading your texture pack', '25%')); self.assertIn('250 of 1,000 pieces', hp.dl_bar_l.cget('text'))
+        pause = [b for b in walk(hp.dl_col) if isinstance(b, ccsgui.ui.Button) and b.text == 'Pause'][0]; pause.invoke(); self.assertEqual(calls[-1], 'pause'); self.assertTrue(all(not s.on for s in walk(hp.dl_col) if isinstance(s, ccsgui.ui.Segmented)))
+        self._snap(); app._pack_plan = dict(plan, total=dict(plan['total'], stored=1000, pending=0, pending_gib=0.0)); app._home_tick(); self.assertEqual(hp.dview['mode'], 'done'); app.home_do('pack_verify'); self.assertEqual(calls[-1], ('verify', False))
+        app.home_do('back_home'); self.assertEqual(hp.page, 'home'); app._home_tick(); app.update(); self.assertIn(app.home_view['mode'], ('ready',))
+        self.assertEqual(app.page, 'home')
+
+    def test_the_offline_copy_page_is_reached_from_the_drawer_and_asks_for_the_plan(self):
+        app = self._ready_home(); asked = []; app.pack_refresh = lambda: asked.append(1); app.show_page('advanced'); app.home_do('open_download')
+        self.assertEqual((app.page, app.home_page.page, asked), ('home', 'download', [1])); self.assertIsNone(app._pack_plan)
+
+    def test_the_plan_error_reaches_the_page(self):
+        app = self._ready_home(); app.pack_refresh = lambda: None; app.home_do('open_download'); app._show_pack(dict(error='no lists on this install')); app._home_tick(); app.update()
+        self.assertEqual((app.home_page.dview['mode'], app.home_page.dview['alert']['id']), ('error', 'plan')); app._show_pack(dict(total=dict(chunks=5, gib=1.0, stored=0, stored_gib=0.0, pending=5, pending_gib=1.0), fits=True, free_gib=9.0, need_gib=1.0, eta_h=None, levels={k: dict(gib=1.0, pending_gib=1.0) for k in ('standard', 'high', 'ultra')}, by_pkg={}, missing=[], scope='sp', level='ultra'))
+        self.assertIsNone(app._pack_err)
+
+    def test_hover_help_is_attached_to_the_ring_the_steps_the_footer_and_the_cards(self):
+        app = self._ready_home(); app.update(); tips = app.home_page.tips
+        for key in ('ring', 'stepper', 'footer', 'card0', 'card1', 'card2', 'primary'): self.assertIn(key, tips, key); self.assertTrue(tips[key].text, key)
+        self.assertIn('Press the button', tips['ring'].text); self._snap(**self._live(req=50, game=['sp26-cod.exe'])); app._home_tick(); self.assertIn('delivered', tips['ring'].text); self.assertIn('kpi-Speed', tips)
+
+    def test_advanced_pages_have_a_title_and_one_line_of_help_and_wrap_to_the_window(self):
+        app = self.app; app.show_page('advanced'); app.update()
+        for name in app.tabs:
+            app._goto(name); app.update(); self.assertEqual(app.page_title.cget('text'), name); self.assertTrue(app.page_help.cget('text'), name)
+        app.nb.winfo_width = lambda: 600; app._rewrap(); self.assertEqual(int(app.pk_where.cget('wraplength')), 560); self.assertEqual(int(app.pk_est.cget('wraplength')), 240); self.assertEqual(int(app.page_help.cget('wraplength')), 570)       # follows the page width
+        app.nb.winfo_width = lambda: 1400; app._rewrap(); self.assertEqual(int(app.pk_where.cget('wraplength')), 1360); self.assertEqual(int(app.pk_est.cget('wraplength')), 630)
+        self.assertEqual(sorted(ccsgui.App.PAGE_HELP), sorted(app.tabs))
 
 
 def tearDownModule():

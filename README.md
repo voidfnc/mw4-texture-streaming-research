@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.2.6 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
+Beta 0.3.0 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
 [Video](#video-walkthrough) · [Screenshots](#what-it-looks-like) · [Download](#download) · [Getting started](docs/GETTING-STARTED.md) · [Releases](https://github.com/voidfnc/mw4-texture-streaming-research/releases)
 
@@ -19,15 +19,15 @@ it never did. This repository is what came out of tracking that down: a short ex
 
 ## Video walkthrough
 
-I made a short video (about four minutes) that goes through the whole thing: what's wrong with the texture lookup, how the fix works, and how to install and use the program. It should play
-right here. If it doesn't load for you, you can [download the file from the 0.2.6-beta release](https://github.com/voidfnc/mw4-texture-streaming-research/releases/download/v0.2.6-beta/MW4-Texture-Streaming-Walkthrough.mp4)
-(about 59 MB).
+I made a short video (about five and a half minutes) that goes through the whole thing: what's wrong with the texture lookup, how the fix works, how to install the program, and then the new
+main window from the first start to a finished session, the Settings, the offline copy and Advanced mode. It should play right here. If it doesn't load for you, you can
+[download the file from the 0.3.0-beta release](https://github.com/voidfnc/mw4-texture-streaming-research/releases/download/v0.3.0-beta/MW4-Texture-Streaming-Walkthrough.mp4) (about 65 MB).
 
-<video src="https://github.com/user-attachments/assets/f5febd28-d6d7-4e49-9a14-a911215de676" controls width="100%"></video>
+<video src="https://github.com/user-attachments/assets/fac3321a-d121-41ef-a557-5f91ab40022c" controls width="100%"></video>
 
-It's only the screenshots from this page, a few simple diagrams and the two in-game frames, with captions on top. The voice is computer-generated, and so are the music and sound effects, so don't
-expect a polished production. The same caveats apply as for the screenshots below: the program windows are from 0.2.3-beta, the installer pages are from 0.2.5-beta, the in-game frames aren't a measured before/after
-comparison, and the game art belongs to its owners.
+The program window in it is the real thing (version 0.3.0-beta, demo numbers, a throw-away folder), next to a few simple diagrams and the two in-game frames, with captions on top. The voice is computer-generated, and so are the music and
+sound effects, so don't expect a polished production. The in-game frames were taken with the earlier window design and aren't a measured before/after comparison,
+and the game art belongs to its owners.
 
 ## What it looks like
 
@@ -39,26 +39,39 @@ offers the shortcuts. Cancelling at any point installs nothing.
 ![What setup does and does not do](docs/images/installer-2-info.png)
 ![Shortcut options](docs/images/installer-3-options.png)
 
-**The program.** Screenshots of version **0.2.3-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them (the two in-game frames are further down). They are
-regenerated when the windows change (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`); the version in the title bar is the version they were taken with. Later versions start with an administrator prompt, so the first line of the activity log reads slightly differently there. The four installer pages above are from 0.2.5-beta.
+**The program.** Screenshots of version **0.3.0-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them (the two in-game frames are further down). They are
+regenerated when the windows change (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`); the version in the title bar is the version they were taken with. The four installer pages above are from 0.3.0-beta too.
 
-**Guided setup in Simple view**: the checklist ticks the steps it can verify and highlights the next button (here *Start session*).
+**First start.** A new user is asked three things: where the game is (the tool looks in the usual places and you confirm what it finds), how textures should load (while playing, or from an offline copy you download once) and, only if the game folder needs it, to
+make one small change in it (the game setup).
 
-![Guided setup in Simple view, ready to start the session](docs/images/guide-start.png)
+![First start: how should textures load?](docs/images/first-run.png)
 
-**During a session**: the live counters and the Activity log, with the checklist waiting for you to finish playing.
+**Home.** One button. Turn on HD textures, start the game and keep the window open. The three small cards show the game folder, how textures load and the free space, and every part has a hover tip.
 
-![Guided setup while the game is running](docs/images/guide-playing.png)
+![Home, ready to turn on](docs/images/home-ready.png)
 
-**After the session**: a short "What happened" summary of what the game asked for and what was delivered. It says nothing about how the picture looks; the before/after test is for that.
+**While you play**: how many textures were delivered, the speed, how many requests failed, where the textures come from and a three-minute graph.
 
-![Guided setup after a session, with the What happened summary](docs/images/guide-summary.png)
+![Home while the game is running](docs/images/home-playing.png)
 
-**Full view**: every tab, all twelve counters and the throughput graph, for when you want the detail.
+**After the session**: a short summary of what the game asked for and what was delivered. It says nothing about how the picture looks; the before/after test is for that.
 
-![Full view of the Dashboard during a session](docs/images/full-view.png)
+![Home after a session](docs/images/home-finished.png)
 
-**In the game.** Two frames from a play session of the single-player campaign at 2560x1440 with the toolkit running (0.2.5-beta). In the first, the Dashboard sits next to the game: 117
+**Settings** slide in from the right: how textures load, the offline copy, the game folder, the one-time game setup, the Doctor, the word list, reports, the before/after test, reduced motion and Advanced mode.
+
+![The Settings panel](docs/images/settings.png)
+
+**The offline copy** has its own page: how much of the texture pack is on the PC, pause and resume, and two choices (campaign only or everything, and how detailed).
+
+![The offline copy page while a download runs](docs/images/offline-copy.png)
+
+**Advanced mode** keeps every tab of the earlier window (Dashboard, Proxy, Texture pack, Mirror, Cache, Game, Doctor, Report, Hosts / DNS, Logs, Settings) behind a side navigation. Each page opens with its name and a line saying what it is for.
+
+![Advanced mode: the Dashboard during a session](docs/images/advanced.png)
+
+**In the game.** Two frames from a play session of the single-player campaign at 2560x1440 with the toolkit running (0.2.5-beta, so the window is the earlier design). In the first, the Dashboard sits next to the game: 117
 texture pieces delivered so far, none from the internet, no errors (the game folder path in the window is covered). In the second, a close-up of a character and a shop interior. They show how
 the game looks with the streamed textures; they are not a measured comparison (I took no before/after pairs, see [section 7 of FINDINGS](docs/FINDINGS.md#7-what-i-could-not-verify)).
 The frames are copyrighted game art, shown here only to illustrate the toolkit.
@@ -85,11 +98,11 @@ unmodified game start streaming. The whole story, with the captures that show it
 - **Mirror** (`tools/ccsmirror.py`): downloads the chunks once, checks each one (size and MD5 against the server's ETag), and can be paused and resumed. You can
   limit bandwidth, set a daily quota, pick a detail level, and it waits patiently if your connection drops. Defaults are deliberately gentle (4 connections, 50
   requests per second, a User-Agent that names the tool, back-off on HTTP 429/503).
-- **Control window** (`tools/ccsgui.py`; in the installer and the zip it is `MW4 Texture Streaming.exe`): one place for all of the above, plus a doctor that checks your setup, live
+- **Control window** (`tools/ccsgui.py`; in the installer and the zip it is `MW4 Texture Streaming.exe`): a Home screen with one button for everyday use, and Advanced mode with one place for all of the above, plus a doctor that checks your setup, live
   statistics, and a report for every game session (what the game asked for, how fast, how much was already in its cache).
-- **Guided setup and Simple view**: an optional checklist that finds your game folder, checks the PC and ticks each step off, with hover help, plain-language help cards
-  for the usual failures and a before/after test. New here? See [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
-- **Texture pack tab**: choose what to mirror (campaign only, everything, or specific packages) and how large chunks may be. See
+- **First start and help in plain words**: the Home screen finds your game folder, checks the PC and walks through the first run, with hover tips, cards that say what went wrong and what to press, and a before/after test.
+  New here? See [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
+- **Offline copy**: choose what to download (campaign only or everything) and how large the pieces may be, pause and resume any time. Advanced mode's Texture pack tab has every option. See
   [docs/TEXTURE-PACK.md](docs/TEXTURE-PACK.md).
 
 The proxy and mirror never touch the game process. Details of how the pieces fit together are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -105,7 +118,7 @@ Pick one. The files are on the [Releases page](https://github.com/voidfnc/mw4-te
 | **From source** | Clone this repository and run `python tools\ccsgui.py` (Python 3.10+, standard library only). See [Running from source](#running-from-source). | Developers and advanced users. Everything is in this repository. |
 
 Windows may say "Windows protected your PC" (SmartScreen) because the files are not code-signed yet: choose *More info*, then *Run anyway*. You can check a download against
-`SHA256SUMS.txt` on the release page (`certutil -hashfile <file> SHA256`). Release files are built from the tagged source with `packaging\build.bat` (see CONTRIBUTING). The installer changes nothing in your hosts file; the program does that only when you press *Start session*.
+`SHA256SUMS.txt` on the release page (`certutil -hashfile <file> SHA256`). Release files are built from the tagged source with `packaging\build.bat` (see CONTRIBUTING). The installer changes nothing in your hosts file; the program does that only when you press *Turn on HD textures* (*Start session* in Advanced mode).
 
 ## Running from source
 
@@ -118,13 +131,13 @@ cd mw4-texture-streaming-research
 python tools\ccsgui.py
 ```
 
-On first start the window offers a short guided setup: a checklist on the Dashboard that finds your game folder (you confirm what it finds), checks the PC, and ticks
-each step off by itself. It is optional and never changes anything without a click; the *Guide* button turns it on or off. New to all this? Start with
-[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md): plain words, no command line, a list of what the terms mean. Nothing is assumed, and the settings live in
-`tools\work\gui_settings.json`. Then use *Start session*, launch the game, and watch the Dashboard. [docs/USAGE.md](docs/USAGE.md) walks through each tab, and the command-line versions of everything are listed there too.
+On first start the window shows a short notice, then asks where your game is (you confirm what it finds), how textures should load and, if the game folder needs it, for one small change in it. It never changes
+anything without a click. After that the Home screen has one button, *Turn on HD textures*: press it, launch the game and watch the numbers. Settings (top right) lead to everything else, and *Advanced mode* shows every tab. New to all this? Start with
+[docs/GETTING-STARTED.md](docs/GETTING-STARTED.md): plain words, no command line, a list of what the terms mean. Nothing is assumed, and the settings live in `tools\work\gui_settings.json`.
+[docs/USAGE.md](docs/USAGE.md) walks through the Home screen and each Advanced tab, and the command-line versions of everything are listed there too.
 To undo the hosts change at any time run `tools\restore-hosts.bat`.
 
-The tests don't need the game: `python -m unittest discover -s tools/tests` (196 tests, a couple of minutes).
+The tests don't need the game: `python -m unittest discover -s tools/tests` (about 300 tests, a few minutes).
 
 ## Administrator rights
 
@@ -140,7 +153,7 @@ has the same property, so keep it in a folder only you can write to.
 
 ## If something doesn't work
 
-Most problems show up in the *Doctor* tab, which tells you what is wrong and offers a fix. Problems that have come up:
+Most problems show up as a card on the Home screen that says what happened and offers a button, and in *Check my PC* (Settings; it is the Doctor tab in Advanced mode), which tells you what is wrong and offers a fix. Problems that have come up:
 
 **"Permission denied" when the hosts file is written.** Windows protects that file on purpose, and a write can be refused even when the window says it runs as
 administrator. The usual causes are the read-only attribute on the file (run `attrib -r "%SystemRoot%\System32\drivers\etc\hosts"` in an admin Command Prompt) or
@@ -149,15 +162,15 @@ untouched, and the message says so. I don't turn off anyone's security software 
 would rather not let the tool write the file at all, you can add the two lines yourself (`ccs-cli.exe --ccs-run ccshosts diff apply`, or `python tools\ccshosts.py diff apply` from source, shows them).
 
 **Textures are streamed (the report shows requests and answers) but still look low.** In some game folders the Steam settings put the game in offline mode, and the game can look for its
-cache in `sp26\xpak_cache` while the engine fills `xpak_cache`. The Doctor's *Game setup* row (and the guide's *Check this PC* step) fixes both after you confirm: it sets
+cache in `sp26\xpak_cache` while the engine fills `xpak_cache`. The Doctor's *Game setup* row (and the first-run step *One small change in your game folder*) fixes both after you confirm: it sets
 `offline=0` and `disable_lan_only=1` in `sp26\steam_settings\configs.main.ini` (a copy of the original is kept) and links `sp26\xpak_cache` to `xpak_cache`. Close the game first,
 and start it again afterwards. Details and the command line: [docs/USAGE.md](docs/USAGE.md#game-setup-online-mode-and-the-cache-link).
 
-**I built an offline copy. Can I play without the program?** No. The game still asks for its textures through the helper, so each time you play: start the program, press *Start session*, launch the game and
-keep the window open. The copy only means the pieces come from your disk instead of the internet; the game does not read it on its own. The copy is kept in the mirror folder (the Texture pack tab shows where; by default a
-`mirror` folder inside the game folder). With the Default profile it is used first, and *Play offline (profile)* on the Texture pack tab makes sure nothing goes to the internet. The Dashboard's Mirror light shows how many
-pieces it found; "off" while a session runs means none were found, so check the Mirror folder in the Game tab (Full view shows that tab). The guided setup's first step (*Quick fix* or *Offline copy*) only changes the checklist,
-and can be switched with the button on that step. More in [docs/USAGE.md](docs/USAGE.md#using-an-offline-copy-you-have-already-downloaded).
+**I built an offline copy. Can I play without the program?** No. The game still asks for its textures through the helper, so each time you play: start the program, press *Turn on HD textures*, launch the game and
+keep the window open. The copy only means the pieces come from your disk instead of the internet; the game does not read it on its own. The copy is kept in the mirror folder (the Texture pack tab in Advanced mode shows where; by default a
+`mirror` folder inside the game folder). With the Default profile it is used first, and *Use only this copy* on the offline copy page (or *Play offline (profile)* on the Texture pack tab) makes sure nothing goes to the internet. The Dashboard's Mirror light (Advanced mode) shows how many
+pieces it found; "off" while a session runs means none were found, so check the Mirror folder in the Game tab of Advanced mode. The first-run question *How should textures load?* only changes what the window shows,
+and can be switched in Settings. More in [docs/USAGE.md](docs/USAGE.md#using-an-offline-copy-you-have-already-downloaded).
 
 **The counters stay at zero right after the game starts.** In my sessions the game began asking for texture pieces once it had loaded into gameplay, not at the launcher or the main menu. Load a mission and give it a minute before judging;
 if the counters are still at zero a minute or two later, the Doctor tells you why.
