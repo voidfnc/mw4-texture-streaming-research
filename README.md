@@ -95,10 +95,13 @@ The frames are copyrighted game art, shown here only to illustrate the toolkit.
 
 ## Video walkthrough
 
-A narrated walkthrough of the problem, the fix and the program, about four minutes: [MW4-Texture-Streaming-Walkthrough.mp4](https://github.com/voidfnc/mw4-texture-streaming-research/releases/download/v0.2.6-beta/MW4-Texture-Streaming-Walkthrough.mp4)
-(about 59 MB, attached to the 0.2.6-beta release). It is made of the screenshots on this page, a few animated diagrams and the two in-game frames above, with captions; the narration is a synthetic (text-to-speech)
-voice, and the music and sound effects are generated, not recorded. The same notes apply: the program windows are version 0.2.3-beta, the installer pages 0.2.5-beta, the in-game frames are not a
-measured comparison, and the game art belongs to its owners.
+I made a short video (about four minutes) that goes through the whole thing: what's wrong with the texture lookup, how the fix works, and how to install and use the program. You can
+[download it from the 0.2.6-beta release](https://github.com/voidfnc/mw4-texture-streaming-research/releases/download/v0.2.6-beta/MW4-Texture-Streaming-Walkthrough.mp4) (about 59 MB; GitHub turns
+release files into downloads, so it won't play inside this page).
+
+It's only the screenshots from this page, a few simple diagrams and the two in-game frames, with captions on top. The voice is computer-generated, and so are the music and sound effects, so don't
+expect a polished production. The same caveats apply as above: the program windows are from 0.2.3-beta, the installer pages are from 0.2.5-beta, the in-game frames aren't a measured before/after
+comparison, and the game art belongs to its owners.
 
 ## Running from source
 
