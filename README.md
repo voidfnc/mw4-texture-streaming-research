@@ -2,6 +2,8 @@
 
 Beta 0.2.6 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
+[Video](#video-walkthrough) · [Screenshots](#what-it-looks-like) · [Download](#download) · [Getting started](docs/GETTING-STARTED.md) · [Releases](https://github.com/voidfnc/mw4-texture-streaming-research/releases)
+
 I started this because the Modern Warfare campaign on my PC looked blurry no matter what I did in the graphics menu. Walls and character gear sat on the lowest
 texture tier even with every setting maxed out. The game is supposed to download higher-resolution texture pieces from a CDN while you play, and on my machine
 it never did. This repository is what came out of tracking that down: a short explanation of the bug, and a set of small tools that work around it.
@@ -14,6 +16,55 @@ it never did. This repository is what came out of tracking that down: a short ex
 > Using them is your decision and your responsibility. Downloading game content in bulk, editing your hosts file and routing the game through a local proxy may go
 > against the game's terms of service, or the law where you live. This project is not affiliated with or endorsed by Activision. "Call of Duty" and "Modern
 > Warfare" are trademarks of their owners and appear here only to say what the tools are for. No warranty (see [LICENSE](LICENSE) and [DISCLAIMER.md](DISCLAIMER.md)).
+
+## Video walkthrough
+
+I made a short video (about four minutes) that goes through the whole thing: what's wrong with the texture lookup, how the fix works, and how to install and use the program. It should play
+right here. If it doesn't load for you, you can [download the file from the 0.2.6-beta release](https://github.com/voidfnc/mw4-texture-streaming-research/releases/download/v0.2.6-beta/MW4-Texture-Streaming-Walkthrough.mp4)
+(about 59 MB).
+
+<video src="https://github.com/user-attachments/assets/f5febd28-d6d7-4e49-9a14-a911215de676" controls width="100%"></video>
+
+It's only the screenshots from this page, a few simple diagrams and the two in-game frames, with captions on top. The voice is computer-generated, and so are the music and sound effects, so don't
+expect a polished production. The same caveats apply as for the screenshots below: the program windows are from 0.2.3-beta, the installer pages are from 0.2.5-beta, the in-game frames aren't a measured before/after
+comparison, and the game art belongs to its owners.
+
+## What it looks like
+
+**The installer** asks whether to install for all users (the default: Program Files, one permission prompt) or for you only (no administrator rights), shows the notice and licence, says what it will and will not do, and
+offers the shortcuts. Cancelling at any point installs nothing.
+
+![Install mode: for all users (recommended) or for me only](docs/images/installer-0-mode.png)
+![Notice and licence page](docs/images/installer-1-license.png)
+![What setup does and does not do](docs/images/installer-2-info.png)
+![Shortcut options](docs/images/installer-3-options.png)
+
+**The program.** Screenshots of version **0.2.3-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them (the two in-game frames are further down). They are
+regenerated when the windows change (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`); the version in the title bar is the version they were taken with. Later versions start with an administrator prompt, so the first line of the activity log reads slightly differently there. The four installer pages above are from 0.2.5-beta.
+
+**Guided setup in Simple view**: the checklist ticks the steps it can verify and highlights the next button (here *Start session*).
+
+![Guided setup in Simple view, ready to start the session](docs/images/guide-start.png)
+
+**During a session**: the live counters and the Activity log, with the checklist waiting for you to finish playing.
+
+![Guided setup while the game is running](docs/images/guide-playing.png)
+
+**After the session**: a short "What happened" summary of what the game asked for and what was delivered. It says nothing about how the picture looks; the before/after test is for that.
+
+![Guided setup after a session, with the What happened summary](docs/images/guide-summary.png)
+
+**Full view**: every tab, all twelve counters and the throughput graph, for when you want the detail.
+
+![Full view of the Dashboard during a session](docs/images/full-view.png)
+
+**In the game.** Two frames from a play session of the single-player campaign at 2560x1440 with the toolkit running (0.2.5-beta). In the first, the Dashboard sits next to the game: 117
+texture pieces delivered so far, none from the internet, no errors (the game folder path in the window is covered). In the second, a close-up of a character and a shop interior. They show how
+the game looks with the streamed textures; they are not a measured comparison (I took no before/after pairs, see [section 7 of FINDINGS](docs/FINDINGS.md#7-what-i-could-not-verify)).
+The frames are copyrighted game art, shown here only to illustrate the toolkit.
+
+![The game next to the toolkit window during a session](docs/ingame/ingame-1.jpg)
+![A close-up of a character in a shop](docs/ingame/ingame-2.jpg)
 
 ## What was wrong
 
@@ -55,55 +106,6 @@ Pick one. The files are on the [Releases page](https://github.com/voidfnc/mw4-te
 
 Windows may say "Windows protected your PC" (SmartScreen) because the files are not code-signed yet: choose *More info*, then *Run anyway*. You can check a download against
 `SHA256SUMS.txt` on the release page (`certutil -hashfile <file> SHA256`). Release files are built from the tagged source with `packaging\build.bat` (see CONTRIBUTING). The installer changes nothing in your hosts file; the program does that only when you press *Start session*.
-
-## What it looks like
-
-**The installer** asks whether to install for all users (the default: Program Files, one permission prompt) or for you only (no administrator rights), shows the notice and licence, says what it will and will not do, and
-offers the shortcuts. Cancelling at any point installs nothing.
-
-![Install mode: for all users (recommended) or for me only](docs/images/installer-0-mode.png)
-![Notice and licence page](docs/images/installer-1-license.png)
-![What setup does and does not do](docs/images/installer-2-info.png)
-![Shortcut options](docs/images/installer-3-options.png)
-
-**The program.** Screenshots of version **0.2.3-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them (the two in-game frames are further down). They are
-regenerated when the windows change (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`); the version in the title bar is the version they were taken with. Later versions start with an administrator prompt, so the first line of the activity log reads slightly differently there. The four installer pages above are from 0.2.5-beta.
-
-**Guided setup in Simple view**: the checklist ticks the steps it can verify and highlights the next button (here *Start session*).
-
-![Guided setup in Simple view, ready to start the session](docs/images/guide-start.png)
-
-**During a session**: the live counters and the Activity log, with the checklist waiting for you to finish playing.
-
-![Guided setup while the game is running](docs/images/guide-playing.png)
-
-**After the session**: a short "What happened" summary of what the game asked for and what was delivered. It says nothing about how the picture looks; the before/after test is for that.
-
-![Guided setup after a session, with the What happened summary](docs/images/guide-summary.png)
-
-**Full view**: every tab, all twelve counters and the throughput graph, for when you want the detail.
-
-![Full view of the Dashboard during a session](docs/images/full-view.png)
-
-**In the game.** Two frames from a play session of the single-player campaign at 2560x1440 with the toolkit running (0.2.5-beta). In the first, the Dashboard sits next to the game: 117
-texture pieces delivered so far, none from the internet, no errors (the game folder path in the window is covered). In the second, a close-up of a character and a shop interior. They show how
-the game looks with the streamed textures; they are not a measured comparison (I took no before/after pairs, see [section 7 of FINDINGS](docs/FINDINGS.md#7-what-i-could-not-verify)).
-The frames are copyrighted game art, shown here only to illustrate the toolkit.
-
-![The game next to the toolkit window during a session](docs/ingame/ingame-1.jpg)
-![A close-up of a character in a shop](docs/ingame/ingame-2.jpg)
-
-## Video walkthrough
-
-I made a short video (about four minutes) that goes through the whole thing: what's wrong with the texture lookup, how the fix works, and how to install and use the program. It should play
-right here. If it doesn't load for you, you can [download the file from the 0.2.6-beta release](https://github.com/voidfnc/mw4-texture-streaming-research/releases/download/v0.2.6-beta/MW4-Texture-Streaming-Walkthrough.mp4)
-(about 59 MB).
-
-<video src="https://github.com/user-attachments/assets/f5febd28-d6d7-4e49-9a14-a911215de676" controls width="100%"></video>
-
-It's only the screenshots from this page, a few simple diagrams and the two in-game frames, with captions on top. The voice is computer-generated, and so are the music and sound effects, so don't
-expect a polished production. The same caveats apply as above: the program windows are from 0.2.3-beta, the installer pages are from 0.2.5-beta, the in-game frames aren't a measured before/after
-comparison, and the game art belongs to its owners.
 
 ## Running from source
 
