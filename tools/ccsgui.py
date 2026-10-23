@@ -1031,7 +1031,7 @@ class App(tk.Tk):
             st = self._guide_state()
             if i is not None: st['ab'] = i; self._guide_save(st)
             v = guide.ab_view(st['ab'], st['summary']); box['v'] = v
-            head.configure(text=f"Step {v['n']} of {v['total']}: {v['title']}"); body.configure(text=v['text'])
+            head.configure(text=i18n.t('Step {0} of {1}: {2}', v['n'], v['total'], i18n.t(v['title']))); body.configure(text=v['text'])
             if v['action']: act.configure(text=v['action'][1], command=lambda a=v['action'][0]: self.guide_do(a)); act.pack(side='left')
             else: act.pack_forget()
             back.state(['disabled'] if v['first'] else ['!disabled']); nxt.configure(text='Done' if v['last'] else 'Next')
@@ -1295,7 +1295,8 @@ class App(tk.Tk):
         """Save the choice; when the shown language changes the window restarts (a running session is not touched)."""
         old = i18n.current(); self.cfg['ui']['language'] = code; config.save(self.cfg)
         if i18n.resolve(code) == old: self.show_page(self.page); return
-        if messagebox.askyesno(i18n.t('Language'), i18n.t('The window restarts to change the language. A session that is running keeps running. Restart now?'), parent=self): self.restart_window()
+        if self.busy: self.say('language saved: it applies the next time the window opens (a task is running, so the window was not restarted)', 'WARN')
+        elif messagebox.askyesno(i18n.t('Language'), i18n.t('The window restarts to change the language. A session that is running keeps running. Restart now?'), parent=self): self.restart_window()
         else: self.say('language saved: it applies the next time the window opens', 'OK')
 
     def restart_window(self):
@@ -1452,13 +1453,14 @@ class App(tk.Tk):
         """-> (segment index, window or None) for the Report tab selection."""
         return getattr(self, '_run_opts', {}).get(self.run_var.get(), (-1, None))
 
-    def _show_report(self, md):
+    def _show_report(self, md, placeholder=False):
+        self._rep_placeholder = placeholder                                 # a "writing it / none yet" note is replaced the next time the tab opens
         self.rep_txt.configure(state='normal'); self.rep_txt.delete('1.0', 'end')
         for ln in md.splitlines(): self.rep_txt.insert('end', ln + '\n', 'ACC' if ln.startswith('#') else 'ERR' if re.search(r'missing from the mirror: \*\*[1-9]|FAIL', ln) else None)
         self.rep_txt.configure(state='disabled')
 
     def _report_is_blank(self):
-        try: return not self.rep_txt.get('1.0', 'end').strip()
+        try: return getattr(self, '_rep_placeholder', False) or not self.rep_txt.get('1.0', 'end').strip()
         except (tk.TclError, AttributeError): return True
 
     def _open_best_report(self, force=False):
@@ -1469,10 +1471,12 @@ class App(tk.Tk):
             try: md = open(p, encoding='utf-8').read()
             except OSError: continue
             self.saved_var.set(os.path.basename(p)[:-3]); self._show_report(md); return
-        try: busy = any(s['nreq'] for s in report.segments())
-        except Exception: busy = False
-        if busy: self._show_report('# Report' + chr(10)*2 + 'Writing the report from this session...'); self.bg('report', self._make_report, -1, None, True)
-        else: self._show_report('# Report' + chr(10)*2 + 'No report yet. Turn on HD textures, play, then close the game: the report is written when it exits.')
+        try: traffic = report.segments()[-1]['nreq'] > 0                      # the run _make_report(-1) would report
+        except Exception: traffic = False
+        if traffic and not self.busy:
+            self._show_report(i18n.t('# Report') + chr(10) * 2 + i18n.t('Writing the report from this session...'), True); self.bg('report', self._make_report, -1, None, True)
+        elif traffic: self._show_report(i18n.t('# Report') + chr(10) * 2 + i18n.t('A task is still running. Open this tab again in a moment: the report is written from this session then.'), True)
+        else: self._show_report(i18n.t('# Report') + chr(10) * 2 + i18n.t('No report yet. Turn on HD textures, play, then close the game: the report is written when it exits.'), True)
 
     def _view_saved(self, *_):
         p = os.path.join(paths.SESSIONS, self.saved_var.get() + '.md')

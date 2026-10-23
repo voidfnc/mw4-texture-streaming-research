@@ -240,6 +240,32 @@ class GuiTests(unittest.TestCase):
         self.app.home_do('open_report'); self.pump(0.3)
         self.assertIn('Session report', self.app.rep_txt.get('1.0', 'end')); self.assertTrue(self.app.saved_var.get())
 
+    def test_report_tab_retries_after_a_placeholder_and_never_sticks(self):
+        lg = os.path.join(paths.WORK, 'ccsproxy.log')
+        for f in report.list_reports(): os.remove(f)
+        for f in glob.glob(os.path.join(paths.SESSIONS, '*.md')): os.remove(f)
+        open(lg, 'w', encoding='utf-8').write('09:00:00 START 2026-10-21 pid=1' + chr(10) + '09:00:00 index: 1 chunk ids' + chr(10) + '09:00:01 GET /pc/iw9_3/23/aa/00000000000000aa_00000010_1 -> 200 16B MIRROR' + chr(10))
+        self.app._show_report(''); self.app.busy = True                                                    # a task is running: no report is started, and the note says why
+        self.app._open_best_report(); self.assertIn('still running', self.app.rep_txt.get('1.0', 'end'))
+        self.app.busy = False; self.app._open_best_report()                                                 # the note is not "content": the tab asks again and writes the report
+        for _ in range(20):
+            self.pump(0.5)
+            if 'Session report' in self.app.rep_txt.get('1.0', 'end'): break
+        self.assertIn('Session report', self.app.rep_txt.get('1.0', 'end'))
+
+    def test_language_change_does_not_restart_while_a_task_runs(self):
+        from tkinter import messagebox
+        from ccslib import i18n
+        spawned = []; ccsgui.App._spawn_restart = staticmethod(lambda: spawned.append(1)); env = os.environ.pop('CCS_LANG', None)
+        try:
+            self.app.cfg['ui']['language'] = 'en'; self.app.busy = True
+            self.app.set_language('de'); self.assertEqual(spawned, [])
+            self.assertEqual(config.load()['ui']['language'], 'de')
+        finally:
+            self.app.busy = False; i18n.set_language('en')
+            if env is not None: os.environ['CCS_LANG'] = env
+            del ccsgui.App._spawn_restart
+
     def test_auto_report_triggers_when_game_exits(self):
         self.app.stop_poll.set(); time.sleep(1.2)                                                # freeze the poller so we control the snapshot
         json.dump(dict(started=time.time()), open(os.path.join(paths.RUN, 'session.json'), 'w'))

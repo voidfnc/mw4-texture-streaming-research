@@ -30,6 +30,7 @@ def _skip(s):
     if re.match(r'^(<|--|-[a-z]\b|\\|%|\.|#[0-9a-fA-F]{3,8}$|https?:|[A-Za-z]:\\|HK[A-Z]{2}|SOFTWARE)', s): return True
     if re.search(r'\\[dwsbDWSB]|\(\?[:=!<]|\[\^|\.\*|^\^|\$$|\|\|', s): return True                                                  # regex
     if re.search(r'^\s*(import |def |class |SELECT |if |for )', s): return True
+    if re.match(r'(?i)^(select|insert|update|delete|create|pragma) ', s) or s.startswith('tab:') or re.search(r'\w=\{\d+\}', s): return True                      # SQL, a tab key, a debug line of name=value pairs
     if s.isupper() and ' ' not in s: return True
     if re.fullmatch(r'[A-Za-z0-9_]+\.[A-Za-z0-9_.]+', s): return True                                                              # a file name / dotted name
     if re.fullmatch(r'[A-Za-z0-9_]+', s) and not s[0].isupper(): return True

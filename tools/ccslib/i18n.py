@@ -7,7 +7,7 @@ parts around. Anything missing falls back to the English text, so an untranslate
 install() hooks tkinter once: every `text=` handed to a widget or a canvas is translated on the way in, so the window code keeps its plain English strings.
 Logs, saved reports, tool names and paths are not routed through here on purpose (they stay English so bug reports stay comparable).
 """
-import json, os, re, sys, locale
+import json, os, re, sys
 
 DEFAULT = 'en'
 LANGUAGES = (('en', 'English'), ('ru', '\u0420\u0443\u0441\u0441\u043a\u0438\u0439'), ('zh-CN', '\u7b80\u4f53\u4e2d\u6587'), ('es', 'Espa\u00f1ol'), ('fr', 'Fran\u00e7ais'), ('de', 'Deutsch'),
@@ -38,9 +38,7 @@ def detect():
     try:
         import ctypes
         lid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
-    except Exception:
-        try: lid = locale.windows_locale and next((k for k, v in locale.windows_locale.items() if v == locale.getdefaultlocale()[0]), 0)
-        except Exception: lid = 0
+    except Exception: lid = 0                                                                 # not Windows: English
     return _PRIMARY.get((lid or 0) & 0x3ff, DEFAULT)
 
 

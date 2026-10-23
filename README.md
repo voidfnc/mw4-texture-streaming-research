@@ -92,6 +92,7 @@ unmodified game start streaming. The whole story, with the captures that show it
 
 ## What the toolkit does
 
+- **Twelve languages** (see [Languages](#languages)): the window and the installer follow your Windows language, or the one you pick.
 - **Hosts manager** (`tools/ccshosts.py`): adds and removes the override in a clearly marked block, makes a backup before every change, reads the file back to check
   it, and rolls back if something is off. It needs administrator rights, which the program has (see [Administrator rights](#administrator-rights)).
 - **Proxy** (`tools/ccsproxy.py`): listens on loopback, forwards chunk requests to the CDN, or serves them from a local mirror. It can also refuse chunks above a size
@@ -215,7 +216,7 @@ a reason, and don't host or share what you download. If the CDN ever asks the to
 
 The program and its installer speak English, Russian, Chinese (Simplified), Spanish, French, German, Portuguese (Brazil), Turkish, Polish, Japanese, Korean and Italian. The installer shows
 a language list first (it starts on your Windows display language), and the program follows that choice. To change it later: Settings, *Language* (Automatic follows Windows). The window
-restarts to apply it; a session that is running keeps running. Logs, reports and file names stay in English so bug reports are easy to compare. The translations were drafted by machine and
+restarts to apply it; a session that is running keeps running. Windows set to Traditional Chinese gets the Simplified Chinese text (there is no Traditional set yet). Logs, reports and file names stay in English so bug reports are easy to compare. The translations were drafted by machine and
 have not been proofread by native speakers: corrections are welcome as pull requests (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 | English | Русский |
