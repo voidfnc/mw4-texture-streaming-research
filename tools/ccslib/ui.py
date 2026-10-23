@@ -6,6 +6,7 @@ Nothing in here knows about the toolkit itself; the window code (homeui.py, ccsg
 """
 import base64, math, struct, tkinter as tk, zlib
 from tkinter import font as tkfont
+from . import i18n
 
 # ------------------------------------------------------------------------------------------------ tokens
 BG, BG2, CARD, CARD2, LINE, LINE2 = '#0a0d13', '#0e121a', '#121825', '#171e2d', '#222b3d', '#2d3852'
@@ -59,6 +60,7 @@ def family(root):
         _fam['text'] = next((f for f in ('Segoe UI Variable Text', 'Segoe UI') if f in have), 'TkDefaultFont')
         _fam['head'] = next((f for f in ('Segoe UI Variable Display', 'Segoe UI Semibold', 'Segoe UI') if f in have), _fam['text'])
         _fam['semi'] = 'Segoe UI Semibold' if 'Segoe UI Semibold' in have else _fam['text']
+        for k in ('text', 'head', 'semi'): _fam[k] = i18n.font_family_for(i18n.current(), have, _fam[k])        # Chinese / Japanese / Korean: the Windows UI font with those glyphs
     return _fam
 
 
@@ -293,6 +295,7 @@ ICONS = {                                      # polylines on a 24 x 24 grid
     'home': [[(3, 11), (12, 3), (21, 11)], [(5, 10), (5, 20), (19, 20), (19, 10)]],
     'gamepad': [[(6, 8), (18, 8), (21, 12), (21, 17), (18, 18), (16, 15), (8, 15), (6, 18), (3, 17), (3, 12), (6, 8)], [(8, 10.5), (8, 13.5)], [(6.5, 12), (9.5, 12)], [(16, 11.5), (16.02, 11.5)], [(18, 13), (18.02, 13)]],
     'refresh': [_arc(12, 12, 8, -30, 250, 22), [(20.5, 5), (20, 10), (15, 9.5)]],
+    'globe': [_circle(12, 12, 9), [(3, 12), (21, 12)], [(12, 3), (8.5, 7.5), (7.8, 12), (8.5, 16.5), (12, 21)], [(12, 3), (15.5, 7.5), (16.2, 12), (15.5, 16.5), (12, 21)]],
     'trash': [[(4, 7), (20, 7)], [(9, 7), (9, 4), (15, 4), (15, 7)], [(6, 7), (7, 20), (17, 20), (18, 7)]],
 }
 
@@ -386,7 +389,7 @@ class Button(tk.Canvas):
 
     # ---- drawing
     def _width(self):
-        tw = tkfont.Font(self, font=self.f).measure(self.text); iw = S(self.px + 5) if self.icon_name else 0
+        tw = tkfont.Font(self, font=self.f).measure(i18n.t(self.text)); iw = S(self.px + 5) if self.icon_name else 0
         return max(self.minw, tw + iw + 2 * self.pad)
 
     def _look(self):
@@ -409,7 +412,7 @@ class Button(tk.Canvas):
         if look['c1']:
             bw = 2 if self.has_focus and look['border'] else 1
             self._items.append(self.create_image(pad, pad, anchor='nw', image=photo(self, ('pill', w, h, look['c1'], look['c2'], look['border'], bw, .10 if self.spec.get('c2') else 0.0), lambda: pill_rgba(w, h, look['c1'], look['c2'], look['border'], bw, .10 if self.spec.get('c2') else 0.0))))
-        tw = tkfont.Font(self, font=self.f).measure(self.text); iw = S(self.px + 5) if self.icon_name else 0; x = pad + (w - (tw + iw)) / 2; after = self.icon_name == 'arrow'      # an arrow points on: it follows the text
+        tw = tkfont.Font(self, font=self.f).measure(i18n.t(self.text)); iw = S(self.px + 5) if self.icon_name else 0; x = pad + (w - (tw + iw)) / 2; after = self.icon_name == 'arrow'      # an arrow points on: it follows the text
         if self.icon_name and not after:
             self._items.append(self.create_image(x, pad + h / 2, anchor='w', image=icon(self, self.icon_name, self.px + 1, look['fg'], 2.0))); x += iw
         self._items.append(self.create_text(x, pad + h / 2 - 1, anchor='w', text=self.text, fill=look['fg'], font=self.f))
@@ -564,7 +567,7 @@ class Stepper(tk.Canvas):
         sig = (tuple(labels), cur)
         if sig == self.sig: return
         self.sig = sig; self.delete('all'); r = S(13); gap = S(64); fnt = font(self, 14); fb = font(self, 14, bold=True); m = tkfont.Font(self, font=fnt); total = 0
-        widths = [m.measure(t) for t in labels]; total = sum(2 * r + S(10) + w for w in widths) + gap * (len(labels) - 1); x = (S(560) - total) / 2 if int(self['width']) >= total else 0
+        widths = [m.measure(i18n.t(t)) for t in labels]; total = sum(2 * r + S(10) + w for w in widths) + gap * (len(labels) - 1); x = (S(560) - total) / 2 if int(self['width']) >= total else 0
         self.configure(width=max(S(560), total + S(20))); x = (int(self['width']) - total) / 2; y = S(20)
         for i, (t, w) in enumerate(zip(labels, widths)):
             done, now = i < cur, i == cur
@@ -631,7 +634,7 @@ class Segmented(tk.Canvas):
         if on != self.on: self.on = on; self.configure(cursor='hand2' if on else 'arrow'); self._draw()
 
     def _draw(self):
-        self.delete('all'); f = font(self, self.px); m = tkfont.Font(self, font=f); ws = [m.measure(lab) + 2 * S(18) for _, lab in self.options]; g = S(4); total = sum(ws) + 2 * g; self.configure(width=total, height=self.h)
+        self.delete('all'); f = font(self, self.px); m = tkfont.Font(self, font=f); ws = [m.measure(i18n.t(lab)) + 2 * S(18) for _, lab in self.options]; g = S(4); total = sum(ws) + 2 * g; self.configure(width=total, height=self.h)
         round_box(self, 0, 0, total, self.h, S(12), BG2, LINE); x = g; self._hit = []
         for (val, lab), w in zip(self.options, ws):
             sel = val == self.value

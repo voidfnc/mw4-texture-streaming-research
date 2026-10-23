@@ -4,7 +4,7 @@
   page.render(view)                               cheap to call every second: the layout is rebuilt only when it changes, the numbers are updated in place
 """
 import json, tkinter as tk
-from . import home, ui
+from . import home, i18n, ui
 from .ui import BG, CARD, TEXT, DIM, FAINT, ACCENT, OK, WARN, BAD, LINE, S
 
 CONTENT_W = 1012
@@ -159,14 +159,14 @@ class HomePage(tk.Frame):
             p = ui.Panel(self.cards_row, fill=CARD, r=16, padx=16, pady=14); p.grid(row=0, column=i, sticky='ew', padx=(0 if i == 0 else S(7), 0 if i == 2 else S(7)))
             ic = tk.Label(p.body, image=ui.icon(self, c['icon'], 20, OK if c['tone'] == 'ok' else ACCENT), bg=CARD); ic.pack(side='left', padx=(0, S(12)))
             tx = tk.Frame(p.body, bg=CARD); tx.pack(side='left', fill='x', expand=True)
-            tk.Label(tx, text=c['title'].upper(), bg=CARD, fg=FAINT, font=ui.font(self, 11), anchor='w').pack(fill='x')
+            tk.Label(tx, text=i18n.t(c['title']).upper(), bg=CARD, fg=FAINT, font=ui.font(self, 11), anchor='w').pack(fill='x')
             val = tk.Label(tx, text=c['value'], bg=CARD, fg=TEXT, font=ui.font(self, 14), anchor='w'); val.pack(fill='x'); self.card_labels.append(val)
             if c['action']: Link(p.body, c['action_label'], lambda a=c['action']: self.act(a), fg=ACCENT, hover=ui.lighten(ACCENT, .25), bg=CARD).pack(side='right')
 
     def _build_kpis(self, v):
         for i, k in enumerate(v['kpis']):
             p = ui.Panel(self.kpi_row, fill=CARD, r=14, padx=18, pady=12, shrink=True); p.pack(side='left', padx=S(7))
-            tk.Label(p.body, text=k['title'].upper(), bg=CARD, fg=FAINT, font=ui.font(self, 11), anchor='w').pack(fill='x', ipadx=S(30))
+            tk.Label(p.body, text=i18n.t(k['title']).upper(), bg=CARD, fg=FAINT, font=ui.font(self, 11), anchor='w').pack(fill='x', ipadx=S(30))
             line = tk.Frame(p.body, bg=CARD); line.pack(fill='x'); val = tk.Label(line, text=k['value'], bg=CARD, fg=TEXT, font=ui.font(self, 19, 'head', True)); val.pack(side='left')
             unit = tk.Label(line, text=' ' + k['unit'], bg=CARD, fg=DIM, font=ui.font(self, 12)); unit.pack(side='left', pady=(S(5), 0)); self.kpi_labels[k['title']] = (val, unit)
         p = ui.Panel(self.kpi_row, fill=CARD, r=14, padx=14, pady=10, shrink=True); p.pack(side='left', padx=S(7))
@@ -226,18 +226,18 @@ class HomePage(tk.Frame):
 
     # ------------------------------------------------------------------------ the parts that change every second
     def _update(self, v):
-        if v['headline'] != self.h1.cget('text'): self.h1.configure(text=v['headline'])
-        if v['sub'] != self.sub.cget('text'): self.sub.configure(text=v['sub'])
+        if self.h1.cget('text') != i18n.t(v['headline']): self.h1.configure(text=v['headline'])
+        if self.sub.cget('text') != i18n.t(v['sub']): self.sub.configure(text=v['sub'])
         if v['layout'] == 'hero':
             r = v['ring']; self.ring.set(r['kind'], r['frac'], r['icon'], r['big'], r['small'])
             if v['steps']: self.stepper.set(*v['steps'])
             for lab, c in zip(self.card_labels, v['cards']):
-                if lab.cget('text') != c['value']: lab.configure(text=c['value'])
+                if lab.cget('text') != i18n.t(c['value']): lab.configure(text=c['value'])
             for k in v['kpis']:
                 pair = self.kpi_labels.get(k['title'])
                 if pair:
-                    if pair[0].cget('text') != k['value']: pair[0].configure(text=k['value'])
-                    if pair[1].cget('text') != ' ' + k['unit']: pair[1].configure(text=' ' + k['unit'])
+                    if pair[0].cget('text') != i18n.t(k['value']): pair[0].configure(text=k['value'])
+                    if pair[1].cget('text') != i18n.t(' ' + k['unit']): pair[1].configure(text=' ' + k['unit'])
             if self.spark is not None: self._draw_spark(v['spark'])
         h = home.help_for(v); self._tip('ring', self.ring, h['ring']); self._tip('stepper', self.stepper, h['steps']); self._tip('footer', self.foot_txt, h['footer'])
         for i, (lab, t) in enumerate(zip(self.card_labels, h['cards'])): self._tip(f'card{i}', lab, t)
@@ -289,7 +289,7 @@ class HomePage(tk.Frame):
         row = tk.Frame(col, bg=BG); row.pack(fill='x', pady=(S(26), 0)); row.grid_columnconfigure(0, weight=1, uniform='d'); row.grid_columnconfigure(1, weight=1, uniform='d')
         for i, (title, key) in enumerate((('How much', 'scope'), ('Detail level', 'level'))):
             seg = v[key]; p = ui.Panel(row, fill=CARD, r=16, padx=18, pady=14); p.grid(row=0, column=i, sticky='nsew', padx=(0 if i == 0 else S(7), 0 if i == 1 else S(7)))
-            tk.Label(p.body, text=title.upper(), bg=CARD, fg=FAINT, font=ui.font(self, 11), anchor='w').pack(fill='x')
+            tk.Label(p.body, text=i18n.t(title).upper(), bg=CARD, fg=FAINT, font=ui.font(self, 11), anchor='w').pack(fill='x')
             s = ui.Segmented(p.body, seg['options'], seg['value'], lambda val, k=key: self.act(f'set_{k}_{val}'), bg=CARD); s.pack(anchor='w', pady=(S(8), S(6))); s.enable(v['editable'])
             note = 'Custom selection: change it in Advanced mode.' if key == 'scope' and seg.get('custom') else (
                 'Campaign only is the single-player game. Everything adds every other texture list found on your install.' if key == 'scope' else seg.get('note', ''))
@@ -297,8 +297,8 @@ class HomePage(tk.Frame):
 
     def _update_download(self, v):
         r = v['ring']; self.dl_ring.set(r['kind'], r['frac'], r['icon'], r['big'], r['small'])
-        if v['headline'] != self.dl_h1.cget('text'): self.dl_h1.configure(text=v['headline'])
-        if v['sub'] != self.dl_sub.cget('text'): self.dl_sub.configure(text=v['sub'])
+        if self.dl_h1.cget('text') != i18n.t(v['headline']): self.dl_h1.configure(text=v['headline'])
+        if self.dl_sub.cget('text') != i18n.t(v['sub']): self.dl_sub.configure(text=v['sub'])
         if self.dl_bar is not None and v['bar'] is not None:
             self.dl_bar.set(v['bar']['frac']); self.dl_bar_l.configure(text=v['bar']['left']); self.dl_bar_r.configure(text=v['bar']['right'])
         self._tip('dl-ring', self.dl_ring, 'How much of the texture pack is on this PC.'); self._footer(v)
@@ -348,7 +348,7 @@ class Drawer(tk.Frame):
         tk.Label(head, text='Settings', bg=bg, fg=TEXT, font=ui.font(self, 20, 'head', True)).pack(side='left')
         ui.Button(head, '', self.hide, kind='ghost', icon_name='x', height=32, px=14, pad=8, bg=bg).pack(side='right')
         for sec in sections:
-            tk.Label(self.inner, text=sec['title'].upper(), bg=bg, fg=FAINT, font=ui.font(self, 11), anchor='w').pack(fill='x', pady=(S(18), S(4)))
+            tk.Label(self.inner, text=i18n.t(sec['title']).upper(), bg=bg, fg=FAINT, font=ui.font(self, 11), anchor='w').pack(fill='x', pady=(S(18), S(4)))
             for r in sec['rows']: self._row(r, bg)
 
     def _row(self, r, bg):

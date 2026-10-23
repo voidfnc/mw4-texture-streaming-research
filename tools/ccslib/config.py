@@ -22,7 +22,7 @@ DEFAULTS = dict(
     bulk_ack='',                          # version of the bulk-download notice the user accepted
     guide=dict(enabled=False, path='', ms=[], skipped=[], confirmed_root='', offered='', simple=False, summary={}, ab=0),     # optional guided setup (see guide.py)
     notice_ack='',                        # version of the research/responsibility notice the user has seen
-    ui=dict(reduce_motion=False),         # look and feel: no animations when True (Windows' own animation switch is honoured too)
+    ui=dict(reduce_motion=False, language='auto'),   # language: 'auto' (follow Windows) or a code from i18n.CODES;         # look and feel: no animations when True (Windows' own animation switch is honoured too)
 )
 
 BUILTIN_PROFILES = {

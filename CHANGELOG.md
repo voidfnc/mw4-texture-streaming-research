@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0-beta
+**Twelve languages, and "See the full report" now shows the report.**
+
+- **Languages.** English, Russian, Chinese (Simplified), Spanish, French, German, Portuguese (Brazil), Turkish, Polish, Japanese, Korean and Italian. Settings has a *Language* row (Automatic follows the language chosen in
+  the installer, else the Windows display language); changing it restarts the window and leaves a running session alone. Logs, saved reports, file names and tool names stay English on purpose. Missing text falls
+  back to English, so an untranslated line never breaks the window. The translations are machine drafts and have not been proofread: corrections welcome.
+- **Installer.** The setup wizard shows a language list first (preselected from Windows), translates its own pages, task names, prompts and the "what this setup does" text (the licence stays English), and saves the choice as
+  the program's default language (`language.txt` next to the program, removed on uninstall). Simplified Chinese uses a wizard file written for this project (`packaging/lang/ChineseSimplified.isl`).
+- **Under the hood.** `tools/ccslib/i18n.py` (the English text is the key; templates for text built from parts; one hook translates every widget, canvas and dialog `text=`), `tools/ccslib/lang/<code>.json`, and
+  `tools/i18n_extract.py` (lists the strings, `--check` finds missing keys and broken placeholders). A test fails when window text changes without the list being updated. `CCS_LANG=de` forces a language.
+- **Fix: *See the full report* opened an empty page.** The Report tab was only filled when a report was written during that run of the window; after a restart, or when the stop-time report was skipped because a saved
+  one already covered the run, it stayed blank. It now shows the newest saved report (selected in the *Saved* list), writes one from the proxy log if there is traffic but no report yet, and otherwise says there is no report yet.
+
 ## 0.3.0-beta
 **A new main window.** Everyday use is one screen with one button; every old tab is still there in Advanced mode.
 

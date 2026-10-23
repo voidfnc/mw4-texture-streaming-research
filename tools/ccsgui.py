@@ -9,12 +9,12 @@ then hosts-file changes go through tools/ccshosts.py with a UAC prompt each time
 Children (proxy, diskguard) are detached processes tracked by pid files, so closing/restarting the GUI does not lose them.
 See docs/USAGE.md.
 """
-import collections, ctypes, json, os, queue, re, subprocess, sys, threading, time
+import collections, ctypes, glob, json, os, queue, re, subprocess, sys, threading, time
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ccslib import cachectl, config, doctor, gamefix, guide, home, homeui, hosts, launch, logtail, mirrorctl, mirrordb, pack, paths, procs, proxyctl, report, session, ui, version
+from ccslib import i18n, cachectl, config, doctor, gamefix, guide, home, homeui, hosts, launch, logtail, mirrorctl, mirrordb, pack, paths, procs, proxyctl, report, session, ui, version
 
 BG, PANEL, FG, DIM, ACC = ui.BG, ui.CARD, ui.TEXT, ui.DIM, ui.ACCENT                        # one palette for the whole window (ui.py)
 OK, WARN, BAD, OFF = ui.OK, ui.WARN, ui.BAD, ui.FAINT
@@ -38,7 +38,7 @@ class Tip:
         try:
             self.win = tk.Toplevel(self.w); self.win.wm_overrideredirect(True)
             self.win.wm_geometry(f'+{self.w.winfo_rootx() + 12}+{self.w.winfo_rooty() + self.w.winfo_height() + 6}')
-            tk.Label(self.win, text=self.text, justify='left', wraplength=self.wrap, bg=PANEL, fg=FG, relief='solid', borderwidth=1, padx=8, pady=6, font=('Segoe UI', 9)).pack()
+            tk.Label(self.win, text=i18n.t(self.text), justify='left', wraplength=self.wrap, bg=PANEL, fg=FG, relief='solid', borderwidth=1, padx=8, pady=6, font=('Segoe UI', 9)).pack()
         except tk.TclError: self.win = None
 
     def _hide(self, _e=None):
@@ -55,9 +55,9 @@ class App(tk.Tk):
 
     def __init__(self, selftest=False):                                      # selftest: no first-run dialogs (nobody is there to answer them)
         super().__init__()
-        paths.ensure_dirs()
+        paths.ensure_dirs(); self.cfg = config.load(); i18n.install(); i18n.set_language(i18n.resolve(self.cfg['ui'].get('language')))        # before any widget exists
         self._set_icon(); self.title(f'MW4 Texture Streaming Toolkit {version.__version__}'); ui.init(self); sw, sh = self.winfo_screenwidth(), self.winfo_screenheight(); self.geometry(f'{min(ui.S(1200), max(ui.S(980), sw - 60))}x{min(ui.S(780), max(ui.S(640), sh - 100))}'); self.minsize(min(ui.S(980), sw - 40), min(ui.S(640), sh - 80)); self.configure(bg=BG); self.ticker = ui.Ticker(self)           # the window fits small screens too
-        self.cfg = config.load(); self.snap = {}; self.q = queue.Queue(); self.busy = False
+        self.snap = {}; self.q = queue.Queue(); self.busy = False
         self.rate = collections.deque(maxlen=12); self.series = collections.deque(maxlen=180); self._game_prev = False; self._guide_game_seen = False; self._guide_last = None; self._gfc = None; self._guide_sig = None; self._guide_lbl = {}; self._guide_peak = None; self._spot_key = None; self.game_start = None; self.tails = {n: logtail.Tail(p, 150) for n, p in LOG_SOURCES}
         self.log_lines = collections.deque(maxlen=6000); self.gui_log_path = dict(LOG_SOURCES)['gui']
         self.page = 'home'; self.home_view = None; self._pack_err = None; self._notice_pending = (not selftest) and self.cfg.get('notice_ack') != version.__version__; self._found = None; self._searching = False; self._pick = None; self._starting = False; self._starting_at = 0; self.nav_items = {}
@@ -167,7 +167,7 @@ class App(tk.Tk):
     def _build_nav(self, side):
         r = 0
         for title, items in self.NAV:
-            tk.Label(side, text=title.upper(), bg=ui.BG2, fg=ui.FAINT, font=ui.font(self, 11), anchor='w').grid(row=r, column=0, sticky='ew', padx=ui.S(16), pady=(ui.S(14), ui.S(4))); r += 1
+            tk.Label(side, text=i18n.t(title).upper(), bg=ui.BG2, fg=ui.FAINT, font=ui.font(self, 11), anchor='w').grid(row=r, column=0, sticky='ew', padx=ui.S(16), pady=(ui.S(14), ui.S(4))); r += 1
             for name, icn in items:
                 it = ui.NavItem(side, name, icn, lambda n=name: self._goto(n)); it.grid(row=r, column=0, sticky='ew'); self.nav_items[name] = it; r += 1
         side.grid_columnconfigure(0, weight=1)
@@ -509,10 +509,10 @@ class App(tk.Tk):
         for c, w in zip(cols, (240, 60, 130)): self.cb_tree.heading(c, text=c); self.cb_tree.column(c, width=w, anchor='w')
         self.cb_tree.pack(fill='both', expand=True, padx=6, pady=6)
         bb = ttk.Frame(r); bb.pack(pady=(0, 8))
-        ttk.Button(bb, text='Backup now', style='Accent.TButton', command=lambda: self.bg('cache backup', self._cache_backup)).pack(side='left', padx=3)
-        ttk.Button(bb, text='Restore selected', command=self.do_cache_restore).pack(side='left', padx=3)
-        ttk.Button(bb, text='Delete selected', style='Danger.TButton', command=self.do_cache_delete).pack(side='left', padx=3)
-        ttk.Button(bb, text='Open folder', command=lambda: os.startfile(paths.ROOT)).pack(side='left', padx=3)
+        ttk.Button(bb, text='Backup now', style='Accent.TButton', command=lambda: self.bg('cache backup', self._cache_backup)).grid(row=0, column=0, padx=3, pady=2, sticky='ew')
+        ttk.Button(bb, text='Restore selected', command=self.do_cache_restore).grid(row=0, column=1, padx=3, pady=2, sticky='ew')
+        ttk.Button(bb, text='Delete selected', style='Danger.TButton', command=self.do_cache_delete).grid(row=1, column=0, padx=3, pady=2, sticky='ew')
+        ttk.Button(bb, text='Open folder', command=lambda: os.startfile(paths.ROOT)).grid(row=1, column=1, padx=3, pady=2, sticky='ew')
         self.after(1500, self.refresh_cache)
 
     def refresh_cache(self):
@@ -775,7 +775,7 @@ class App(tk.Tk):
         if sig == self._guide_sig:                                                    # same layout: only refresh the texts (the request counter changes every second)
             for r in rows:
                 lab = self._guide_lbl.get(r['id'])
-                if lab is not None and lab.cget('text') != shown(r): lab.configure(text=shown(r))
+                if lab is not None and lab.cget('text') != i18n.t(shown(r)): lab.configure(text=shown(r))
             return
         self._guide_sig = sig; self._guide_lbl = {}
         for w in self.guide_body.winfo_children(): w.destroy()
@@ -910,7 +910,7 @@ class App(tk.Tk):
         if st != st0: self._guide_save(st)
         if self._starting and self._starting_at and time.time() - self._starting_at > 120: self._starting = False          # never stay on 'Turning on...' for ever
         if self.page != 'home': return
-        s = self.snap or {}; extra = dict(motion=bool(self.cfg['ui'].get('reduce_motion')), system_motion=self._system_motion, pack=home.pack_text(self._pack_plan, s.get('mprog'), bool((s.get('mproc') or {}).get('alive'))))
+        s = self.snap or {}; extra = dict(language=self._language_label(), motion=bool(self.cfg['ui'].get('reduce_motion')), system_motion=self._system_motion, pack=home.pack_text(self._pack_plan, s.get('mprog'), bool((s.get('mproc') or {}).get('alive'))))
         v = home.build(st, f, note=self._guide_note(), busy=self.busy, starting=self._starting, found=self._found, pick=self._pick, searching=self._searching, notice=version.NOTICE if self._notice_pending else '', extra=extra)
         self.home_view = v
         if self.home_page.page == 'download': self.home_page.set_view(v); self.home_page.render_download(self._download_view())
@@ -947,13 +947,14 @@ class App(tk.Tk):
             elif a == 'switch_path': self.guide_do('choose_offline' if self._guide_state()['path'] != 'offline' else 'choose_quick')
             elif a in ('help', 'what_setup'): self.show_glossary()
             elif a == 'open_check': self.guide_do('doctor')
-            elif a == 'open_report': self._goto('Report')
+            elif a == 'open_report': self._goto('Report'); self._open_best_report(True)
             elif a == 'done': self.guide_do('restart')
             elif a == 'apply_hosts': self.do_hosts_apply()
             elif a == 'activity': self._enter_advanced('Logs')
             elif a == 'open_advanced': self._enter_advanced()
             elif a == 'open_settings': self.show_page('home'); self.home_page.toggle_drawer()
             elif a == 'notice_ok': self._notice_pending = False; self.cfg['notice_ack'] = version.__version__; config.save(self.cfg)
+            elif a == 'pick_language': self.pick_language()
             elif a == 'toggle_motion': self.cfg['ui']['reduce_motion'] = not self.cfg['ui'].get('reduce_motion'); config.save(self.cfg); self._apply_motion(); self.home_page.reset_motion()
             elif a == 'open_download': self.show_page('home'); self._pack_plan = None; self.home_page.show_page('download'); self.pack_refresh()
             elif a == 'back_home': self.home_page.show_page('home')
@@ -996,6 +997,7 @@ class App(tk.Tk):
             if self.nb.tab(fr, 'state') == 'hidden': self.nb.tab(fr, state='normal'); self.nav_items[name].grid()
         except tk.TclError: pass
         self.nb.select(fr); self._sync_nav()
+        if name == 'Report': self._open_best_report()
 
     def _spot(self, key):
         """Highlight the control the current step points at, and clear the previous one (a button turns amber, a tab gets an arrow)."""
@@ -1268,6 +1270,42 @@ class App(tk.Tk):
             if r['hosts_active']: self._hosts_policy('Session stopped.')
         self.bg('stop', go)
 
+    # ---------------------------------------------------------------- language
+    def _language_label(self):
+        sel = self.cfg['ui'].get('language', i18n.AUTO)
+        return 'Automatic ({0})'.format(i18n.NAMES[i18n.resolve(i18n.AUTO)]) if sel in (i18n.AUTO, '', None) else i18n.NAMES.get(sel, i18n.NAMES[i18n.DEFAULT])
+
+    def pick_language(self):
+        """A small list: Automatic (the Windows display language) and every language we ship; a change restarts the window (the session keeps running)."""
+        dlg = tk.Toplevel(self); dlg.title(i18n.t('Language')); dlg.transient(self); dlg.configure(bg=BG); dlg.resizable(False, False)
+        tk.Label(dlg, text='Choose the language of this program.', bg=BG, fg=FG, font=('Segoe UI', 10), anchor='w').pack(fill='x', padx=14, pady=(12, 6))
+        rows = [(i18n.AUTO, i18n.t('Automatic ({0})', i18n.NAMES[i18n.resolve(i18n.AUTO)]))] + list(i18n.LANGUAGES)
+        lb = tk.Listbox(dlg, bg=PANEL, fg=FG, selectbackground='#31507f', activestyle='none', height=len(rows), width=34, font=('Segoe UI', 11), exportselection=False); lb.pack(padx=14)
+        cur = self.cfg['ui'].get('language', i18n.AUTO) or i18n.AUTO
+        for code, name in rows: lb.insert('end', name)
+        lb.selection_set(next((n for n, (c, _) in enumerate(rows) if c == cur), 0))
+        def ok():
+            sel = lb.curselection(); dlg.destroy()
+            if sel: self.set_language(rows[sel[0]][0])
+        row = ttk.Frame(dlg); row.pack(fill='x', padx=14, pady=12)
+        ttk.Button(row, text='OK', style='Accent.TButton', command=ok).pack(side='right'); ttk.Button(row, text='Cancel', command=dlg.destroy).pack(side='right', padx=6)
+        lb.bind('<Double-Button-1>', lambda e: ok()); dlg.bind('<Return>', lambda e: ok()); dlg.bind('<Escape>', lambda e: dlg.destroy()); dlg.grab_set()
+
+    def set_language(self, code):
+        """Save the choice; when the shown language changes the window restarts (a running session is not touched)."""
+        old = i18n.current(); self.cfg['ui']['language'] = code; config.save(self.cfg)
+        if i18n.resolve(code) == old: self.show_page(self.page); return
+        if messagebox.askyesno(i18n.t('Language'), i18n.t('The window restarts to change the language. A session that is running keeps running. Restart now?'), parent=self): self.restart_window()
+        else: self.say('language saved: it applies the next time the window opens', 'OK')
+
+    def restart_window(self):
+        self._spawn_restart(); self.stop_poll.set(); self.destroy()
+
+    @staticmethod
+    def _spawn_restart():
+        env = dict(os.environ, CCS_RESTART_PID=str(os.getpid()))              # lets the new window pass the single-instance check while this one is closing
+        subprocess.Popen(launch.gui_argv() + [ELEVATED_ONCE], env=env, close_fds=True, creationflags=getattr(subprocess, 'DETACHED_PROCESS', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0))
+
     def _hosts_policy(self, why):
         pol = self.cfg['hosts']['on_exit']
         if pol == 'ask': pol = 'remove' if self.ask_main(lambda: messagebox.askyesno('Hosts override', f'{why}\n\nThe hosts override for the CDN host is still active, but nothing is listening any more (the game cannot stream until the proxy runs again).\n\nRemove the override now? (UAC prompt)', parent=self)) else 'keep'
@@ -1419,6 +1457,23 @@ class App(tk.Tk):
         for ln in md.splitlines(): self.rep_txt.insert('end', ln + '\n', 'ACC' if ln.startswith('#') else 'ERR' if re.search(r'missing from the mirror: \*\*[1-9]|FAIL', ln) else None)
         self.rep_txt.configure(state='disabled')
 
+    def _report_is_blank(self):
+        try: return not self.rep_txt.get('1.0', 'end').strip()
+        except (tk.TclError, AttributeError): return True
+
+    def _open_best_report(self, force=False):
+        """Fill the Report tab: the newest saved report (it is also selected in the Saved list); with none yet, write one from the proxy log if it has traffic, else say why it is empty. Without `force` a report that is already shown stays."""
+        if not hasattr(self, 'rep_txt') or not (force or self._report_is_blank()): return
+        saved = sorted(glob.glob(os.path.join(paths.SESSIONS, '*.md')), key=os.path.getmtime)
+        for p in reversed(saved):
+            try: md = open(p, encoding='utf-8').read()
+            except OSError: continue
+            self.saved_var.set(os.path.basename(p)[:-3]); self._show_report(md); return
+        try: busy = any(s['nreq'] for s in report.segments())
+        except Exception: busy = False
+        if busy: self._show_report('# Report' + chr(10)*2 + 'Writing the report from this session...'); self.bg('report', self._make_report, -1, None, True)
+        else: self._show_report('# Report' + chr(10)*2 + 'No report yet. Turn on HD textures, play, then close the game: the report is written when it exits.')
+
     def _view_saved(self, *_):
         p = os.path.join(paths.SESSIONS, self.saved_var.get() + '.md')
         try: self._show_report(open(p, encoding='utf-8').read())
@@ -1438,7 +1493,7 @@ class App(tk.Tk):
         segs = report.segments()
         if not segs: self.say('no proxy runs in the log yet', 'WARN'); return
         seg = segs[idx]; key = (seg['idx'], seg['nreq'], tuple(window) if window else None)
-        if auto and (seg['nreq'] == 0 or key == getattr(self, '_report_key', None) or self._saved_report_covers(seg, window)): self.say('report: nothing new in the proxy log since the last report - skipped'); return
+        if auto and (seg['nreq'] == 0 or key == getattr(self, '_report_key', None) or self._saved_report_covers(seg, window)): self.say('report: nothing new in the proxy log since the last report - skipped'); self.q.put(('ask', lambda: self._open_best_report(True))); return
         self.say(f"report: analysing run #{seg['idx']} ({seg['nreq']} requests){' [auto, game exited]' if auto else ''}...")
         base = report.baseline_for(seg, t0=window[0]) if window else report.baseline_for(seg); post = report.snapshot_cache()
         if base is None: self.say('report: no cache baseline for this run (re-request rate unavailable)', 'WARN')
@@ -1507,7 +1562,7 @@ def single_instance():
     lock = os.path.join(paths.RUN, 'gui.lock'); paths.ensure_dirs()
     try:
         d = json.load(open(lock));
-        if procs.ctime(d['pid']) == d.get('ctime') and d['pid'] != os.getpid(): return False
+        if procs.ctime(d['pid']) == d.get('ctime') and d['pid'] != os.getpid() and d['pid'] != int(os.environ.get('CCS_RESTART_PID') or 0): return False
     except Exception: pass
     json.dump(dict(pid=os.getpid(), ctime=procs.ctime(os.getpid())), open(lock, 'w')); return True
 

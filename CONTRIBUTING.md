@@ -1,5 +1,12 @@
 # Contributing
 
+## Translations
+
+Each language is one file, `tools/ccslib/lang/<code>.json`: `{"English text": "translation"}`. Text built from parts uses `{0}`, `{1}` in order of appearance (the translation may reorder them).
+Keep line breaks, `{n}` placeholders and technical tokens (GiB, CDN, file names) as they are. Run `python tools\i18n_extract.py --check` to see missing strings and placeholder mistakes, and
+`python tools\i18n_extract.py --missing de` to list what a language still lacks. After changing window text, run `python tools\i18n_extract.py` to refresh `lang/_source.json` and add the new strings to every
+language (a missing one just shows in English). `CCS_LANG=<code>` starts the program in that language. A new language also needs its code in `ccslib/i18n.py` and an installer entry (`packaging/installer.iss`).
+
 Thanks for looking. A few ground rules, mostly to keep the project on the right side of the line it has drawn for itself:
 
 - **Never attach game files**, chunk lists (`*_cdn.xpak`), cache files, mirror contents, decoded textures or screenshots that show them (an ordinary frame of the running game, like the two in the README, is fine when nothing personal is visible: no paths, names or addresses). If a capture is needed to

@@ -1,0 +1,17 @@
+﻿Was dieses Setup tut
+
+  - Kopiert das Programm, seine Dokumentation und eine Verknüpfung "Restore hosts" in den gewählten Ordner (Program Files für alle Benutzer, Ihr eigenes Profil bei "nur für mich").
+  - Fügt Einträge im Startmenü hinzu (und eine Desktop-Verknüpfung, wenn Sie sie ankreuzen) sowie einen Eintrag unter "Apps & Features" in Windows, damit Sie es wie jedes andere Programm deinstallieren können.
+
+Was es NICHT tut
+
+  - Es ändert weder Ihre hosts-Datei noch Firewall, Dienste, Autostart-Einträge oder Sicherheitseinstellungen.
+  - Es lädt nichts herunter und berührt Ihren Spieleordner nicht.
+
+Was das Programm danach tut
+
+  - Es fragt bei jedem Start bei Windows nach Administratorrechten, weil es die geschützte hosts-Datei und den Spieleordner bearbeitet.
+  - Es ändert die hosts-Datei nur, wenn Sie auf "Turn on HD textures" (HD-Texturen aktivieren) klicken, und legt vorher eine Sicherung an. "Turn off" (ausschalten) oder "Restore hosts" stellt den Originalzustand wieder her.
+
+Ihre Einstellungen, Protokolle und Berichte liegen in "%LOCALAPPDATA%\MW4TextureStreaming", getrennt vom Programm, sodass sie bei einem Update oder einer Neuinstallation nie verloren gehen.
+Beim Deinstallieren wird zuerst die hosts-Änderung entfernt (falls aktiv), vor dem Löschen Ihrer Einstellungen wird nachgefragt, und eine von Ihnen erstellte Textur-Kopie oder Ihr Spieleordner werden nie gelöscht.

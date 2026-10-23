@@ -12,13 +12,13 @@
 Actions are names the window maps to its handlers (ACTIONS). Wording is plain on purpose: no hosts, proxy, mirror, CDN or chunk in the main texts.
 """
 import os
-from . import guide
+from . import guide, i18n
 
 STEP_LABELS = ('Game found', 'Turn on', 'Play', 'Done')
 PACK_MIN_GIB = 54                                                   # the smallest offline copy (campaign only)
 ACTIONS = ('turn_on', 'turn_off', 'find_folder', 'use_found', 'confirm_anyway', 'choose_quick', 'choose_offline', 'pick_quick', 'pick_offline', 'game_setup', 'help',
            'open_check', 'open_report', 'abtest', 'done', 'apply_hosts', 'activity', 'open_advanced', 'open_settings', 'switch_path', 'what_setup', 'notice_ok', 'toggle_motion',
-           'open_download', 'back_home', 'pack_start', 'pack_pause', 'pack_verify', 'pack_offline', 'set_scope_sp', 'set_scope_all', 'set_level_standard', 'set_level_high', 'set_level_ultra')
+           'open_download', 'back_home', 'pack_start', 'pack_pause', 'pack_verify', 'pack_offline', 'set_scope_sp', 'set_scope_all', 'set_level_standard', 'set_level_high', 'set_level_ultra', 'pick_language')
 MAP = dict(start_session='turn_on', stop_session='turn_off', doctor='open_check', find_folder='find_folder', game_setup='game_setup', apply_hosts='apply_hosts',
            confirm_anyway='confirm_anyway', hosts_remove='turn_off')                               # guide.coach actions -> Home actions
 
@@ -85,8 +85,9 @@ def summary_text(s):
     if not s: return 'The session is over.'
     if req == 0: return "Nothing reached HD textures this time, so the game wasn't served by it. Check my PC can tell you why (most often the game was already running)."
     err, mins = int(s.get('err', 0)), int(s.get('secs', 0) // 60)
-    t = f'The game asked for {req:,} textures' + (f' in about {mins} min' if mins >= 1 else '')
-    return t + (' and every one was delivered.' if not err else f'. {err:,} requests failed; the game asks again, a few are normal.')
+    n, e = f'{req:,}', f'{err:,}'                                         # whole sentences, so a language can order the parts its own way
+    if mins >= 1: return i18n.t('The game asked for {0} textures in about {1} min and every one was delivered.', n, mins) if not err else i18n.t('The game asked for {0} textures in about {1} min. {2} requests failed; the game asks again, a few are normal.', n, mins, e)
+    return i18n.t('The game asked for {0} textures and every one was delivered.', n) if not err else i18n.t('The game asked for {0} textures. {1} requests failed; the game asks again, a few are normal.', n, e)
 
 
 def settings_rows(st, f, extra=None):
@@ -98,7 +99,7 @@ def settings_rows(st, f, extra=None):
                                      dict(icon='bolt', label='One-time game setup', value=setup, action='game_setup' if gs == 'needed' else '', tone='warn' if gs == 'needed' else 'ok' if gs == 'ok' else '')]),
             dict(title='Help', rows=[dict(icon='shield', label='Check my PC', value='', action='open_check', tone=''), dict(icon='help', label='What do the words mean?', value='', action='help', tone=''),
                                      dict(icon='chart', label='Reports and logs', value='', action='open_report', tone=''), dict(icon='gamepad', label='Before / after test', value='', action='abtest', tone='')]),
-            dict(title='Look and feel', rows=[dict(icon='refresh', label='Reduce motion', value='On (Windows setting)' if extra.get('system_motion') else 'On' if extra.get('motion') else 'Off',
+            dict(title='Look and feel', rows=[dict(icon='globe', label='Language', value=extra.get('language', 'English'), action='pick_language', tone=''), dict(icon='refresh', label='Reduce motion', value='On (Windows setting)' if extra.get('system_motion') else 'On' if extra.get('motion') else 'Off',
                                                     action='' if extra.get('system_motion') else 'toggle_motion', tone='')]),
             dict(title='Advanced', rows=[dict(icon='sliders', label='Advanced mode', value='Every setting', action='open_advanced', tone='')])]
 
@@ -148,7 +149,7 @@ def download_view(plan, prog=None, alive=False, vprog=None, valive=False, scope=
     if valive and vprog:
         d, tot = vprog.get('done', 0), max(1, vprog.get('total', 1))
         v.update(mode='checking', ring=dict(kind='prog', frac=d / tot, icon=None, big=f'{int(100 * d / tot)}%', small='checked'), headline='Checking your files', editable=False, footer=('ok', 'Checking the offline copy'),
-                 sub=f"{d:,} of {tot:,} pieces checked. {vprog.get('bad', 0)} problem{'' if vprog.get('bad', 0) == 1 else 's'} so far.", bar=dict(frac=d / tot, left=f'{d:,} of {tot:,} pieces', right=''))
+                 sub=f"{d:,} of {tot:,} pieces checked. Problems so far: {vprog.get('bad', 0)}.", bar=dict(frac=d / tot, left=f'{d:,} of {tot:,} pieces', right=''))
         return v
     if not plan: return v
     if 'error' in plan:
@@ -163,7 +164,7 @@ def download_view(plan, prog=None, alive=False, vprog=None, valive=False, scope=
     if alive and prog and prog.get('queued'):
         q, ok, el = prog['queued'], prog.get('ok', 0), max(1, prog.get('now', now) - prog.get('started', now)); frac = max(0.0, min(1.0, (T - q + ok) / T)); rate = ok / el if ok else 0
         got = tg * frac; sp = prog.get('mibps_now', prog.get('mibps', 0.0)) or 0.0; eta = (prog.get('left', 0) / rate) if rate > 0 else None
-        left = ('About ' + _eta_text(eta) + ' left' + (f' at {sp:.1f} MB/s' if sp else '')) if eta else ('Working...' if not sp else f'{sp:.1f} MB/s')
+        left = (i18n.t('About {0} left at {1} MB/s', _eta_text(eta), f'{sp:.1f}') if sp else i18n.t('About {0} left', _eta_text(eta))) if eta else (i18n.t('Working...') if not sp else i18n.t('{0} MB/s', f'{sp:.1f}'))
         st = prog.get('state', 'running'); head, sub, kind = 'Downloading your texture pack', 'You can keep using the PC. Pause whenever you like, it picks up where it stopped.', 'running'
         if st == 'quota-wait': head, sub, kind = "Paused for today's limit", 'The daily limit you set was reached. It carries on by itself when the new day starts.', 'waiting'; left = ''
         elif st == 'offline-wait': head, sub, kind = 'Waiting for the internet', 'There is no connection right now. It carries on by itself when it is back.', 'waiting'; left = ''
@@ -187,10 +188,10 @@ def download_view(plan, prog=None, alive=False, vprog=None, valive=False, scope=
 
 def _eta_text(secs):
     secs = int(secs or 0)
-    if secs < 90: return 'a minute'
-    if secs < 3600: return f'{secs // 60} min'
+    if secs < 90: return i18n.t('a minute')
+    if secs < 3600: return i18n.t('{0} min', secs // 60)
     h, m = secs // 3600, secs % 3600 // 60
-    return f'{h} h {m} min' if h < 48 else f'{h // 24} days'
+    return i18n.t('{0} h {1} min', h, m) if h < 48 else i18n.t('{0} days', h // 24)
 
 
 NOTICE_BUTTON = 'I understand, continue'
@@ -251,7 +252,7 @@ def build(state, f, note='', busy=False, starting=False, found=None, pick=None, 
             closed = not running
             v.update(mode='playing', steps=(STEP_LABELS, 2), ring=dict(kind='full', frac=1.0, icon=None, big=f'{req:,}', small='textures delivered'),
                      headline='Game closed' if closed else 'Playing with HD textures', kpis=_kpis(f), spark=list(f.get('spark') or []),
-                     sub=(f"{fmt_dur(f.get('secs'))} so far. " if f.get('secs') else '') + ('The session is still on. Turn it off when you are done.' if closed else (
+                     sub=(i18n.t('{0} so far. ', fmt_dur(f.get('secs'))) if f.get('secs') else '') + i18n.t('The session is still on. Turn it off when you are done.' if closed else (
                          'Everything the game asked for was delivered.' if not int((f.get('stat') or {}).get('err', 0)) else 'A few requests failed; the game asks again, that is normal.')),
                      secondary=[('turn_off', 'Turn off' if closed else 'Turn off when you are done')], footer=('ok', 'Game running  -  no problems'))
         else:

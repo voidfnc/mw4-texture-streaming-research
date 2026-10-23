@@ -1,0 +1,17 @@
+﻿Bu kurulum ne yapar
+
+  - Programı, belgelerini ve bir "Restore hosts" kısayolunu seçtiğiniz klasöre kopyalar (tüm kullanıcılar için Program Files, "yalnızca ben" için kendi profiliniz).
+  - Başlat menüsüne girdiler ekler (işaretlerseniz masaüstü kısayolu da eklenir) ve Windows "Uygulamalar ve özellikler" listesine bir girdi ekler; böylece diğer programlar gibi kaldırabilirsiniz.
+
+Ne YAPMAZ
+
+  - hosts dosyanızı, güvenlik duvarını, hizmetleri, başlangıç öğelerini veya güvenlik ayarlarını değiştirmez.
+  - Hiçbir şey indirmez ve oyun klasörünüze dokunmaz.
+
+Program sonrasında ne yapar
+
+  - Korumalı hosts dosyasını ve oyun klasörünü düzenlediği için her açılışta Windows'tan yönetici izni ister.
+  - hosts dosyasını yalnızca "Turn on HD textures" (HD dokuları aç) düğmesine bastığınızda ve önce yedek alarak değiştirir. "Turn off" (kapat) veya "Restore hosts" her şeyi eski haline getirir.
+
+Ayarlarınız, günlükleriniz ve raporlarınız programdan ayrı olarak "%LOCALAPPDATA%\MW4TextureStreaming" içinde tutulur; bu yüzden güncelleme veya yeniden kurulum bunları asla kaybettirmez.
+Kaldırma işlemi önce hosts değişikliğini geri alır (açıksa), ayarlarınızı silmeden önce sorar ve oluşturduğunuz doku kopyasını ya da oyun klasörünüzü asla silmez.

@@ -11,6 +11,7 @@ sys.path.insert(0, TOOLS)
 TMP = tempfile.mkdtemp(prefix='ccstest_')
 os.environ['CCS_WORK'] = os.path.join(TMP, 'work')
 os.environ['CCS_HOSTS_PATH'] = os.path.join(TMP, 'hosts')
+os.environ['CCS_LANG'] = 'en'                       # the tests read the English text
 from ccslib import hosts, procs, config, paths, proxyctl
 
 WIN_HOSTS = ('# Copyright (c) 1993-2009 Microsoft Corp.\r\n#\r\n# localhost name resolution is handled within DNS itself.\r\n'

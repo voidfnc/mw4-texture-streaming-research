@@ -84,12 +84,16 @@ class ScreenshotTests(unittest.TestCase):
     def test_shipped_screenshots_are_valid_and_small_and_all_used(self):
         folder = os.path.join(REPO, 'docs', 'images')
         if not os.path.isdir(folder): self.skipTest('no screenshots')
-        readme = read('README.md'); names = sorted(os.listdir(folder))
+        readme = read('README.md'); names = sorted(n for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n)))
         installer = importlib.util.spec_from_file_location('shoot_installer', os.path.join(REPO, 'packaging', 'shoot_installer.py')); si = importlib.util.module_from_spec(installer); installer.loader.exec_module(si)
         self.assertEqual(sorted(n[:-4] for n in names), sorted(make_screenshots.SHOTS + si.SHOTS))          # exactly the ones the two tools make
         for n in names:
             data = open(os.path.join(folder, n), 'rb').read(); ihdr, raw = decode_png(data)
             self.assertGreaterEqual(ihdr[0], 300); self.assertLess(len(data), 400 * 1024, n); self.assertIn(f'docs/images/{n}', readme)
+        for lang in sorted(d for d in os.listdir(folder) if os.path.isdir(os.path.join(folder, d))):         # a folder per language: the program's own screenshots in that language
+            files = sorted(os.listdir(os.path.join(folder, lang))); self.assertEqual([n[:-4] for n in files], sorted(make_screenshots.SHOTS + si.SHOTS[2:]), lang)          # the language list and the install-mode box are not language-specific
+            for n in files:
+                data = open(os.path.join(folder, lang, n), 'rb').read(); ihdr, raw = decode_png(data); self.assertGreaterEqual(ihdr[0], 300); self.assertLess(len(data), 400 * 1024, n)
 
 
 def jpeg_markers(data):
@@ -106,7 +110,7 @@ class InGameFrameTests(unittest.TestCase):
     def test_the_in_game_frames_are_clean_valid_and_all_used(self):
         folder = os.path.join(REPO, 'docs', 'ingame')
         if not os.path.isdir(folder): self.skipTest('no in-game frames')
-        readme = read('README.md'); names = sorted(os.listdir(folder)); self.assertTrue(names)
+        readme = read('README.md'); names = sorted(n for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n))); self.assertTrue(names)
         for n in names:
             data = open(os.path.join(folder, n), 'rb').read(); marks = jpeg_markers(data)
             self.assertEqual([m for m in marks if 0xe1 <= m <= 0xef or m == 0xfe], [], f'{n} carries metadata (EXIF, comment, ...): re-save it without')

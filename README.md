@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.3.0 · Windows · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
+Beta 0.4.0 · Windows · 12 languages · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
 [Video](#video-walkthrough) · [Screenshots](#what-it-looks-like) · [Download](#download) · [Getting started](docs/GETTING-STARTED.md) · [Releases](https://github.com/voidfnc/mw4-texture-streaming-research/releases)
 
@@ -31,16 +31,17 @@ and the game art belongs to its owners.
 
 ## What it looks like
 
-**The installer** asks whether to install for all users (the default: Program Files, one permission prompt) or for you only (no administrator rights), shows the notice and licence, says what it will and will not do, and
+**The installer** starts in your Windows language (and offers a language list), asks whether to install for all users (the default: Program Files, one permission prompt) or for you only (no administrator rights), shows the notice and licence, says what it will and will not do, and
 offers the shortcuts. Cancelling at any point installs nothing.
 
+![Setup language list](docs/images/installer-language.png)
 ![Install mode: for all users (recommended) or for me only](docs/images/installer-0-mode.png)
 ![Notice and licence page](docs/images/installer-1-license.png)
 ![What setup does and does not do](docs/images/installer-2-info.png)
 ![Shortcut options](docs/images/installer-3-options.png)
 
-**The program.** Screenshots of version **0.3.0-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them (the two in-game frames are further down). They are
-regenerated when the windows change (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`); the version in the title bar is the version they were taken with. The four installer pages above are from 0.3.0-beta too.
+**The program.** Screenshots of version **0.4.0-beta** on Windows 11. They show demo numbers from a throw-away folder: no game was running, and there is no game imagery in them (the two in-game frames are further down). They are
+regenerated when the windows change (`python tools\make_screenshots.py`; the installer pages with `python packaging\shoot_installer.py`); the version in the title bar is the version they were taken with.
 
 **First start.** A new user is asked three things: where the game is (the tool looks in the usual places and you confirm what it finds), how textures should load (while playing, or from an offline copy you download once) and, only if the game folder needs it, to
 make one small change in it (the game setup).
@@ -209,6 +210,19 @@ without downloading anything in advance.
 
 The mirror can pull a lot of data from someone else's servers. Please download once and then play offline from the mirror, keep the default limits unless you have
 a reason, and don't host or share what you download. If the CDN ever asks the tool to slow down, it will.
+
+## Languages
+
+The program and its installer speak English, Russian, Chinese (Simplified), Spanish, French, German, Portuguese (Brazil), Turkish, Polish, Japanese, Korean and Italian. The installer shows
+a language list first (it starts on your Windows display language), and the program follows that choice. To change it later: Settings, *Language* (Automatic follows Windows). The window
+restarts to apply it; a session that is running keeps running. Logs, reports and file names stay in English so bug reports are easy to compare. The translations were drafted by machine and
+have not been proofread by native speakers: corrections are welcome as pull requests (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+| English | Русский |
+|---|---|
+| ![Playing, in English](docs/images/home-playing.png) | ![Игра, по-русски](docs/images/ru/home-playing.png) |
+| ![Settings with the Language row](docs/images/settings.png) | ![Настройки, по-русски](docs/images/ru/settings.png) |
+| ![Installer: what setup does](docs/images/installer-2-info.png) | ![Установщик: что делает установка](docs/images/ru/installer-2-info.png) |
 
 ## Contributing and issues
 

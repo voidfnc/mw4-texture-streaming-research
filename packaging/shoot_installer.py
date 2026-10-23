@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """shoot_installer.py - captures the installer's wizard pages for the README (docs/images/installer-*.png).
 
-  python packaging/shoot_installer.py packaging/out/MW4-Texture-Streaming-<version>-Setup.exe
+  python packaging/shoot_installer.py packaging/out/MW4-Texture-Streaming-<version>-Setup.exe [out-folder] [language]
+
+language = the name shown in setup's language list: "English" (default) or "Русский" (use docs/images/ru as the folder for it). The buttons are found by the captions of that
+language's Inno Setup message file, so the walk works in every language listed in ISL below.
 
 It starts the Setup.exe on this PC, walks it by clicking its buttons, grabs each page from the screen and then CANCELS before anything is installed.
-The page that shows the install folder (and so a user name) and the "Ready to Install" page are never captured. It sends button clicks to the wizard window (no key presses), so it is safe to keep working; the windows are brought to the front for the grab (about 20 seconds).
+The page that shows the install folder (and so a user name) and the "Ready to Install" page are never captured. It sends button clicks to the wizard window (no key presses), so it is safe to keep working; the windows are
 Standard library only; run it for every release so the version in the title bar matches (a test checks the README note).
 """
 import ctypes, os, subprocess, sys, time
@@ -13,10 +16,12 @@ from ctypes import wintypes
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, os.path.join(os.path.dirname(HERE), 'tools'))
 import make_screenshots as ms
 
-SHOTS = ('installer-0-mode', 'installer-1-license', 'installer-2-info', 'installer-3-options')
+SHOTS = ('installer-language', 'installer-0-mode', 'installer-1-license', 'installer-2-info', 'installer-3-options')
+ISL = {'English': 'Default.isl', 'Русский': os.path.join('Languages', 'Russian.isl')}        # name in setup's list -> Inno Setup's message file (the button captions come from it)
 u = ctypes.windll.user32
 WNDENUM = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 BM_CLICK = 0x00F5
+CB_GETCOUNT, CB_GETLBTEXT, CB_GETLBTEXTLEN, CB_SETCURSEL = 0x146, 0x148, 0x149, 0x14E
 
 
 def windows():
@@ -41,6 +46,36 @@ def click(h, label):
     for c, text in children(h):
         if text.startswith(label) and u.IsWindowEnabled(c): u.SendMessageW(c, BM_CLICK, 0, 0); time.sleep(0.8); return
     raise SystemExit(f'button not found: {label}')
+
+
+def inno_dir():
+    for d in (os.path.expandvars(r'%LOCALAPPDATA%\Programs\Inno Setup 6'), os.path.expandvars(r'%ProgramFiles(x86)%\Inno Setup 6'), os.path.expandvars(r'%ProgramFiles%\Inno Setup 6')):
+        if os.path.isdir(d): return d
+    sys.exit('Inno Setup 6 not found')
+
+
+def messages(isl):
+    """{message name: text without & accelerators} of an Inno Setup language file."""
+    out = {}
+    with open(os.path.join(inno_dir(), isl), encoding='utf-8-sig') as f:
+        for ln in f:
+            if '=' in ln and not ln.startswith((';', '[')): k, v = ln.rstrip('\r\n').split('=', 1); out[k] = v.replace('&', '')
+    return out
+
+
+def pick_language(h, name):
+    """Choose `name` in the language dialog (a combo box); the caller presses OK."""
+    combo = []
+    def cb(c, _):
+        cls = ctypes.create_unicode_buffer(64); u.GetClassNameW(c, cls, 64)
+        if 'combobox' in cls.value.lower(): combo.append(c)
+        return True
+    u.EnumChildWindows(h, WNDENUM(cb), 0)
+    if not combo: raise SystemExit('language list not found')
+    for i in range(u.SendMessageW(combo[0], CB_GETCOUNT, 0, 0)):
+        buf = ctypes.create_unicode_buffer(u.SendMessageW(combo[0], CB_GETLBTEXTLEN, i, 0) + 2); u.SendMessageW(combo[0], CB_GETLBTEXT, i, ctypes.byref(buf))
+        if buf.value == name: u.SendMessageW(combo[0], CB_SETCURSEL, i, 0); return
+    raise SystemExit('language not in the list: ' + name)
 
 
 def find(prefix, timeout=30):
@@ -68,20 +103,34 @@ def main():
     try: ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except Exception: pass
     out = os.path.abspath(sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path.dirname(HERE), 'docs', 'images')); os.makedirs(out, exist_ok=True)
+    lang = sys.argv[3] if len(sys.argv) > 3 else 'English'; m = messages(ISL[lang]); en = messages(ISL['English'])
+    title = m['SetupWindowTitle'].split('%1')[0].strip(' -—')                        # "Setup" / "Установка": the wizard's title starts with it
+    nxt, cancel, accept = m['ButtonNext'].rstrip(' >').strip(), m['ButtonCancel'], m['LicenseAccepted'][:10]
+    me_only = en['PrivilegesRequiredOverrideCurrentUser'].split(' (')[0]                  # the install-mode question comes in the Windows language (English here)
     p = subprocess.Popen([os.path.abspath(sys.argv[1])])
     try:
-        mode = None
-        for _ in range(40):                                                           # the install-mode question comes first, unless setup goes straight to the wizard
-            ws = windows(); mode = next((h for h, t, c in ws if 'Install Mode' in t), None)
-            if mode or any(t.startswith('Setup - MW4') for h, t, c in ws): break
+        done = set(); wiz = None
+        for _ in range(100):                                                          # install mode and language list first (in either order), then the wizard
+            ws = windows(); wiz = next((h for h, t, c in ws if t.startswith(title) and 'MW4' in t), None)
+            mode = next((h for h, t, c in ws if en['PrivilegesRequiredOverrideTitle'] in t), None); sel = next((h for h, t, c in ws if en['SelectLanguageTitle'] in t), None)
+            if wiz: break
+            if mode and 'mode' not in done:
+                done.add('mode')
+                if lang == 'English': shot(mode, SHOTS[1], out)
+                click(mode, me_only)
+            elif sel and 'lang' not in done:
+                done.add('lang'); time.sleep(0.5)
+                if lang == 'English': shot(sel, SHOTS[0], out)
+                pick_language(sel, lang); click(sel, 'OK')
             time.sleep(0.5)
-        if mode: shot(mode, SHOTS[0], out); click(mode, 'Install for me only')
-        h = find('Setup - MW4'); time.sleep(1.0); click(h, 'I accept'); shot(h, SHOTS[1], out)       # the notice and licence page, accepted
-        click(h, 'Next'); shot(h, SHOTS[2], out)                                      # what setup does and does not do
-        click(h, 'Next')                                                              # install folder page: not captured (it shows a user name)
-        click(h, 'Next'); shot(h, SHOTS[3], out)                                      # options
-        click(h, 'Next')                                                              # "Ready to Install": not captured; cancel here, nothing is installed
-        click(h, 'Cancel'); time.sleep(1.0)                                         # the confirmation box is left open: the process is ended below, nothing was installed
+        if not wiz: raise SystemExit('the wizard did not appear')
+        h = wiz; time.sleep(1.0)
+        click(h, accept); shot(h, SHOTS[2], out)                                      # the notice and licence page, accepted
+        click(h, nxt); shot(h, SHOTS[3], out)                                         # what setup does and does not do
+        click(h, nxt)                                                                 # install folder page: not captured (it shows a user name)
+        click(h, nxt); shot(h, SHOTS[4], out)                                         # options
+        click(h, nxt)                                                                 # "Ready to Install": not captured; cancel here, nothing is installed
+        click(h, cancel); time.sleep(1.0)                                             # the confirmation box is left open: the process is ended below, nothing was installed
     finally:
         if p.poll() is None: subprocess.run(['taskkill', '/PID', str(p.pid), '/T', '/F'], capture_output=True)
 

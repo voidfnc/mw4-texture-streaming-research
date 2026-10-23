@@ -196,6 +196,11 @@ The setup is not offered when the *Engine cache folder* setting (Game tab) point
 - Proxy: loopback only, and it forwards only the CDN path shape the game uses.
 - Logs are rotated at session start when they pass the size you set (3 older copies are kept).
 
+## Language
+
+Settings (the slide-in panel on Home), *Language*: Automatic, or one of English, Russian, Chinese (Simplified), Spanish, French, German, Portuguese (Brazil), Turkish, Polish, Japanese, Korean, Italian.
+Automatic uses the language you picked in the installer, else the Windows display language. A change restarts the window; a running session is not stopped. Logs and saved reports are always English.
+
 ## Troubleshooting
 
 | Symptom | What to try |

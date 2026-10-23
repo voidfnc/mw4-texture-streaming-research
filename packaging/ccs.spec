@@ -20,7 +20,7 @@ sys.path.insert(0, TOOLS)
 from ccslib import launch
 tools = list(launch.TOOLS) + list(launch.INTERNAL.values()) + ['xpakrec', 'cdnxpak', 'ccsgui']
 
-a = Analysis([os.path.join(TOOLS, 'ccs.py')], pathex=[TOOLS], hiddenimports=tools, datas=[(os.path.join(HERE, 'app.ico'), '.')],
+a = Analysis([os.path.join(TOOLS, 'ccs.py')], pathex=[TOOLS], hiddenimports=tools, datas=[(os.path.join(HERE, 'app.ico'), '.'), (os.path.join(TOOLS, 'ccslib', 'lang'), os.path.join('ccslib', 'lang'))],
              excludes=['numpy', 'PIL', 'pytest', 'unittest.mock', 'test', 'tests'], noarchive=False)
 pyz = PYZ(a.pure)
 gui = EXE(pyz, a.scripts, [], exclude_binaries=True, name='MW4 Texture Streaming', console=False, icon=os.path.join(HERE, 'app.ico'), version=VERSION_GUI, upx=False, uac_admin=True)

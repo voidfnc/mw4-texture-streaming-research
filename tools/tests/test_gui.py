@@ -1,6 +1,6 @@
 """GUI interaction tests: build the real window (tkinter) and drive its handlers without a human. Dialogs are patched; everything uses the temp
 work dir / hosts file from test_ccs (never the real settings, hosts file or game folders)."""
-import gc, json, os, shutil, sys, tempfile, time, unittest
+import gc, glob, json, os, shutil, sys, tempfile, time, unittest
 import test_ccs                                    # sets CCS_WORK / CCS_HOSTS_PATH before ccslib is imported
 from test_ccs import TMP, WIN_HOSTS, put
 import tkinter as tk
@@ -227,6 +227,18 @@ class GuiTests(unittest.TestCase):
         self.assertIn('Session report', self.app.rep_txt.get('1.0', 'end'))
         self.app._refresh_runs(); self.assertTrue(self.app.run_cb.cget('values')); self.assertTrue(self.app.saved_cb.cget('values'))
         self.app.saved_var.set(os.path.basename(files[-1])[:-5]); self.app._view_saved(); self.assertIn('Requests', self.app.rep_txt.get('1.0', 'end'))
+
+    def test_see_full_report_fills_the_report_tab(self):
+        lg = os.path.join(paths.WORK, 'ccsproxy.log')
+        for f in report.list_reports(): os.remove(f)
+        for f in glob.glob(os.path.join(paths.SESSIONS, '*.md')): os.remove(f)
+        if os.path.exists(lg): os.remove(lg)
+        self.app._show_report(''); self.app.home_do('open_report'); self.pump(0.3)
+        self.assertIn('No report yet', self.app.rep_txt.get('1.0', 'end'))                                   # nothing to show: say so, not a blank box
+        open(lg, 'w', encoding='utf-8').write('09:00:00 START 2026-10-21 pid=1' + chr(10) + '09:00:00 index: 1 chunk ids' + chr(10) + '09:00:01 GET /pc/iw9_3/23/aa/00000000000000aa_00000010_1 -> 200 16B MIRROR' + chr(10))
+        self.app._make_report(-1); self.pump(0.5); self.app._show_report('')                                  # a saved report exists, the tab is blank (new window / report skipped)
+        self.app.home_do('open_report'); self.pump(0.3)
+        self.assertIn('Session report', self.app.rep_txt.get('1.0', 'end')); self.assertTrue(self.app.saved_var.get())
 
     def test_auto_report_triggers_when_game_exits(self):
         self.app.stop_poll.set(); time.sleep(1.2)                                                # freeze the poller so we control the snapshot

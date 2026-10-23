@@ -1,0 +1,17 @@
+﻿Co robi ta instalacja
+
+  - Kopiuje program, jego dokumentację i skrót "Restore hosts" do wybranego przez Ciebie folderu (Program Files dla wszystkich użytkowników, Twój własny profil w opcji "tylko dla mnie").
+  - Dodaje wpisy w menu Start (oraz skrót na pulpicie, jeśli zaznaczysz tę opcję) i wpis w "Aplikacjach i funkcjach" systemu Windows, aby można było odinstalować program jak każdy inny.
+
+Czego NIE robi
+
+  - Nie zmienia pliku hosts, zapory, usług, programów startowych ani ustawień zabezpieczeń.
+  - Niczego nie pobiera i nie dotyka folderu z grą.
+
+Co program robi później
+
+  - Przy każdym uruchomieniu prosi system Windows o uprawnienia administratora, ponieważ edytuje chroniony plik hosts i folder z grą.
+  - Plik hosts zmienia tylko po naciśnięciu "Turn on HD textures" (włącz tekstury HD), najpierw tworząc kopię zapasową. "Turn off" (wyłącz) lub "Restore hosts" przywraca poprzedni stan.
+
+Twoje ustawienia, dzienniki i raporty są przechowywane w "%LOCALAPPDATA%\MW4TextureStreaming", oddzielnie od programu, więc aktualizacja ani ponowna instalacja nigdy ich nie usuwa.
+Odinstalowanie najpierw usuwa zmianę w pliku hosts (jeśli jest włączona), pyta przed usunięciem ustawień i nigdy nie usuwa utworzonej przez Ciebie kopii tekstur ani folderu z grą.

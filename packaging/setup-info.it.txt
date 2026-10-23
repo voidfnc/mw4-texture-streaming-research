@@ -1,0 +1,17 @@
+﻿Cosa fa questa installazione
+
+  - Copia il programma, la sua documentazione e un collegamento "Restore hosts" nella cartella che scegli (Program Files per tutti gli utenti, il tuo profilo per "solo per me").
+  - Aggiunge voci al menu Start (e un collegamento sul desktop, se lo selezioni) e una voce in "App e funzionalità" di Windows, così puoi disinstallarlo come qualsiasi altro programma.
+
+Cosa NON fa
+
+  - Non modifica il file hosts, il firewall, i servizi, gli elementi di avvio né le impostazioni di sicurezza.
+  - Non scarica nulla e non tocca la cartella del gioco.
+
+Cosa fa il programma in seguito
+
+  - Chiede a Windows i permessi di amministratore a ogni avvio, perché modifica il file hosts, che è protetto, e la cartella del gioco.
+  - Modifica il file hosts solo quando premi "Turn on HD textures" (attiva le texture HD), dopo aver fatto un backup. "Turn off" (disattiva) o "Restore hosts" rimette tutto com'era.
+
+Le tue impostazioni, i log e i report sono conservati in "%LOCALAPPDATA%\MW4TextureStreaming", separati dal programma, quindi aggiornare o reinstallare non li fa mai perdere.
+La disinstallazione rimuove prima la modifica a hosts (se è attiva), chiede prima di eliminare le tue impostazioni e non elimina mai una copia delle texture che hai creato né la cartella del gioco.

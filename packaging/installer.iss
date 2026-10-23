@@ -32,7 +32,9 @@ DisableDirPage=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 LicenseFile={#NoticeFile}
-InfoBeforeFile={#SourcePath}\setup-info.txt
+ShowLanguageDialog=yes
+UsePreviousLanguage=no
+LanguageDetectionMethod=uilanguage
 SetupIconFile={#RepoDir}\packaging\app.ico
 UninstallDisplayIcon={app}\{#AppExe}
 OutputDir={#OutputDir}
@@ -46,12 +48,27 @@ CloseApplications=yes
 RestartApplications=no
 SetupMutex=MW4TextureStreamingSetup
 
+; The wizard speaks the Windows display language when it is one of these and shows a language list first (ShowLanguageDialog), so it can be changed. The choice is also saved
+; for the program (language.txt in the install folder; the program uses it while its own Language setting is on Automatic). The licence stays in English on purpose.
 [Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.txt"
+Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.ru.txt"
+Name: "chinesesimplified"; MessagesFile: "{#SourcePath}\lang\ChineseSimplified.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.zh-CN.txt"
+Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.es.txt"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.fr.txt"
+Name: "german"; MessagesFile: "compiler:Languages\German.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.de.txt"
+Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.pt-BR.txt"
+Name: "turkish"; MessagesFile: "compiler:Languages\Turkish.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.tr.txt"
+Name: "polish"; MessagesFile: "compiler:Languages\Polish.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.pl.txt"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.ja.txt"
+Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.ko.txt"
+Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"; InfoBeforeFile: "{#SourcePath}\setup-info.it.txt"
+
+#include "lang\messages.iss"
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"
-Name: "restoreicon"; Description: "Add a ""&Restore hosts"" shortcut to the desktop (an emergency undo)"; GroupDescription: "Shortcuts:"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:TaskDesktop}"; GroupDescription: "{cm:TaskGroup}"
+Name: "restoreicon"; Description: "{cm:TaskRestore}"; GroupDescription: "{cm:TaskGroup}"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -64,10 +81,13 @@ Name: "{autoprograms}\MW4 Texture Streaming\Uninstall"; Filename: "{uninstallexe
 Name: "{autodesktop}\MW4 Texture Streaming"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Tasks: desktopicon
 Name: "{autodesktop}\Restore hosts"; Filename: "{app}\Restore hosts.bat"; WorkingDir: "{app}"; Tasks: restoreicon
 
+[UninstallDelete]
+Type: files; Name: "{app}\language.txt"
+
 [Run]
 ; shellexec: the program asks for administrator rights (its manifest), which a plain start from this per-user setup could not do
-Filename: "{app}\{#AppExe}"; Description: "Start MW4 Texture Streaming"; Flags: shellexec postinstall skipifsilent
-Filename: "{app}\START HERE.txt"; Description: "Read the quick start"; Flags: shellexec postinstall skipifsilent unchecked
+Filename: "{app}\{#AppExe}"; Description: "{cm:RunStart}"; Flags: shellexec postinstall skipifsilent
+Filename: "{app}\START HERE.txt"; Description: "{cm:RunQuick}"; Flags: shellexec postinstall skipifsilent unchecked
 
 [Code]
 // The program can leave two things behind: helper processes (proxy, disk guard, ...) and the hosts-file block that points the game at them.
@@ -83,16 +103,16 @@ begin
   if not Result then Code := 0;
 end;
 
-function MakeSafe(const Doing: String): Boolean;
+function MakeSafe(const Uninstalling: Boolean): Boolean;
 var
   Status, Done: Integer;
+  Msg: String;
 begin
   Result := True;
+  if Uninstalling then Msg := 'ActiveUninstall' else Msg := 'ActiveUpdate';
   if not Prep('status', Status) then Exit;
   if Status = 0 then Exit;
-  if MsgBox('MW4 Texture Streaming is active (a session is running, or its hosts-file entry is on).' + #13#10#13#10 +
-            'To ' + Doing + ' safely, setup will stop it and put your hosts file back. Windows may ask for permission.' + #13#10#13#10 + 'Continue?',
-            mbConfirmation, MB_YESNO) <> IDYES then
+  if MsgBox(CustomMessage(Msg), mbConfirmation, MB_YESNO) <> IDYES then
   begin
     Result := False;
     Exit;
@@ -101,21 +121,19 @@ begin
   if (Status and 1) <> 0 then
   begin
     if (not Prep('remove-hosts', Done)) or (Done <> 0) then
-      Result := MsgBox('The hosts file could not be put back (permission was declined, or the file is protected).' + #13#10#13#10 +
-                       'Without that, the game may keep being sent to a program that is no longer running. You can fix it later with "Restore hosts" in the Start menu.' + #13#10#13#10 +
-                       'Continue anyway?', mbError, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+      Result := MsgBox(CustomMessage('HostsFail'), mbError, MB_YESNO or MB_DEFBUTTON2) = IDYES;
   end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   Result := '';
-  if not MakeSafe('update') then Result := 'Setup was cancelled: nothing was changed.';
+  if not MakeSafe(False) then Result := CustomMessage('Cancelled');
 end;
 
 function InitializeUninstall(): Boolean;
 begin
-  Result := MakeSafe('uninstall');
+  Result := MakeSafe(True);
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -125,8 +143,32 @@ begin
   if CurUninstallStep <> usPostUninstall then Exit;
   Data := ExpandConstant('{localappdata}\MW4TextureStreaming');
   if (not UninstallSilent) and DirExists(Data) then
-    if MsgBox('Also delete your settings, logs and reports?' + #13#10#13#10 + Data + #13#10#13#10 +
-              'A texture mirror you built and your game folder are never deleted. Choose No to keep your settings for a later reinstall.',
-              mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+    if MsgBox(FmtMessage(CustomMessage('DeleteData'), [Data]), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
       DelTree(Data, True, True, True);
+end;
+
+// The language chosen on the first page becomes the program's language while its own setting is on Automatic (the program reads language.txt next to its exe).
+function ProgramLanguage(): String;
+var
+  L: String;
+begin
+  L := ActiveLanguage();
+  if L = 'russian' then Result := 'ru'
+  else if L = 'chinesesimplified' then Result := 'zh-CN'
+  else if L = 'spanish' then Result := 'es'
+  else if L = 'french' then Result := 'fr'
+  else if L = 'german' then Result := 'de'
+  else if L = 'brazilianportuguese' then Result := 'pt-BR'
+  else if L = 'turkish' then Result := 'tr'
+  else if L = 'polish' then Result := 'pl'
+  else if L = 'japanese' then Result := 'ja'
+  else if L = 'korean' then Result := 'ko'
+  else if L = 'italian' then Result := 'it'
+  else Result := 'en';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    SaveStringToFile(ExpandConstant('{app}\language.txt'), ProgramLanguage(), False);
 end;
