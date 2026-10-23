@@ -72,6 +72,24 @@ make one small change in it (the game setup).
 
 ![Advanced mode: the Dashboard during a session](docs/images/advanced.png)
 
+**In Russian.** The same screens with the Russian text (the program and the installer follow your Windows language, see [Languages](#languages)).
+
+<details>
+<summary>Show the screenshots in Russian (Русский)</summary>
+
+![Первый запуск](docs/images/ru/first-run.png)
+![Главная: готово к включению](docs/images/ru/home-ready.png)
+![Главная: игра запущена](docs/images/ru/home-playing.png)
+![Главная: после сеанса](docs/images/ru/home-finished.png)
+![Настройки](docs/images/ru/settings.png)
+![Страница офлайн-копии](docs/images/ru/offline-copy.png)
+![Расширенный режим: панель](docs/images/ru/advanced.png)
+![Установщик: лицензия](docs/images/ru/installer-1-license.png)
+![Установщик: что делает установка](docs/images/ru/installer-2-info.png)
+![Установщик: ярлыки](docs/images/ru/installer-3-options.png)
+
+</details>
+
 **In the game.** Two frames from a play session of the single-player campaign at 2560x1440 with the toolkit running (0.2.5-beta, so the window is the earlier design). In the first, the Dashboard sits next to the game: 117
 texture pieces delivered so far, none from the internet, no errors (the game folder path in the window is covered). In the second, a close-up of a character and a shop interior. They show how
 the game looks with the streamed textures; they are not a measured comparison (I took no before/after pairs, see [section 7 of FINDINGS](docs/FINDINGS.md#7-what-i-could-not-verify)).
