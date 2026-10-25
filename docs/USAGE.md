@@ -97,7 +97,7 @@ Nothing is assumed. Until the game folder is set, Home shows *Let's find your ga
 
 | Setting | Meaning | If left blank |
 |---|---|---|
-| Game folder | the folder that contains `cod26\` and `sp26\` (with the `*_cdn.xpak` chunk lists) | not configured |
+| Game folder | the folder that contains `cod26\` and `sp26\` (with the `*_cdn.xpak` chunk lists, or `*_cdn_stub.xpak` on the Xbox / Microsoft Store version) | not configured |
 | Engine cache folder | the game's stream cache (`cache_N_2.xpak`) | `<game folder>\xpak_cache` |
 | Mirror folder | where the chunks are stored; can be another drive. Building a mirror needs a folder you can write to: inside Program Files that usually means a folder of your own instead | `<game folder>\mirror` |
 | Player config file | `s.1.0.cod26.txt`, read only, used for the settings snapshot in reports | `%LOCALAPPDATA%\Activision\Call of Duty\players\s.1.0.cod26.txt` |

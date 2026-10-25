@@ -101,7 +101,7 @@ def load_catalogue():
     if _CAT is None or _CAT_ROOT != paths.ROOT:
         sys.path.insert(0, paths.TOOLS); import cdnxpak
         _CAT = {}; _CAT_ROOT = paths.ROOT
-        for fn in glob.glob(os.path.join(glob.escape(paths.ROOT), 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(glob.escape(paths.ROOT), 'sp26', '*_cdn.xpak')):
+        for fn in paths.chunk_lists(paths.ROOT):
             for r in cdnxpak.parse(fn): _CAT.setdefault(r['id'], dict(raw=r['raw'], size=r['size']))
     return _CAT
 

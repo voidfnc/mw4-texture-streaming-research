@@ -72,7 +72,7 @@ def score_folder(root):
         has_exe = any(os.path.isfile(os.path.join(root, e)) for e in paths.GAME_EXES)
         if not has_dir and not has_exe: return 0
         if not has_dir: return 1
-        lists = glob.glob(os.path.join(glob.escape(root), 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(glob.escape(root), 'sp26', '*_cdn.xpak'))
+        lists = paths.chunk_lists(root)
         return 3 if lists else 2
     except OSError:
         return 0

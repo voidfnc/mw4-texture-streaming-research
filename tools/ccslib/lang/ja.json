@@ -915,6 +915,7 @@
 "{0} MB/s": "{0} MB/秒",
 "{0} came from your offline copy and {1} from the internet.": "{0} 個はオフラインコピーから、{1} 個はインターネットから届きました。",
 "{0} check(s) failed: ": "{0} 件のチェックが失敗しました: ",
+"{0} chunk list files under cod26/ and sp26/ ({1} of them in the Xbox \"_stub\" form)": "cod26/ と sp26/ にチャンク一覧ファイルが {0} 個あります（うち {1} 個は Xbox 版の「_stub」形式）",
 "{0} chunks stored; spot check {1}/{2} objects present with the right size": "{0} チャンクを保存済み。抜き取り検査: {2} 個中 {1} 個のオブジェクトが正しいサイズで存在",
 "{0} chunks, {1} GiB; stored {2} ({3} GiB); to download {4} chunks, {5} GiB": "{0} チャンク、{1} GiB。保存済み {2}({3} GiB)。ダウンロード {4} チャンク、{5} GiB",
 "{0} days": "{0} 日",

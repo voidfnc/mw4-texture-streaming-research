@@ -915,6 +915,7 @@
 "{0} MB/s": "{0} МБ/с",
 "{0} came from your offline copy and {1} from the internet.": "{0} получено из вашей офлайн-копии и {1} из интернета.",
 "{0} check(s) failed: ": "Не прошли проверки: {0}. ",
+"{0} chunk list files under cod26/ and sp26/ ({1} of them in the Xbox \"_stub\" form)": "{0} файлов списков фрагментов в cod26/ и sp26/ ({1} из них в форме Xbox «_stub»)",
 "{0} chunks stored; spot check {1}/{2} objects present with the right size": "сохранено фрагментов: {0}; выборочная проверка {1}/{2} объектов: на месте и нужного размера",
 "{0} chunks, {1} GiB; stored {2} ({3} GiB); to download {4} chunks, {5} GiB": "{0} фрагментов, {1} GiB; сохранено {2} ({3} GiB); нужно скачать {4} фрагментов, {5} GiB",
 "{0} days": "{0} дн.",

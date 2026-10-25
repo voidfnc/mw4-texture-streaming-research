@@ -63,7 +63,7 @@ def list_files(pkg): return PACKAGES[pkg][2]
 def available(root=None):
     """-> {pkg: [existing list files]} for the game folder (a package with no files is unavailable on this install)."""
     root = root or paths.GAME_ROOT; out = {}
-    for k in ORDER: out[k] = [f for f in list_files(k) if os.path.exists(os.path.join(root, *f.split('/')))]
+    for k in ORDER: out[k] = [f for f in list_files(k) if cdnxpak.resolve(root, f)]
     return out
 
 
@@ -72,8 +72,8 @@ def fingerprint(root=None, pkgs=ORDER):
     root = root or paths.GAME_ROOT; out = {}
     for k in pkgs:
         for f in list_files(k):
-            p = os.path.join(root, *f.split('/'))
-            if os.path.exists(p): st = os.stat(p); out[f] = f'{st.st_size}:{int(st.st_mtime)}'
+            p = cdnxpak.resolve(root, f)
+            if p: st = os.stat(p); out[f] = f'{st.st_size}:{int(st.st_mtime)}'
     return out
 
 
@@ -85,8 +85,8 @@ def catalogue(mask, root=None):
         b = bit(k)
         if not mask & b: continue
         for f in list_files(k):
-            p = os.path.join(root, *f.split('/'))
-            if not os.path.exists(p): continue
+            p = cdnxpak.resolve(root, f)
+            if not p: continue
             for r in cdnxpak.parse(p):
                 c = cat.get(r['id'])
                 if c is None: cat[r['id']] = dict(wire=r['size'], raw=r['raw'], flag=r['flag'], bits=b, first=k)

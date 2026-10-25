@@ -915,6 +915,7 @@
 "{0} MB/s": "{0} Mo/s",
 "{0} came from your offline copy and {1} from the internet.": "{0} sont venus de votre copie hors ligne et {1} d'Internet.",
 "{0} check(s) failed: ": "{0} vérification(s) échouée(s) : ",
+"{0} chunk list files under cod26/ and sp26/ ({1} of them in the Xbox \"_stub\" form)": "{0} fichiers de listes de fragments dans cod26/ et sp26/ ({1} sous la forme Xbox « _stub »)",
 "{0} chunks stored; spot check {1}/{2} objects present with the right size": "{0} morceaux stockés ; contrôle par sondage : {1}/{2} objets présents avec la bonne taille",
 "{0} chunks, {1} GiB; stored {2} ({3} GiB); to download {4} chunks, {5} GiB": "{0} morceaux, {1} GiB ; stockés {2} ({3} GiB) ; à télécharger {4} morceaux, {5} GiB",
 "{0} days": "{0} jours",

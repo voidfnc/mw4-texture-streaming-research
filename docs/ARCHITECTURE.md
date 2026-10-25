@@ -55,6 +55,7 @@ Environment variables `CCS_GAME_ROOT`, `CCS_CACHE_DIR`, `CCS_MIRROR_DIR`, `CCS_P
 URL itself; the response ETag is the MD5 of the body (older objects use `md5:timestamp`).
 
 **Chunk lists**: the game ships `*_cdn.xpak` files with 20-byte records starting at offset `0x8000`: id (u64), `size << 1 | flag` (u32), zero (u32), raw size (u32).
+The Xbox / Microsoft Store build names them `*_cdn_stub.xpak`; `tools/cdnxpak.py` (`resolve`, `find_all`) treats a stub as the list of its package when the full file is absent and prefers the full file otherwise.
 `ccslib/pack.py` reads these from *your* install to know what exists; they are never copied into this repository.
 
 **Mirror**: `mirror/objects/{id & 0xff:02x}/{id:016x}_{size:08x}_{flag}` holds the verbatim response bodies, `mirror/index.sqlite` has one row per chunk (status,
