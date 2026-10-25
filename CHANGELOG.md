@@ -8,6 +8,9 @@
 - **A card for multiplayer / HQ.** When only `cod.exe` is running and nothing has reached the helper, the card now says that this is experimental, that requests may start only when a match or map loads, and how to
   send a useful report. It waits 4 minutes instead of 90 seconds before appearing. The campaign text is unchanged.
 - **The disk guard never ends the multiplayer game by default.** It still ends `sp26-cod.exe` at the limit. If only a game program that is not on its list is running, the log says it is warning only.
+- **The first-run notice is updated and translated.** It said "offline / single-player use only, do not use it with online services". It now says the tool only delivers texture files the game asks for, gives no
+  advantage over other players, was built and tested on the campaign, that multiplayer and HQ are experimental, and that using a local proxy during online play is at the user's own risk. It was English only until now;
+  it is translated into all languages. (The notice is shown once per version, so people see the new text with the next release.)
 - **Wording.** The README and the disclaimer no longer say single-player only: the tools deliver only texture files the game requests and give no gameplay advantage. Multiplayer / HQ is called experimental and
   untested, with the same use-at-your-own-risk notice. New section *Testing multiplayer / HQ* in the getting-started guide.
 

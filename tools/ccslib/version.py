@@ -5,8 +5,9 @@ USER_AGENT = f'mw4-texture-streaming-toolkit/{__version__} (+{REPO_URL})'
 
 NOTICE = ('Research / proof of concept. This toolkit ships no game files, assets, keys or CDN content. It only reads files from your own installation and '
           'requests public, unauthenticated URLs that the game itself requests. It does not patch, hook or read the memory of the game, its launcher, drivers or '
-          'anti-cheat. Meant for offline / single-player use on your own PC; do not use it with online services. Bulk downloads and hosts-file changes may go against '
-          'the terms of service where you live - that is your call and your responsibility. Not affiliated with or endorsed by Activision. No warranty (MIT license).')
+          'anti-cheat. It only delivers texture files the game asks for: it does not touch gameplay or other players and gives no advantage over them. It was built and tested on the '
+          'single-player campaign; multiplayer and HQ are experimental. Bulk downloads, hosts-file changes and using a local proxy during online play may go against the terms of '
+          'service where you live or lead to action against your account - that is your call and your responsibility. Not affiliated with or endorsed by Activision. No warranty (MIT license).')
 
 BULK_NOTICE = ("BULK DOWNLOAD - please read.\n\n"
                "This downloads game content (texture chunks) in bulk from the publisher's CDN. That content is the publisher's property. Use it only with your own copy of the "

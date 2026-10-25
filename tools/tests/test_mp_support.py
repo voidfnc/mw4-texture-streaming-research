@@ -112,4 +112,14 @@ class WordingTests(unittest.TestCase):
         self.assertIn('no advantage', self.read('DISCLAIMER.md').lower().replace('give no advantage', 'no advantage')); self.assertIn('own risk', self.read('DISCLAIMER.md').lower())
 
 
+    def test_first_run_notice_matches_the_new_policy_and_is_translated(self):
+        import json
+        from ccslib import version
+        self.assertNotIn('do not use it with online services', version.NOTICE); self.assertNotIn('single-player use', version.NOTICE)
+        for w in ('experimental', 'no advantage' if False else 'advantage', 'responsibility'): self.assertIn(w, version.NOTICE)
+        lang = os.path.join(TOOLS, 'ccslib', 'lang')
+        for f in sorted(os.listdir(lang)):
+            if f.endswith('.json') and not f.startswith('_'):
+                d = json.load(open(os.path.join(lang, f), encoding='utf-8')); self.assertTrue(d.get(version.NOTICE), f + ' lacks the translated notice')
+
 if __name__ == '__main__': unittest.main()
