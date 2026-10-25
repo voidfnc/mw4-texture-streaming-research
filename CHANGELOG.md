@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1-beta
 **The game setup on drives that cannot hold folder links, a clearer step 3, a picture-cache fix and a round of fixes from a code audit.**
 
 - **Fix: "[WinError 1] Incorrect function" in the game setup, now explained.** The setup makes `sp26\xpak_cache` a folder link (a junction), and exFAT and FAT32 drives cannot hold one: Windows answers
