@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.3-beta
 **Multiplayer / HQ (`cod.exe`): experimental support so people can test it, and a fix for port 80 held by Windows itself.**
 
 - **Fix: "Terminate System (pid 4)" did nothing.** When Windows itself holds port 80 (the System process, pid 4, which is the web server driver behind IIS and other Windows web services), the Doctor offered
