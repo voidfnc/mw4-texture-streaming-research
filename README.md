@@ -2,7 +2,7 @@
 
 Beta 0.4.1 · Windows · 12 languages · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E4E029CR36)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E4E029CR36) [![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/rcNfF5AvMn)
 
 [Video](#video-walkthrough) · [Видео на русском](#видео-на-русском) · [Screenshots](#what-it-looks-like) · [Download](#download) · [Getting started](docs/GETTING-STARTED.md) · [Releases](https://github.com/voidfnc/mw4-texture-streaming-research/releases)
 
