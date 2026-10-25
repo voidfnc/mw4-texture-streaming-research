@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.4.0 · Windows · 12 languages · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
+Beta 0.4.1 · Windows · 12 languages · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E4E029CR36)
 
