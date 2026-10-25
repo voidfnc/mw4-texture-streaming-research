@@ -329,6 +329,8 @@
 "Modern Warfare 4": "Modern Warfare 4",
 "Most often the game was started before the session. Close it and launch it again. Otherwise a VPN, \"secure DNS\" or security software may be bypassing the hosts file. The Doctor tests exactly that.": "多くの場合、セッションの前にゲームを起動したことが原因です。ゲームを閉じて、もう一度起動してください。それ以外では、VPN、「セキュアDNS」、セキュリティソフトがhostsファイルを迂回している可能性があります。ドクターがまさにそれを調べます。",
 "Multiplayer (mp26)": "マルチプレイヤー(mp26)",
+"Multiplayer / HQ: nothing has reached the helper yet": "マルチプレイ / HQ:ヘルパーにはまだ何も届いていません",
+"Multiplayer and HQ support is experimental. The helper only sees a request when the game asks for a texture, which may happen only once a match or map loads, and this version of the game may not use this route at all. Play a match and look again. If it stays at zero, turn on \"Start netwatch\" in Advanced mode (Proxy tab), play a match, then export the support bundle from the Doctor and attach it to a bug report: it shows what the game connects to.": "マルチプレイと HQ への対応は実験的です。ヘルパーに届くのは、ゲームがテクスチャを要求したときだけで、それは試合やマップの読み込み時にしか起きない場合があります。また、このバージョンのゲームはこの経路をまったく使わない可能性もあります。試合を1回プレイしてからもう一度確認してください。それでも0のままなら、詳細モード(プロキシタブ)で「netwatch」をオンにして試合をプレイし、ドクターからサポート用バンドルをエクスポートして不具合報告に添付してください。ゲームの接続先がわかります。",
 "My line speed (Mbps)": "回線速度(Mbps)",
 "NO CONNECTION to the CDN - waiting, chunks stay pending (Pause to stop)": "CDN に接続できません - 待機中、chunk は保留のままです（止めるには「一時停止」を押してください）",
 "NOT CONFIGURED - fallback to tools folder": "未設定 - tools フォルダーを代わりに使用",

@@ -6,7 +6,9 @@
   distributed here. Please don't attach any of it to issues or pull requests.
 - The tools read files from *your own installation* and request only publicly reachable, unauthenticated URLs that the game itself requests.
 - They do not patch, hook or read the memory of the game, its launcher, drivers or anti-cheat, and they do not bypass licensing, DRM or authentication.
-- They are meant for offline, single-player use on your own computer. Don't use them with online services.
+- They only deliver texture files the game itself requests. They do not touch gameplay, the match, other players or the game's online services, and they give no advantage over other players.
+- They were built and tested on the single-player campaign. Multiplayer and HQ (`cod.exe`) are experimental and untested by the author: whether the publisher's anti-cheat and terms accept a changed hosts file
+  and a local proxy during online play is not something I can promise (see below).
 
 **Use at your own risk.** Downloading game content in bulk, changing your hosts file and sending the game's traffic through a local proxy may go against the
 game's terms of service or the law where you live, and could lead to action against your account. Checking that and complying with it is up to you. The game's license terms restrict reverse engineering, modifying game data and using unauthorized third-party software, and the

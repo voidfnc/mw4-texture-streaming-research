@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+**Multiplayer / HQ (`cod.exe`): experimental support so people can test it.**
+
+- **netwatch follows any game program.** It was tied to `sp26-cod.exe`; it now watches every name in the game process list (default `sp26-cod.exe` and `cod.exe`) and says which program made each DNS lookup or connection.
+  With it on, a support bundle shows what the multiplayer / HQ game connects to.
+- **A card for multiplayer / HQ.** When only `cod.exe` is running and nothing has reached the helper, the card now says that this is experimental, that requests may start only when a match or map loads, and how to
+  send a useful report. It waits 4 minutes instead of 90 seconds before appearing. The campaign text is unchanged.
+- **The disk guard never ends the multiplayer game by default.** It still ends `sp26-cod.exe` at the limit. If only a game program that is not on its list is running, the log says it is warning only.
+- **Wording.** The README and the disclaimer no longer say single-player only: the tools deliver only texture files the game requests and give no gameplay advantage. Multiplayer / HQ is called experimental and
+  untested, with the same use-at-your-own-risk notice. New section *Testing multiplayer / HQ* in the getting-started guide.
+
 ## 0.4.2-beta
 **The Xbox / Microsoft Store version: its chunk lists are found.**
 

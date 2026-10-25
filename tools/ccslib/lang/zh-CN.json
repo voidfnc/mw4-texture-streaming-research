@@ -329,6 +329,8 @@
 "Modern Warfare 4": "Modern Warfare 4",
 "Most often the game was started before the session. Close it and launch it again. Otherwise a VPN, \"secure DNS\" or security software may be bypassing the hosts file. The Doctor tests exactly that.": "最常见的原因是游戏在会话开始前就已启动。请关闭游戏后重新启动。否则可能是 VPN、“安全 DNS”或安全软件绕过了 hosts 文件。诊断正好可以检测这一点。",
 "Multiplayer (mp26)": "多人（mp26）",
+"Multiplayer / HQ: nothing has reached the helper yet": "多人 / HQ：助手还没有收到任何请求",
+"Multiplayer and HQ support is experimental. The helper only sees a request when the game asks for a texture, which may happen only once a match or map loads, and this version of the game may not use this route at all. Play a match and look again. If it stays at zero, turn on \"Start netwatch\" in Advanced mode (Proxy tab), play a match, then export the support bundle from the Doctor and attach it to a bug report: it shows what the game connects to.": "对多人模式和 HQ 的支持目前是实验性的。只有当游戏请求纹理时，助手才会看到请求，而这可能要等到加载对局或地图时才会发生；此外，这个版本的游戏也可能根本不走这条路径。请玩一局后再看一次。如果仍然为零，请在高级模式（代理标签页）中开启“netwatch”，玩一局，然后在诊断中导出支持包，并把它附在错误报告里：它会显示游戏连接了哪里。",
 "My line speed (Mbps)": "我的网速（Mbps）",
 "NO CONNECTION to the CDN - waiting, chunks stay pending (Pause to stop)": "无法连接到 CDN - 正在等待，chunk 保持待处理（点击“暂停”可停止）",
 "NOT CONFIGURED - fallback to tools folder": "未配置 - 使用 tools 文件夹作为备用",

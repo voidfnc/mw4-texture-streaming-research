@@ -727,7 +727,7 @@ class App(tk.Tk):
         if ps and ps.get('stat'):                                                    # what the proxy has done so far; kept after it stops, for the "what happened" text
             c = ps['stat']; g = lambda k: c.get(k) or 0; self._guide_peak = dict(req=g('req'), mirror=g('mirror'), upok=g('ok') - g('mirror'), err=g('err'), skip=g('skip'), miss=g('miss'), secs=(ps.get('now') or 0) - (ps.get('started') or 0))
         return dict(configured=paths.CONFIGURED, folder_root=root, folder_exists=fc[2], folder_score=fc[3], game_setup=fc[4], game_fs=fc[5], blocked_by=blocked, port=port, free_gib=s.get('free'),
-                    game_running=bool(s.get('game')), proxy_ready=bool(ps), proxy_alive=bool(pp.get('alive')), hosts_ok=s.get('hosts') in ('OK', 'FOREIGN', 'MIXED'),
+                    game_running=bool(s.get('game')), game_names=list(s.get('game') or []), proxy_ready=bool(ps), proxy_alive=bool(pp.get('alive')), hosts_ok=s.get('hosts') in ('OK', 'FOREIGN', 'MIXED'),
                     resolve_ok=bool(rs.get('ok')), hosts_state=s.get('hosts', '?'), requests=int(ps['stat']['req']) if ps and ps.get('stat') else 0,
                     pack_total=tot.get('chunks'), pack_stored=tot.get('stored'), mirror_alive=bool((s.get('mproc') or {}).get('alive')),
                     pack_run_done=((s.get('mprog') or {}).get('ok', 0) + (s.get('mprog') or {}).get('fail', 0)), pack_run_total=(s.get('mprog') or {}).get('queued'),

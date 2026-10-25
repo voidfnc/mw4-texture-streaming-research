@@ -329,6 +329,8 @@
 "Modern Warfare 4",
 "Most often the game was started before the session. Close it and launch it again. Otherwise a VPN, \"secure DNS\" or security software may be bypassing the hosts file. The Doctor tests exactly that.",
 "Multiplayer (mp26)",
+"Multiplayer / HQ: nothing has reached the helper yet",
+"Multiplayer and HQ support is experimental. The helper only sees a request when the game asks for a texture, which may happen only once a match or map loads, and this version of the game may not use this route at all. Play a match and look again. If it stays at zero, turn on \"Start netwatch\" in Advanced mode (Proxy tab), play a match, then export the support bundle from the Doctor and attach it to a bug report: it shows what the game connects to.",
 "My line speed (Mbps)",
 "NO CONNECTION to the CDN - waiting, chunks stay pending (Pause to stop)",
 "NOT CONFIGURED - fallback to tools folder",

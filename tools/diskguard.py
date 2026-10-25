@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """diskguard - protect free disk space during a streaming test.
-Logs the size of xpak_cache/ every 10 s; if it exceeds the limit it terminates sp26-cod.exe
-(cache is disposable) so the drive cannot fill. Locations/process names: GUI Game tab (tools/work/gui_settings.json).
+Logs the size of xpak_cache/ every 10 s; if it exceeds the limit it terminates the programs on its list (default: sp26-cod.exe, the campaign;
+the multiplayer / HQ program cod.exe is never ended unless it is added to the list) so the drive cannot fill. Locations/process names: GUI Game tab (tools/work/gui_settings.json).
 
   python tools/diskguard.py [limit_gib=18]                   (legacy positional form)
   python tools/diskguard.py --limit-gib 100 [--action kill|warn] [--status-json PATH] [--interval 10] [--cache DIR]
@@ -22,6 +22,14 @@ def size(c):
             try: t += os.path.getsize(os.path.join(dp, f))
             except OSError: pass
     return t
+
+def other_game():
+    """Game programs that are running but not on the list this guard may end (the multiplayer / HQ program, by default)."""
+    try:
+        from ccslib import procs
+        kill = {e.lower() for e in paths.KILL_EXES}
+        return [e for e in procs.image_running(*paths.GAME_EXES) if e.lower() not in kill]
+    except Exception: return []
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
@@ -49,8 +57,9 @@ def main(argv=None):
                 if ended: killed = True; log(f"LIMIT HIT ({where}) -> {', '.join(ended)} terminated")
                 else:
                     idle = all(r.returncode == 128 for _, r in out)                       # taskkill answers 128 when there is no such process
+                    other = other_game() if idle else []
                     if not (idle and idle_said):
-                        log(f"LIMIT HIT ({where}) -> " + ('the game is not running, still watching' if idle else 'could not end the game (' + '; '.join(f"{exe}: {(r.stdout + r.stderr).strip()[:120]}" for exe, r in out) + '), still watching'))
+                        log(f"LIMIT HIT ({where}) -> " + ((f"{', '.join(other)} is running but is not on the list this guard may end (Settings, Disk guard may terminate): warning only, still watching" if other else 'the game is not running, still watching') if idle else 'could not end the game (' + '; '.join(f"{exe}: {(r.stdout + r.stderr).strip()[:120]}" for exe, r in out) + '), still watching'))
                     idle_said = idle; hit = not idle     # not running: look again next time round (it may be started over the limit); a real failure is reported once, not every interval
             else:
                 log(f"LIMIT HIT ({where}) -> warn only")
