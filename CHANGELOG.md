@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.2-beta
 **The Xbox / Microsoft Store version: its chunk lists are found.**
 
 - **Fix: "CDN chunk lists: none found" on the Xbox / Microsoft Store version.** That build ships the chunk lists as `*_cdn_stub.xpak` (for example `sp26_cdn_stub.xpak`) instead of `*_cdn.xpak`, so the
