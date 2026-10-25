@@ -361,9 +361,13 @@ def coach(state, f, last=''):
         card('hosts_lost', 'The hosts entry is gone', 'The helper is running, but the hosts file no longer points the game at it, so the game goes straight to the internet. Security software sometimes removes it. '
              'Put it back, and if it keeps disappearing allow this tool in your security software.', [('apply_hosts', 'Put it back (UAC)'), ('doctor', 'Open the Doctor')])
     live = live_session(f)
-    if live and f.get('game_running') and f.get('requests', 0) == 0 and f.get('game_secs', 0) >= 90:
-        card('no_traffic', 'The game is running but nothing reached the helper', 'Most often the game was started before the session. Close it and launch it again. '
-             'Otherwise a VPN, "secure DNS" or security software may be bypassing the hosts file. The Doctor tests exactly that.', [('doctor', 'Open the Doctor')])
+    names = [str(n).lower() for n in f.get('game_names') or []]; mp = bool(names) and not any(n.startswith('sp26') for n in names)       # only the multiplayer / HQ program (cod.exe) is running
+    if live and f.get('game_running') and f.get('requests', 0) == 0 and f.get('game_secs', 0) >= (240 if mp else 90):
+        if mp: card('no_traffic', 'Multiplayer / HQ: nothing has reached the helper yet', 'Multiplayer and HQ support is experimental. The helper only sees a request when the game asks for a texture, which may happen only once a match or map loads, '
+                    'and this version of the game may not use this route at all. Play a match and look again. If it stays at zero, turn on "Start netwatch" in Advanced mode (Proxy tab), play a match, '
+                    'then export the support bundle from the Doctor and attach it to a bug report: it shows what the game connects to.', [('doctor', 'Open the Doctor')])
+        else: card('no_traffic', 'The game is running but nothing reached the helper', 'Most often the game was started before the session. Close it and launch it again. '
+                   'Otherwise a VPN, "secure DNS" or security software may be bypassing the hosts file. The Doctor tests exactly that.', [('doctor', 'Open the Doctor')])
     if f.get('free_gib') is not None and f['free_gib'] < 5 and (live or f.get('game_running')):
         card('disk_low', 'Very little disk space left', f"Only {f['free_gib']:.1f} GiB free. The game cache grows while you play, and the disk guard will stop the game at its limit. Free some space on the drive.", [])
     if last and not any(c['id'] in ('hosts_lost',) for c in cards):

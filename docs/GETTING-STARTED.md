@@ -92,6 +92,19 @@ To find out whether it changes anything on your PC, compare the same place in th
 
 Some setups show a difference and some do not. The test tells you which it is for yours.
 
+## Testing multiplayer / HQ (experimental)
+
+The campaign (`sp26-cod.exe`) is what this tool was built and tested on. Multiplayer and HQ run as `cod.exe`; the tool detects it, but nobody has confirmed that this part of the game asks the same server for
+its textures. If you want to help find out:
+
+1. Open *Advanced mode*, tab *Proxy*, and tick *Start netwatch (DNS/TCP log of the game) with the session*. It needs the Windows DNS client log, which a normal Windows has; see the tool's help if it asks.
+2. Turn HD textures on, start the game, play a match or load a map, then look at the number of delivered textures on the home screen.
+3. If it stays at zero, open *Doctor*, press *Export support bundle (zip)* and attach it to a bug report (it holds the helper's log and, with netwatch on, the names and addresses the game connected to).
+   Nothing from your game folder is in it, and your Windows user name is removed.
+
+The disk guard only ends `sp26-cod.exe` by default. It never ends `cod.exe` during an online match unless you add that name yourself in the settings. Whether the publisher's anti-cheat accepts a changed
+hosts file is not something this project can promise; see the [disclaimer](../DISCLAIMER.md).
+
 ## Words used in this tool
 
 **Session**  

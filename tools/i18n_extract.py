@@ -95,6 +95,9 @@ def extract(root=None):
         p = os.path.join(root, f)
         if not os.path.isfile(p): continue
         v = V(); v.visit(ast.parse(open(p, encoding='utf-8').read())); keys |= v.keys
+    sys.path.insert(0, HERE)
+    from ccslib import version
+    keys.add(version.NOTICE)                                                                                                   # the notice on the first-run screen: one long text, longer than a key may be
     return sorted(keys)
 
 

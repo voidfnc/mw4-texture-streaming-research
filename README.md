@@ -15,8 +15,9 @@ it never did. This repository is what came out of tracking that down: a short ex
 > **Please read this first.** This is research / proof-of-concept code. The repository contains **source code and written notes only**: no Activision files, game
 > assets, game binaries, CDN content, keys or chunk catalogues, and none will ever be shared here. Please don't attach any to issues or pull requests.
 > The tools only read files from your own installation and only request public, unauthenticated URLs that the game itself requests. They don't patch, hook or read
-> the memory of the game, its launcher, drivers or anti-cheat, and they don't get around any licensing, DRM or login. I wrote them for offline, single-player use on
-> my own computer.
+> the memory of the game, its launcher, drivers or anti-cheat, and they don't get around any licensing, DRM or login. I wrote them to help the game load its own higher-detail textures: they deliver
+> only the texture files the game asks for, and nothing that touches gameplay or gives anyone an advantage over other players. They were built and tested on the single-player
+> campaign; multiplayer and HQ (`cod.exe`) are experimental, see below.
 > Using them is your decision and your responsibility. Downloading game content in bulk, editing your hosts file and routing the game through a local proxy may go
 > against the game's terms of service, or the law where you live. This project is not affiliated with or endorsed by Activision. "Call of Duty" and "Modern
 > Warfare" are trademarks of their owners and appear here only to say what the tools are for. No warranty (see [LICENSE](LICENSE) and [DISCLAIMER.md](DISCLAIMER.md)).
@@ -226,7 +227,8 @@ What I'm less sure about:
 - Whether the picture got better is partly my own eyes. Cutscenes looked much sharper to me afterwards, but I never ran a controlled before/after comparison.
 - The detail-level cap (refusing large chunks) works at the proxy, but I only have a handful of observations of how the engine reacts to the refusal.
 - The game asks again for many chunks that are already in its cache (roughly half of the ids in one session). I don't know why.
-- Everything was developed and tested on one Windows PC and the single-player campaign. Multiplayer and online services were not used and shouldn't be.
+- Everything was developed and tested on one Windows PC and the single-player campaign. Multiplayer and HQ (`cod.exe`) are **experimental**: the tool recognises `cod.exe`, and it should work the same way
+  if that part of the game asks the same server for its textures, but nobody has confirmed it yet. If you try it, please report what you see: [Testing multiplayer / HQ](docs/GETTING-STARTED.md#testing-multiplayer--hq-experimental).
 
 ## Bulk downloads: what you are agreeing to
 
