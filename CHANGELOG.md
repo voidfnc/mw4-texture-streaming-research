@@ -32,6 +32,9 @@
   *While I play* switches the proxy back from offline mode (it stayed offline, so every chunk missing from the mirror was a 404).
 - **Folder names with square brackets** (for example `Game [Edition]`): the chunk lists, the cache views, the saved reports and the proxy's index were looked up with patterns that read `[...]` as a
   character class and found nothing. Backing up or restoring the cache checks the free space of the drive the cache is on (it checked the program's drive).
+- **A Russian walkthrough video.** The same walkthrough in Russian (about seven minutes): the 0.4.0-beta window in Russian, Russian captions and a Russian computer-generated voice. It is attached to the 0.4.0-beta
+  release as `MW4-Texture-Streaming-Walkthrough-ru.mp4` and embedded in the README, which also has a short note at the top, in Russian, about what is and is not available in Russian (the window and the installer are; the
+  written documentation is still English only).
 - **Release script** stops when `git fetch` or `git rev-parse` cannot answer, instead of comparing two empty answers.
 - **Tests.** About 45 new cases (drive without links, link errors, the required step 3, the cache limit, the proxy fixes, the hosts and guard fixes, the bundle) and an opt-in test on a real exFAT virtual disk
   (`CCS_TEST_EXFAT=1`, needs administrator rights).

@@ -4,7 +4,9 @@ Beta 0.4.0 · Windows · 12 languages · installer or portable zip (no Python ne
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E4E029CR36)
 
-[Video](#video-walkthrough) · [Screenshots](#what-it-looks-like) · [Download](#download) · [Getting started](docs/GETTING-STARTED.md) · [Releases](https://github.com/voidfnc/mw4-texture-streaming-research/releases)
+[Video](#video-walkthrough) · [Видео на русском](#видео-на-русском) · [Screenshots](#what-it-looks-like) · [Download](#download) · [Getting started](docs/GETTING-STARTED.md) · [Releases](https://github.com/voidfnc/mw4-texture-streaming-research/releases)
+
+> **Русский язык.** Окно программы и установщик есть на русском: язык выбирается в установщике и в *Настройки → Язык*. Переводы сделаны машинным способом и не проверялись носителями языка, поэтому возможны ошибки; исправления приветствуются (см. [CONTRIBUTING.md](CONTRIBUTING.md)). Описание на этой странице и документация в `docs/` пока только на английском. [Видео-обзор на русском](#видео-на-русском).
 
 I started this because the Modern Warfare campaign on my PC looked blurry no matter what I did in the graphics menu. Walls and character gear sat on the lowest
 texture tier even with every setting maxed out. The game is supposed to download higher-resolution texture pieces from a CDN while you play, and on my machine
@@ -30,6 +32,12 @@ main window from the first start to a finished session, the Settings, the offlin
 The program window in it is the real thing (version 0.3.0-beta, demo numbers, a throw-away folder), next to a few simple diagrams and the two in-game frames, with captions on top. The voice is computer-generated, and so are the music and
 sound effects, so don't expect a polished production. The in-game frames were taken with the earlier window design and aren't a measured before/after comparison,
 and the game art belongs to its owners.
+
+## Видео на русском
+
+Тот же обзор на русском языке (около семи минут): окно программы, установщик, подписи и закадровый голос. Видео должно воспроизводиться прямо здесь. Если оно не загружается, [скачайте файл из релиза 0.4.0-beta](https://github.com/voidfnc/mw4-texture-streaming-research/releases/download/v0.4.0-beta/MW4-Texture-Streaming-Walkthrough-ru.mp4) (около 75 МБ).
+
+В видео показано настоящее окно программы (версия 0.4.0-beta, демонстрационные числа, временная папка), рядом с несколькими простыми схемами и двумя кадрами из игры, с подписями поверх. Голос, музыка и звуки созданы компьютером (голос — Piper, модель ru_RU-irina-medium, синтез без выхода в интернет), так что это не профессиональная постановка. Кадры из игры сняты с прежним дизайном окна и не являются точным сравнением «до и после»; игровая графика принадлежит её владельцам.
 
 ## What it looks like
 
