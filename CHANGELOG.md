@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+**The Xbox / Microsoft Store version: its chunk lists are found.**
+
+- **Fix: "CDN chunk lists: none found" on the Xbox / Microsoft Store version.** That build ships the chunk lists as `*_cdn_stub.xpak` (for example `sp26_cdn_stub.xpak`) instead of `*_cdn.xpak`, so the
+  program found no lists: the offline copy and the texture pack had nothing to plan from, and the helper could not apply the detail-level cap. The program now uses a `_stub` list whenever the normal list
+  of that package is not there; a normal list always wins, so installs that have them behave exactly as before. Nothing has to be copied or renamed by hand any more, and nothing is written to the game
+  folder. The Doctor row says how many lists were found and how many are in the stub form (translated into all languages).
+
 ## 0.4.1-beta
 **The game setup on drives that cannot hold folder links, a clearer step 3, a picture-cache fix and a round of fixes from a code audit.**
 

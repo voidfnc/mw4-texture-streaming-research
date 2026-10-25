@@ -80,7 +80,7 @@ def log(m):
         print(l, flush=True); open(LOG, 'a', encoding='utf-8').write(l + '\n')
 
 def load_index():
-    for fn in glob.glob(os.path.join(glob.escape(ROOT), 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(glob.escape(ROOT), 'sp26', '*_cdn.xpak')):
+    for fn in cdnxpak.find_all(ROOT):
         for r in cdnxpak.parse(fn):
             RAW[r['id']] = r['raw']
     log(f"index: {len(RAW)} chunk ids")

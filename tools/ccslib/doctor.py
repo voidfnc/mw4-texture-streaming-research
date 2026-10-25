@@ -137,7 +137,11 @@ def check_game_setup():
 
 
 def check_locations():
-    return [_c(r['name'], r['level'], r['detail'], None) for r in paths.validate()]
+    out = [_c(r['name'], r['level'], r['detail'], None) for r in paths.validate()]
+    if paths.CONFIGURED and os.path.isdir(paths.GAME_ROOT):
+        lists = paths.chunk_lists(paths.GAME_ROOT); stubs = sum(1 for f in lists if f.lower().endswith('_cdn_stub.xpak'))
+        if stubs: out = [_c(r['name'], r['level'], f'{len(lists)} chunk list files under cod26/ and sp26/ ({stubs} of them in the Xbox "_stub" form)', None) if r['name'] == 'CDN chunk lists' else r for r in out]
+    return out
 
 
 def run_all(cfg):
