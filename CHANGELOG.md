@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+**The game setup on drives that cannot hold folder links, a clearer step 3, a picture-cache fix and a round of fixes from a code audit.**
+
+- **Fix: "[WinError 1] Incorrect function" in the game setup, now explained.** The setup makes `sp26\xpak_cache` a folder link (a junction), and exFAT and FAT32 drives cannot hold one: Windows answers
+  "Incorrect function". HD textures need both setup changes (online mode and the link), so the game folder has to be on an NTFS drive. The program now looks at the drive first. On a drive without links it
+  makes the online-mode change, leaves the link out and never moves a folder aside for it, and step 3 of the first-run setup becomes *HD textures cannot work on this drive*: it names the drive's file system,
+  says to move the game to an NTFS drive, and offers *Choose another folder* for its new place. Settings shows *Not possible on this drive*, the Doctor row warns, and the checklist does not pass. Other errors
+  now say which change failed ("could not change configs.main.ini: ...", "the settings file was changed, but the cache link sp26\xpak_cache could not be made: ...") and explain Windows' bare error 1.
+- **Step 3 stays required.** There is deliberately no *Skip* button: without the setup the game does not use the textures the helper sends.
+- **Fix: `image "pyimageNN" doesn't exist` in the window's log.** The window keeps its computed pictures in a cache that dropped the oldest ones once it held 600. The oldest are the permanent ones
+  (logo, icons, buttons), so a long session could free one a canvas item still showed. Pictures that are on screen are now kept, however old; only unused ones are dropped.
+- **Proxy.** A byte range (`Range: bytes=a-b`, `a-`, `-n`) of a chunk is now served from the mirror, also in offline mode, where it used to be answered with a 404; a range that cannot be satisfied gets a
+  416. A game that cancelled a request while the mirror was answering was counted as a mirror miss and the chunk was fetched from the CDN (or refused in offline mode); it is now only counted as a cancelled
+  request. A `HEAD` request that went to the CDN reported a size of 0.
+- **Mirror download.** The CDN's `Retry-After` on a 429 or 503 is now honoured (it was read from the wrong object and always ignored).
+- **Disk guard.** In *end the game* mode it logged "terminated" even when `taskkill` failed, and then stopped watching. It now says what happened (ended / not running / refused, with Windows' answer), keeps
+  watching unless the game was really ended, and does not repeat the same line every few seconds.
+- **Helper start-up.** A helper that exits within a fraction of a second (a bad argument, an import error) was recorded as running, so Start session waited 90 seconds. It is now reported as not started,
+  and the log tail is shown.
+- **Hosts file.** A stray `ccs-managed` start marker left by hand no longer makes *Put it back* delete the lines between it and our block. A hand-added loopback line that also names other hosts
+  (`127.0.0.1 localhost cod-assets...`) keeps the other names; only our host name is taken off it.
+- **Check my PC** judges the session by the settings it was started with (a profile's own port, offline mode and guard limit), not by the base settings.
+- **Support bundle.** The Windows user name is taken out of every file (`C:\Users\<user>\...`, also in JSON), the hosts file is reduced to our block and the lines naming the game's host (the rest is
+  not included), and a new `state/game_setup.json` shows the game drive's file system and the setup state (no paths), which is what the first question about a setup error is.
+- **Check my PC no longer counts as game traffic.** Its own test request to the helper was counted, so right after *Turn on HD textures* Home could say "1 textures delivered" and the checklist could mark
+  "the game used the helper" before the game had started. That request is now marked and left out of the counters, the recent list and the log.
+- **Window.** One failing dialog or message no longer stops the activity log and leaves Start / Stop and Home's button disabled until a restart (the loop that handles them survives an error, and a worker
+  waiting for a dialog is always released). The log readers survive a log that is rotated or locked at that moment. Tooltip timers are cancelled when their widget goes away (no more "invalid command
+  name" dialog). Home no longer sits on "Turning on..." with no way out when a helper runs without a finished session; it offers *Turn on HD textures* again. Going back from *Use only this copy* to
+  *While I play* switches the proxy back from offline mode (it stayed offline, so every chunk missing from the mirror was a 404).
+- **Folder names with square brackets** (for example `Game [Edition]`): the chunk lists, the cache views, the saved reports and the proxy's index were looked up with patterns that read `[...]` as a
+  character class and found nothing. Backing up or restoring the cache checks the free space of the drive the cache is on (it checked the program's drive).
+- **A Russian walkthrough video.** The same walkthrough in Russian (about seven minutes): the 0.4.0-beta window in Russian, Russian captions and a Russian computer-generated voice. It is attached to the 0.4.0-beta
+  release as `MW4-Texture-Streaming-Walkthrough-ru.mp4` and embedded in the README, which also has a short note at the top, in Russian, about what is and is not available in Russian (the window and the installer are; the
+  written documentation is still English only).
+- **Release script** stops when `git fetch` or `git rev-parse` cannot answer, instead of comparing two empty answers.
+- **Tests.** About 45 new cases (drive without links, link errors, the required step 3, the cache limit, the proxy fixes, the hosts and guard fixes, the bundle) and an opt-in test on a real exFAT virtual disk
+  (`CCS_TEST_EXFAT=1`, needs administrator rights).
+
 ## 0.4.0-beta
 **Twelve languages, and "See the full report" now shows the report.**
 

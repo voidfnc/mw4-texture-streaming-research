@@ -21,7 +21,7 @@ def rotate(path, max_bytes, keep=3):
 def rotate_all(max_mb, skip_running=()):
     """Rotate every *.log in the work dir above max_mb. `skip_running` = file basenames whose writer is alive. -> list of rotated names"""
     out = []
-    for p in glob.glob(os.path.join(paths.WORK, '*.log')):
+    for p in glob.glob(os.path.join(glob.escape(paths.WORK), '*.log')):
         if os.path.basename(p) in skip_running: continue
         if rotate(p, int(max_mb * 2**20)): out.append(os.path.basename(p))
     return out

@@ -36,26 +36,32 @@ def main(argv=None):
         line = f"{time.strftime('%H:%M:%S')} {line}"; print(line, flush=True)
         with open(a.log, 'a', encoding='utf-8') as f: f.write(line + '\n')
     log(f"READY diskguard pid={os.getpid()} limit={limit/2**30:.1f} GiB action={a.action} cache={a.cache}")
-    last = -1; hit = False
+    last = -1; hit = False; killed = False; idle_said = False
     while True:
         s = size(a.cache); free = shutil.disk_usage(a.cache if os.path.isdir(a.cache) else ROOT).free
         if s != last:
             log(f"xpak_cache={s/2**30:.3f} GiB free={free/2**30:.1f} GiB"); last = s
         if s > limit and not hit:
-            hit = True
+            hit = True; where = f"cache {s/2**30:.2f} GiB, free {free/2**30:.1f} GiB"
             if a.action == 'kill':
-                for exe in paths.KILL_EXES: subprocess.run(['taskkill', '/F', '/IM', exe], capture_output=True)
-                log(f"LIMIT HIT (cache {s/2**30:.2f} GiB, free {free/2**30:.1f} GiB) -> {', '.join(paths.KILL_EXES)} terminated")
+                out = [(exe, subprocess.run(['taskkill', '/F', '/IM', exe], capture_output=True, text=True, errors='replace')) for exe in paths.KILL_EXES]
+                ended = [exe for exe, r in out if r.returncode == 0]
+                if ended: killed = True; log(f"LIMIT HIT ({where}) -> {', '.join(ended)} terminated")
+                else:
+                    idle = all(r.returncode == 128 for _, r in out)                       # taskkill answers 128 when there is no such process
+                    if not (idle and idle_said):
+                        log(f"LIMIT HIT ({where}) -> " + ('the game is not running, still watching' if idle else 'could not end the game (' + '; '.join(f"{exe}: {(r.stdout + r.stderr).strip()[:120]}" for exe, r in out) + '), still watching'))
+                    idle_said = idle; hit = not idle     # not running: look again next time round (it may be started over the limit); a real failure is reported once, not every interval
             else:
-                log(f"LIMIT HIT (cache {s/2**30:.2f} GiB, free {free/2**30:.1f} GiB) -> warn only")
-        elif s <= limit: hit = False
+                log(f"LIMIT HIT ({where}) -> warn only")
+        elif s <= limit: hit = False; idle_said = False
         if a.status_json:
             try:
                 tmp = a.status_json + '.tmp'
                 with open(tmp, 'w', encoding='utf-8') as f: json.dump(dict(pid=os.getpid(), cache_gib=s / 2**30, free_gib=free / 2**30, limit_gib=limit / 2**30, hit=hit, action=a.action, ts=time.time()), f)
                 os.replace(tmp, a.status_json)
             except Exception as e: log(f"status-json write failed: {e}")
-        if hit and a.action == 'kill': break
+        if killed: break                                                    # the game was ended: this guard has done its job
         time.sleep(a.interval)
 
 if __name__ == '__main__':

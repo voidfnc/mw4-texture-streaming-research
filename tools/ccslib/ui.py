@@ -94,8 +94,24 @@ def photo(master, key, make):
     im = cache.get(key)
     if im is None:
         w, h, rgba = make(); im = _Photo(master=root, data=base64.b64encode(png(w, h, rgba))); cache[key] = im
-        if len(cache) > 600: cache.pop(next(iter(cache)))               # far more than the window ever shows; stops a runaway
+        if len(cache) > CACHE_MAX: _evict(root, cache, key)
     return im
+
+
+CACHE_MAX = 600                                                         # far more than the window ever shows; stops a runaway (the animations make a new picture per step)
+
+
+def _evict(root, cache, keep):
+    """Drop the oldest cached pictures that nothing shows any more, down to three quarters of CACHE_MAX. A picture a canvas item or a widget still uses is kept however old it is:
+    freeing it made Tk answer `image "pyimageNN" doesn't exist` the next time the item was touched (the oldest pictures are the window's permanent ones, the logo, icons, buttons)."""
+    drop = len(cache) - CACHE_MAX * 3 // 4; gone = []
+    for key, im in cache.items():
+        if len(gone) >= drop: break
+        if key == keep: continue                                          # the one just made is about to be shown
+        try: used = root.tk.getboolean(root.tk.call('image', 'inuse', im.name))
+        except tk.TclError: used = True                                  # cannot tell: keep it
+        if not used: gone.append(key)
+    for key in gone: del cache[key]
 
 
 def _clamp(v): return 0.0 if v < 0 else 1.0 if v > 1 else v

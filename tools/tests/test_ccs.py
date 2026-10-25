@@ -56,6 +56,24 @@ class HostsTests(unittest.TestCase):
         t = open(paths.hosts_path()).read(); self.assertEqual(t.count(f'127.0.0.1 {paths.HOST}'), 1)
         hosts.remove(flush=False); self.assertEqual(hosts.status()['state'], 'ABSENT')
 
+    def test_a_stray_begin_marker_does_not_swallow_the_lines_up_to_our_block(self):
+        orig = put('1.1.1.1 a.example\r\n' + hosts.BEGIN + '\r\n9.9.9.9 important.example\r\n')            # a BEGIN left by hand, no END
+        hosts.apply(flush=False); self.assertEqual(hosts.status()['state'], 'OK'); hosts.remove(flush=False)
+        self.assertEqual(open(paths.hosts_path(), 'rb').read().decode(), orig, 'nothing was lost')
+
+    def test_a_loopback_line_that_names_other_hosts_keeps_them(self):
+        put(WIN_HOSTS + f'127.0.0.1 localhost {paths.HOST} other.example  # mine\r\n')
+        hosts.apply(flush=False); t = open(paths.hosts_path()).read()
+        self.assertIn('127.0.0.1 localhost other.example  # mine', t); self.assertEqual(t.count(f'127.0.0.1 {paths.HOST}'), 1); self.assertEqual(hosts.status()['state'], 'OK')
+        hosts.remove(flush=False); t = open(paths.hosts_path()).read()
+        self.assertIn('127.0.0.1 localhost other.example  # mine', t); self.assertNotIn(paths.HOST, t)
+        put(f'127.0.0.1 {paths.HOST}\r\n'); hosts.apply(flush=False); hosts.remove(flush=False); self.assertEqual(open(paths.hosts_path()).read().strip(), '', 'a line with only our name is still dropped')
+
+    def test_the_block_goes_back_where_it_was_when_lines_before_it_are_adopted(self):
+        put(f'127.0.0.1 {paths.HOST}\r\n' + hosts.BEGIN + f'\r\n::1 {paths.HOST}\r\n' + hosts.END + '\r\n1.2.3.4 after.example\r\n')
+        hosts.apply(flush=False); t = open(paths.hosts_path(), 'rb').read().decode().split('\r\n')
+        self.assertEqual(t[0], hosts.BEGIN); self.assertEqual(t[-2], '1.2.3.4 after.example'); self.assertEqual(sum(1 for l in t if l == hosts.BEGIN), 1)
+
     def test_read_only_hosts_gives_a_clear_error_and_is_untouched(self):
         import stat
         orig = put(WIN_HOSTS); hp = paths.hosts_path()
@@ -110,6 +128,22 @@ class ProcTests(unittest.TestCase):
         json.dump(dict(pid=os.getpid(), argv=[], started=0, ctime=12345, log=''), open(os.path.join(paths.RUN, 'fake.pid'), 'w'))
         self.assertFalse(procs.status('fake')['alive'])                      # live pid but wrong creation time
 
+    def test_a_child_that_dies_at_once_is_reported_dead_and_a_pidfile_without_ctime_is_not_alive(self):
+        st = procs.start('quick', ['cmd', '/c', 'exit', '3'], os.path.join(paths.RUN, 'quick.out')); time.sleep(0.3)
+        self.assertFalse(st['alive']); self.assertFalse(procs.status('quick')['alive']); self.assertFalse(os.path.exists(procs._pidfile('quick')))
+        done = subprocess.Popen(['cmd', '/c', 'exit', '0']); done.wait()                                        # a pid that no longer exists
+        json.dump(dict(pid=done.pid, argv=[], started=0, ctime=None, log=''), open(os.path.join(paths.RUN, 'gone.pid'), 'w'))
+        self.assertFalse(procs.status('gone')['alive'], 'None must not match a pid that is gone')
+
+    def test_a_game_folder_with_square_brackets_is_found_like_any_other(self):
+        from ccslib import guide, report
+        scores = []
+        for name in ('Game DODI', 'Game [DODI] (2026)'):
+            root = os.path.join(TMP, name)
+            for sub in ('cod26', 'sp26'): os.makedirs(os.path.join(root, sub), exist_ok=True); open(os.path.join(root, sub, 'x_cdn.xpak'), 'wb').write(b'0' * 16)
+            scores.append(guide.score_folder(root))
+        self.assertEqual(scores[0], scores[1]); self.assertGreater(scores[1], 0)
+
     def test_port_owner(self):
         s = socket.socket(); s.bind(('127.0.0.1', 0)); s.listen(1); port = s.getsockname()[1]
         try: self.assertTrue(any(o['pid'] == os.getpid() for o in procs.port_owner(port)))
@@ -147,6 +181,9 @@ def free_port():
 class FakeUp(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     def log_message(self, *a): pass
+    def do_HEAD(self):
+        want = int(self.path.rsplit('_', 2)[1], 16)
+        self.send_response(200); self.send_header('Content-Length', str(want)); self.send_header('ETag', '"abc"'); self.end_headers()
     def do_GET(self):
         want = int(self.path.rsplit('_', 2)[1], 16); body = b'u' * want
         self.send_response(200); self.send_header('Content-Length', str(len(body))); self.send_header('ETag', '"abc"'); self.end_headers(); self.wfile.write(body)
@@ -213,6 +250,56 @@ class ProxyTests(unittest.TestCase):
         d = json.loads(self.get(port, '/__ccs/stats')[1]); self.assertEqual(d['stat']['miss'], 1); self.assertEqual(d['stat']['bytes'], 0)
         self.assertIn('MISS-OFFLINE', open(log, encoding='utf-8').read())
 
+    def test_a_byte_range_is_served_from_the_mirror_even_offline(self):
+        port, st, log = self.run_proxy('--offline'); path = f'/pc/iw9_3/23/{self.cid & 0xff:02x}/{self.cid:016x}_{self.wire:08x}_1'
+        def rget(rng):
+            c = http.client.HTTPConnection('127.0.0.1', port, timeout=10); c.request('GET', path, headers={'Range': rng}); r = c.getresponse(); b = r.read(); return r.status, len(b), r.getheader('Content-Range')
+        self.assertEqual(rget('bytes=2-5'), (206, 4, 'bytes 2-5/16')); self.assertEqual(rget('bytes=10-'), (206, 6, 'bytes 10-15/16'))
+        self.assertEqual(rget('bytes=-4'), (206, 4, 'bytes 12-15/16')); self.assertEqual(rget('bytes=0-999'), (206, 16, 'bytes 0-15/16'))
+        self.assertEqual(rget('bytes=20-'), (416, 0, 'bytes */16')); self.assertEqual(rget('bytes=5-2')[:2], (200, 16), 'an invalid range is ignored')
+        self.assertEqual(rget('bytes=0-1,4-5')[0], 404, 'several ranges are not served: offline that is a miss, as before')
+        d = json.loads(self.get(port, '/__ccs/stats')[1]); self.assertEqual(d['stat']['mirror'], 5); self.assertEqual(d['stat']['miss'], 1); self.assertEqual(d['stat']['mbytes'], 4 + 6 + 4 + 16 + 16)
+
+    def test_the_doctor_probe_is_not_counted_recorded_or_logged_as_game_traffic(self):
+        port, st, log = self.run_proxy(); path = f'/pc/iw9_3/23/{self.cid & 0xff:02x}/{self.cid:016x}_{self.wire:08x}_1'
+        c = http.client.HTTPConnection('127.0.0.1', port, timeout=10); c.request('HEAD', path, headers={'X-CCS-Probe': '1'}); r = c.getresponse(); r.read(); c.close()
+        self.assertEqual((r.status, r.getheader('Content-Length')), (200, '16'), 'the probe still gets a real answer')
+        d = json.loads(self.get(port, '/__ccs/stats')[1]); self.assertEqual((d['stat']['req'], d['stat']['mirror'], d['stat']['ok'], d['stat']['mbytes']), (0, 0, 0, 0)); self.assertEqual(d['recent'], [])
+        self.assertNotIn(path, open(log, encoding='utf-8').read())
+        self.assertEqual(self.get(port, path)[0], 200); self.assertEqual(json.loads(self.get(port, '/__ccs/stats')[1])['stat']['req'], 1, 'real traffic is counted')
+
+    def test_the_doctor_sends_that_header(self):
+        from unittest import mock
+        from ccslib import doctor
+        seen = {}
+        class Conn:
+            def __init__(self, *a, **k): pass
+            def request(self, method, path, headers=None): seen.update(method=method, headers=headers or {})
+            def getresponse(self): return type('R', (), dict(status=200, read=lambda s: b'', getheader=lambda s, k, d=None: '16' if k == 'Content-Length' else None))()
+            def close(self): pass
+        with mock.patch.object(doctor, '_mirror_rows', return_value=(1, [(1, 16, 1)])), mock.patch.object(doctor.http.client, 'HTTPConnection', Conn), mock.patch.object(doctor.proxyctl, 'fetch_stats', return_value=dict(pid=1, args={})):
+            doctor.check_proxy(config.load())
+        self.assertEqual(seen['method'], 'HEAD'); self.assertEqual(seen['headers'].get('X-CCS-Probe'), '1')
+
+    def test_head_to_the_cdn_reports_the_size_of_the_object(self):
+        port, st, log = self.run_proxy(); s, b, r = self.get(port, f'/pc/iw9_3/23/aa/{0xaa:016x}_00000020_1', 'HEAD')
+        self.assertEqual((s, r.getheader('Content-Length'), b), (200, '32', b''))
+        s, b, r = self.get(port, f'/pc/iw9_3/23/{self.cid & 0xff:02x}/{self.cid:016x}_{self.wire:08x}_1', 'HEAD'); self.assertEqual((s, r.getheader('Content-Length'), b), (200, '16', b''))
+
+    def test_a_client_that_goes_away_is_not_a_mirror_miss(self):
+        port, st, log = self.run_proxy('--offline'); path = f'/pc/iw9_3/23/{self.cid & 0xff:02x}/{self.cid:016x}_{self.wire:08x}_1'
+        for _ in range(20):                                              # ask, then close without reading the answer
+            s = socket.create_connection(('127.0.0.1', port), timeout=5); s.sendall(f'GET {path} HTTP/1.1\r\nHost: x\r\n\r\n'.encode()); s.close()
+        time.sleep(0.5); d = json.loads(self.get(port, '/__ccs/stats')[1])
+        self.assertEqual(d['stat']['miss'], 0, 'an abort must never turn into an offline miss'); self.assertEqual(d['stat']['err'], 0)
+
+    def test_parse_range_table(self):
+        import ccsproxy; pr = ccsproxy.parse_range
+        for h, want in ((None, None), ('', None), ('bytes=2-5', (2, 5)), ('bytes=2-', (2, 15)), ('bytes=-4', (12, 15)), ('bytes=-99', (0, 15)), ('bytes=0-0', (0, 0)), (' bytes = 1 - 3 ', (1, 3)),
+                        ('bytes=0-999', (0, 15)), ('bytes=16-', 'bad'), ('bytes=-0', 'bad'), ('bytes=5-2', None), ('bytes=0-1,3-4', 'skip'), ('items=0-1', 'skip'), ('bytes=-', 'skip'), ('junk', 'skip')):
+            self.assertEqual(pr(h, 16), want, h)
+        self.assertEqual(pr('bytes=0-', 0), 'bad'); self.assertEqual(pr('bytes=-3', 0), 'bad')
+
     def test_bind_failure_exits_nonzero(self):
         s = socket.socket(); s.bind(('127.0.0.1', 0)); s.listen(1); port = s.getsockname()[1]
         try:
@@ -220,6 +307,33 @@ class ProxyTests(unittest.TestCase):
                                capture_output=True, text=True, timeout=120)
             self.assertEqual(p.returncode, 2); self.assertIn('BIND-FAIL', p.stdout)
         finally: s.close()
+
+
+class GuardKillTests(unittest.TestCase):
+    """Kill mode with taskkill mocked (a test must never end a real game): the log must tell the truth and the guard must keep watching unless the game was really ended."""
+    def run_guard(self, rc, loops=3):
+        from unittest import mock
+        import diskguard
+        cache = os.path.join(TMP, f'gk{rc}'); os.makedirs(cache, exist_ok=True); open(os.path.join(cache, 'x'), 'wb').write(b'0' * (2 << 20)); log = os.path.join(TMP, f'gk{rc}.log')
+        if os.path.exists(log): os.remove(log)
+        calls = []; res = subprocess.CompletedProcess([], rc, stdout='', stderr='ERROR: Access is denied.' if rc == 1 else '')
+        def sleep(_):
+            calls.append(1)
+            if len(calls) >= loops: raise SystemExit('enough')
+        with mock.patch.object(diskguard.paths, 'KILL_EXES', ['fake-game.exe']), mock.patch.object(diskguard.subprocess, 'run', return_value=res), mock.patch.object(diskguard.time, 'sleep', sleep):
+            try: diskguard.main(['--limit-gib', '0.001', '--action', 'kill', '--interval', '1', '--cache', cache, '--log', log])
+            except SystemExit as e: ended_by_test = str(e) == 'enough'
+            else: ended_by_test = False
+        return open(log, encoding='utf-8').read(), len(calls), ended_by_test
+
+    def test_a_failed_taskkill_is_reported_and_the_guard_keeps_watching(self):
+        text, n, by_test = self.run_guard(1); self.assertTrue(by_test, 'the guard must not give up'); self.assertIn('could not end the game', text); self.assertIn('Access is denied', text); self.assertNotIn('terminated', text)
+
+    def test_no_game_running_is_said_once_and_watching_goes_on(self):
+        text, n, by_test = self.run_guard(128, loops=4); self.assertTrue(by_test); self.assertEqual(text.count('is not running, still watching'), 1); self.assertNotIn('terminated', text)
+
+    def test_when_the_game_is_ended_the_guard_says_so_and_finishes(self):
+        text, n, by_test = self.run_guard(0); self.assertFalse(by_test, 'it stops after ending the game'); self.assertIn('fake-game.exe terminated', text)
 
 
 class GuardTests(unittest.TestCase):
@@ -344,8 +458,20 @@ class DoctorSessionTests(unittest.TestCase):
 
     def test_bundle_contents(self):
         put(WIN_HOSTS); z = zipfile.ZipFile(bundle.make(config.load())); names = z.namelist()
-        for n in ('state/hosts.txt', 'state/doctor.txt', 'state/env.txt', 'state/runs.txt', 'state/gui_settings.json'): self.assertIn(n, names)
+        for n in ('state/hosts.txt', 'state/doctor.txt', 'state/env.txt', 'state/runs.txt', 'state/gui_settings.json', 'state/game_setup.json'): self.assertIn(n, names)
+        self.assertNotIn(os.path.expanduser('~'), z.read('state/game_setup.json').decode(), 'no paths in it')
         self.assertIn('Hosts override', z.read('state/doctor.txt').decode())
+
+    def test_bundle_takes_out_the_user_name_and_the_rest_of_the_hosts_file(self):
+        put(WIN_HOSTS + '10.9.8.7 private.corp.example\r\n'); hosts.apply(flush=False)
+        try:
+            log = os.path.join(paths.WORK, 'ccsgui.log'); open(log, 'w', encoding='utf-8').write(r'12:00 game folder C:\Users\Zelda Q\Games and C:\\Users\\Zelda Q\\AppData' + '\n')
+            z = zipfile.ZipFile(bundle.make(config.load())); allt = '\n'.join(z.read(n).decode('utf-8', 'replace') for n in z.namelist())
+            self.assertNotIn('Zelda Q', allt); self.assertIn(r'C:\Users\<user>\Games', z.read('logs/ccsgui.log').decode())
+            h = z.read('state/hosts-file.txt').decode(); self.assertNotIn('private.corp.example', h); self.assertNotIn('docker', h)
+            self.assertIn(hosts.BEGIN, h); self.assertIn(f'::1 {paths.HOST}', h); self.assertIn('other lines', h)
+        finally: hosts.remove(flush=False); os.remove(log)
+        self.assertEqual(bundle.scrub(r'C:\Users\bob\x D:/Users/bob/y "c:\\users\\bob\\z"'), r'C:\Users\<user>\x D:/Users/<user>/y "c:\\users\\<user>\\z"')
 
 
 from ccslib import cachectl, mirrorctl

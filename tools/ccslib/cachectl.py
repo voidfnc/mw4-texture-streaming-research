@@ -29,7 +29,7 @@ def shards(cache_dir=None):
     """Per-shard facts (read-only): counter, record count, unique ids, data bytes, key prefix, sizes. May race with a running game."""
     sys.path.insert(0, paths.TOOLS); import xpakrec
     out = []
-    for fn in sorted(glob.glob(os.path.join(cache_dir or paths.XPAK_CACHE, 'cache_*_2.xpak')), key=lambda p: int(os.path.basename(p).split('_')[1])):
+    for fn in sorted(glob.glob(os.path.join(glob.escape(cache_dir or paths.XPAK_CACHE), 'cache_*_2.xpak')), key=lambda p: int(os.path.basename(p).split('_')[1])):
         row = dict(name=os.path.basename(fn), size=os.path.getsize(fn))
         try:
             d = open(fn, 'rb').read(0x1000); recs = xpakrec.parse(fn)
@@ -62,14 +62,24 @@ def settings_gb(cache_dir=None):
 def backups():
     """[(name, path, bytes, mtime)] of xpak_cache.* sibling directories, newest first."""
     out = []
-    for p in glob.glob(paths.XPAK_CACHE + '.*'):
+    for p in glob.glob(glob.escape(paths.XPAK_CACHE) + '.*'):
         if os.path.isdir(p): out.append((os.path.basename(p), p, dir_size(p), os.path.getmtime(p)))
     return sorted(out, key=lambda x: -x[3])
 
 
+def _free():
+    """Free bytes on the drive the cache (and so its backups) lives on: `cache_dir` can put it on another drive than the tools."""
+    d = os.path.dirname(os.path.abspath(paths.XPAK_CACHE))
+    while d and not os.path.isdir(d):
+        up = os.path.dirname(d)
+        if up == d: break
+        d = up
+    return shutil.disk_usage(d or paths.ROOT).free
+
+
 def backup(tag='gui'):
     _need_closed()
-    size = dir_size(paths.XPAK_CACHE); free = shutil.disk_usage(paths.ROOT).free
+    size = dir_size(paths.XPAK_CACHE); free = _free()
     if size + 5 * 2**30 > free: raise OSError(f'not enough free disk: need {size / 2**30:.1f} GiB + 5 GiB headroom, have {free / 2**30:.1f} GiB')
     dst = f"{paths.XPAK_CACHE}.bak_{tag}_{time.strftime('%Y%m%d-%H%M%S')}"
     shutil.copytree(paths.XPAK_CACHE, dst); return dst
@@ -81,7 +91,7 @@ def restore(name):
     src = os.path.join(os.path.dirname(paths.XPAK_CACHE), name)
     if not os.path.isdir(src) or os.path.basename(src) == 'xpak_cache' or not os.path.basename(src).startswith('xpak_cache.'): raise ValueError(f'not a cache backup: {name}')
     size = dir_size(src)
-    if size + 5 * 2**30 > shutil.disk_usage(paths.ROOT).free: raise OSError('not enough free disk to copy the backup back')
+    if size + 5 * 2**30 > _free(): raise OSError('not enough free disk to copy the backup back')
     aside = f"{paths.XPAK_CACHE}.replaced_{time.strftime('%Y%m%d-%H%M%S')}"
     if os.path.exists(paths.XPAK_CACHE): os.rename(paths.XPAK_CACHE, aside)
     try: shutil.copytree(src, paths.XPAK_CACHE)

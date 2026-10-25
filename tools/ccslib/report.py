@@ -101,7 +101,7 @@ def load_catalogue():
     if _CAT is None or _CAT_ROOT != paths.ROOT:
         sys.path.insert(0, paths.TOOLS); import cdnxpak
         _CAT = {}; _CAT_ROOT = paths.ROOT
-        for fn in glob.glob(os.path.join(paths.ROOT, 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(paths.ROOT, 'sp26', '*_cdn.xpak')):
+        for fn in glob.glob(os.path.join(glob.escape(paths.ROOT), 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(glob.escape(paths.ROOT), 'sp26', '*_cdn.xpak')):
             for r in cdnxpak.parse(fn): _CAT.setdefault(r['id'], dict(raw=r['raw'], size=r['size']))
     return _CAT
 
@@ -118,7 +118,7 @@ def snapshot_cache(cache_dir=None):
     """Engine cache index snapshot: ids + per-shard header facts. Read-only; may race with a running game (labelled by caller)."""
     sys.path.insert(0, paths.TOOLS); import xpakrec, struct
     ids = set(); records = 0; shards = []
-    for fn in sorted(glob.glob(os.path.join(cache_dir or paths.XPAK_CACHE, 'cache_*_2.xpak'))):
+    for fn in sorted(glob.glob(os.path.join(glob.escape(cache_dir or paths.XPAK_CACHE), 'cache_*_2.xpak'))):
         try:
             recs = xpakrec.parse(fn); d = open(fn, 'rb').read(0x1000)
             shards.append(dict(name=os.path.basename(fn), counter=struct.unpack_from('<I', d, 8)[0], records=len(recs), key=d[0x130:0x138].hex()))
@@ -160,7 +160,7 @@ def baseline_for(seg, window_s=900, t0=None):
     else: t0 = seg_start_epoch(seg)
     if t0 is None: return None
     best = None
-    for fn in glob.glob(os.path.join(paths.SESSIONS, 'baseline-*.json')):
+    for fn in glob.glob(os.path.join(glob.escape(paths.SESSIONS), 'baseline-*.json')):
         s = load_snapshot(fn)
         if s and t0 - window_s <= s['taken'] <= t0 + 5 and (best is None or s['taken'] > best['taken']): best = s
     return best
@@ -294,7 +294,7 @@ def _dir(): os.makedirs(paths.SESSIONS, exist_ok=True); return paths.SESSIONS
 
 
 def list_reports():
-    return sorted(f for f in glob.glob(os.path.join(_dir(), '*.json')) if not os.path.basename(f).startswith('baseline-'))
+    return sorted(f for f in glob.glob(os.path.join(glob.escape(_dir()), '*.json')) if not os.path.basename(f).startswith('baseline-'))
 
 
 def _stamp(rep): return (rep.get('date') or time.strftime('%Y-%m-%d')).replace('-', '') + '-' + (rep.get('first') or time.strftime('%H:%M:%S')).replace(':', '')[:4]

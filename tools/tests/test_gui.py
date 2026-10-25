@@ -6,7 +6,7 @@ from test_ccs import TMP, WIN_HOSTS, put
 import tkinter as tk
 from tkinter import messagebox, simpledialog, filedialog
 sys.path.insert(0, test_ccs.TOOLS)
-from ccslib import config, doctor, guide, paths, procs, report, session, shortcut, proxyctl
+from ccslib import config, doctor, guide, home, paths, procs, report, session, shortcut, proxyctl
 import ccsgui
 
 
@@ -49,7 +49,7 @@ class GuiTests(unittest.TestCase):
         self.calls = []
         self.patches = {}
         for mod, name, fn in ((messagebox, 'askyesno', lambda *a, **k: True), (messagebox, 'askyesnocancel', lambda *a, **k: False), (messagebox, 'showinfo', lambda *a, **k: self.calls.append(('info', a))),
-                              (messagebox, 'showerror', lambda *a, **k: self.calls.append(('error', a)))):
+                              (messagebox, 'showerror', lambda *a, **k: self.calls.append(('error', a))), (messagebox, 'showwarning', lambda *a, **k: self.calls.append(('warning', a)))):
             self.patches[(mod, name)] = getattr(mod, name); setattr(mod, name, fn)
         self.app = ccsgui.App(); self.app._notice_pending = False; self.app.withdraw(); self.app.update()          # the notice screen has its own test
         self.addCleanup(self.cleanup)
@@ -206,6 +206,42 @@ class GuiTests(unittest.TestCase):
             messagebox.askyesno = lambda *a, **k: False; os.rmdir(os.path.join(g, 'sp26', 'xpak_cache')); self.app.guide_do('game_setup'); self.pump(0.5)
             self.assertEqual(gamefix.state(g), 'needed', 'a No changes nothing')
 
+    def test_on_a_drive_without_links_the_setup_makes_the_online_change_and_then_blocks_step_3_with_a_way_out(self):
+        from unittest import mock
+        from ccslib import gamefix
+        g = self.game_dir(); st = os.path.join(g, 'sp26', 'steam_settings'); os.makedirs(st); os.makedirs(os.path.join(g, 'xpak_cache'))
+        with open(os.path.join(st, 'configs.main.ini'), 'w') as f: f.write('[main::connectivity]\noffline=1\n')
+        c = config.load(); c['paths'].update(game_root=g); config.save(c); paths.reload(); self.app.cfg = c; self.app._gfc = None
+        quick = lambda: dict(self.app._guide_state(), path='quick')
+        with mock.patch.object(procs, 'image_running', return_value=[]), mock.patch.object(gamefix, 'link_support', return_value=(False, 'exFAT')):
+            f = self.app._guide_facts(); self.assertEqual((f['game_setup'], f['game_fs']), ('needed', 'exFAT')); self.assertNotIn('setup_skipped', f)
+            self.assertEqual(home.build(quick(), f)['mode'], 'setup'); self.assertNotIn('skip_setup', home.ACTIONS)
+            messagebox.askyesno = lambda *a, **k: True; self.app.home_do('game_setup'); self.pump(1.5)
+            self.assertEqual(gamefix.state(g), 'limited'); self.assertTrue(any(k == 'warning' and 'NTFS' in a[1] for k, a in self.calls), 'the user is told, not congratulated')
+            self.app._gfc = None; f = self.app._guide_facts(); v = home.build(quick(), f)
+            self.assertEqual((f['game_setup'], v['mode'], v['primary'][0]), ('limited', 'setup', 'find_folder'), 'still step 3, and the way out is another folder')
+            self.assertEqual(self.app.cfg['guide'].get('setup_skipped'), None)
+    def test_a_failing_dialog_callback_does_not_stop_the_message_loop_or_leave_a_worker_waiting(self):
+        import threading
+        def boom(): raise RuntimeError('boom')
+        self.app.q.put(('ask', boom)); self.app.q.put(('say', 'after the error', 'OK')); self.pump(1.0)
+        text = self.app.act.get('1.0', 'end'); self.assertIn('internal error: boom', text); self.assertIn('after the error', text)
+        res = []; t = threading.Thread(target=lambda: res.append(self.app.ask_main(boom)), daemon=True); t.start(); self.pump(1.0); t.join(3)
+        self.assertFalse(t.is_alive(), 'the worker is released'); self.assertEqual(res, [None])
+        res.clear(); t = threading.Thread(target=lambda: res.append(self.app.ask_main(lambda: 42)), daemon=True); t.start(); self.pump(1.0); t.join(3); self.assertEqual(res, [42])
+
+    def test_going_back_to_streaming_undoes_the_offline_profile_but_leaves_other_profiles_alone(self):
+        self.app.do_pack_offline(); self.assertEqual(self.app.cfg['profile'], 'Slow link - offline mirror'); self.assertTrue(config.effective_proxy(self.app.cfg)['offline'])
+        self.app.guide_do('choose_quick'); self.assertEqual(self.app.cfg['profile'], 'Default'); self.assertFalse(config.effective_proxy(self.app.cfg)['offline'])
+        self.app.profile.set('Capture'); self.app._profile_changed(); self.app.guide_do('choose_quick'); self.assertEqual(self.app.cfg['profile'], 'Capture', 'a profile the user picked is not touched')
+
+    def test_a_tooltip_timer_does_not_fire_on_a_destroyed_widget(self):
+        self.app.tk.eval('set ::bgerrs [list]; proc bgerror {m} {lappend ::bgerrs $m}')
+        w = tk.Label(self.app, text='x'); w.pack(); tip = ccsgui.Tip(w, 'hint', delay=50); tip._enter(); self.assertIsNotNone(tip.job)
+        w.destroy(); self.pump(0.3)                                                                  # the timer fires after the widget is gone
+        self.assertEqual(self.app.tk.eval('llength $::bgerrs'), '0', 'Tk reported a background error (invalid command name)')
+        self.assertIsNone(tip.win); self.assertEqual([x for x in self.app.winfo_children() if isinstance(x, tk.Toplevel)], [], 'no tooltip was drawn for a widget that is gone')
+        w2 = tk.Label(self.app, text='y'); w2.pack(); tip2 = ccsgui.Tip(w2, 'hint', delay=50); tip2._enter(); tip2._hide(); self.pump(0.2); self.assertIsNone(tip2.win)       # leaving cancels it
     def test_the_doctor_offers_to_undo_the_game_setup_after_a_yes(self):
         from unittest import mock
         from ccslib import gamefix

@@ -40,7 +40,7 @@ def _load(name):
 def status(name):
     """-> dict(alive, pid, started, argv, log)"""
     d = _load(name)
-    if d and ctime(d['pid']) == d.get('ctime'):
+    if d and d.get('ctime') is not None and ctime(d['pid']) == d.get('ctime'):      # no creation time stored = it was already gone when it was started (None would match any dead pid)
         return dict(alive=True, **{k: d.get(k) for k in ('pid', 'started', 'argv', 'log')})
     return dict(alive=False, pid=None, started=None, argv=None, log=None)
 
@@ -56,8 +56,11 @@ def start(name, argv, log, cwd=None):
     p = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT, env=env,
                          creationflags=CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW)
     f.close()
-    time.sleep(0.05)
+    try: p.wait(timeout=0.3)                                          # a child that fails on start-up (bad argument, import error) is gone within this time
+    except subprocess.TimeoutExpired: pass
     d = dict(pid=p.pid, argv=argv, started=time.time(), ctime=ctime(p.pid), log=log)
+    if p.poll() is not None or d['ctime'] is None:                    # it exited at once (a bad argument, an import error): say so, the caller then reads the log
+        _clear(name); return dict(alive=False, **{k: d[k] for k in ('pid', 'started', 'argv', 'log')})
     json.dump(d, open(_pidfile(name), 'w', encoding='utf-8'))
     return dict(alive=True, **{k: d[k] for k in ('pid', 'started', 'argv', 'log')})
 

@@ -29,12 +29,16 @@ HOSTS_HINT = ('Permission denied? The hosts file is protected on purpose. Things
 class Tip:
     """Small hover tooltip (one per widget)."""
     def __init__(self, widget, text, delay=500, wrap=360):
-        self.w, self.text, self.delay, self.wrap, self.win, self.job = widget, text, delay, wrap, None, None
+        self.w, self.text, self.delay, self.wrap, self.win, self.job, self.top = widget, text, delay, wrap, None, None, None
         widget.bind('<Enter>', self._enter, add='+'); widget.bind('<Leave>', self._hide, add='+'); widget.bind('<ButtonPress>', self._hide, add='+')
 
-    def _enter(self, _e=None): self._hide(); self.job = self.w.after(self.delay, self._show)
+    def _enter(self, _e=None):
+        self._hide(); self.top = self.w.winfo_toplevel()                  # the timer lives on the window, not on the widget: a widget that is destroyed takes its own timers' commands with it, and Tk then reports 'invalid command name'
+        self.job = self.top.after(self.delay, self._show)
 
     def _show(self):
+        self.job = None
+        if not self.w.winfo_exists(): return                                   # the widget went away while the timer ran
         try:
             self.win = tk.Toplevel(self.w); self.win.wm_overrideredirect(True)
             self.win.wm_geometry(f'+{self.w.winfo_rootx() + 12}+{self.w.winfo_rooty() + self.w.winfo_height() + 6}')
@@ -42,8 +46,11 @@ class Tip:
         except tk.TclError: self.win = None
 
     def _hide(self, _e=None):
-        if self.job: self.w.after_cancel(self.job); self.job = None
-        if self.win: self.win.destroy(); self.win = None
+        try:
+            if self.job: self.top.after_cancel(self.job)
+            if self.win: self.win.destroy()
+        except tk.TclError: pass
+        self.job = None; self.win = None
 
 
 def fmt_dur(s):
@@ -715,11 +722,11 @@ class App(tk.Tk):
         if own and not (pp.get('alive') and all(o['pid'] == pp['pid'] for o in own)): blocked = own[0].get('name') if own[0].get('name') not in (None, '', '?') else 'another program'
         now = time.time(); root = paths.GAME_ROOT; fc = self._gfc
         if not fc or fc[1] != root or now - fc[0] > 5:
-            ex = os.path.isdir(root); fc = (now, root, ex, guide.score_folder(root) if ex else 0, gamefix.state(root) if ex else 'na'); self._gfc = fc
+            ex = os.path.isdir(root); gs, gfs = gamefix.state_fs(root) if ex else ('na', ''); fc = (now, root, ex, guide.score_folder(root) if ex else 0, gs, gfs); self._gfc = fc
         tot = (getattr(self, '_pack_plan', None) or {}).get('total') or {}; rs = s.get('resolve') or {}
         if ps and ps.get('stat'):                                                    # what the proxy has done so far; kept after it stops, for the "what happened" text
             c = ps['stat']; g = lambda k: c.get(k) or 0; self._guide_peak = dict(req=g('req'), mirror=g('mirror'), upok=g('ok') - g('mirror'), err=g('err'), skip=g('skip'), miss=g('miss'), secs=(ps.get('now') or 0) - (ps.get('started') or 0))
-        return dict(configured=paths.CONFIGURED, folder_root=root, folder_exists=fc[2], folder_score=fc[3], game_setup=fc[4], blocked_by=blocked, port=port, free_gib=s.get('free'),
+        return dict(configured=paths.CONFIGURED, folder_root=root, folder_exists=fc[2], folder_score=fc[3], game_setup=fc[4], game_fs=fc[5], blocked_by=blocked, port=port, free_gib=s.get('free'),
                     game_running=bool(s.get('game')), proxy_ready=bool(ps), proxy_alive=bool(pp.get('alive')), hosts_ok=s.get('hosts') in ('OK', 'FOREIGN', 'MIXED'),
                     resolve_ok=bool(rs.get('ok')), hosts_state=s.get('hosts', '?'), requests=int(ps['stat']['req']) if ps and ps.get('stat') else 0,
                     pack_total=tot.get('chunks'), pack_stored=tot.get('stored'), mirror_alive=bool((s.get('mproc') or {}).get('alive')),
@@ -820,7 +827,11 @@ class App(tk.Tk):
     def guide_do(self, a):
         try:
             st = self._guide_state()
-            if a in ('choose_quick', 'choose_offline'): st['path'] = a.split('_', 1)[1]; self._guide_save(st)
+            if a in ('choose_quick', 'choose_offline'):
+                st['path'] = a.split('_', 1)[1]; self._guide_save(st)
+                if a == 'choose_quick' and self.cfg.get('profile') == 'Slow link - offline mirror':      # "Use only this copy" had switched the proxy to offline: going back to streaming must undo that
+                    self.profile.set('Default'); self._profile_changed()
+                    self.say('profile "Default" selected (textures come from the internet again where the mirror has gaps): restart the session (Stop, then Start) to apply', 'OK')
             elif a == 'find_folder': self.guide_find_folder()
             elif a == 'confirm_anyway': st['confirmed_root'] = paths.GAME_ROOT; self._guide_save(st)
             elif a.startswith('skip:'): self._guide_save(guide.skip(st, a[5:]))
@@ -1073,14 +1084,20 @@ class App(tk.Tk):
                     t = m[2] or ('ERR' if re.search(r'\bFAIL|failed|ERROR', m[1]) else 'WARN' if re.search(r'\bWARN', m[1]) else 'OK' if re.search(r'\bOK\b|READY|started|stopped', m[1]) else None)
                     for ln in m[1].split('\n'): self._put(self.act, ln, t)
                 elif m[0] == 'idle': self.busy = False; self._starting = False; self._busy_ui(False)
-                elif m[0] == 'ask': m[1]()
+                elif m[0] == 'ask':
+                    try: m[1]()
+                    except Exception as e: self.say(f'internal error: {e}', 'ERR')       # one failing dialog must not stop the log, the busy flag and every later dialog
         except queue.Empty: pass
         self.after(200, self._drain)
 
     def ask_main(self, fn):
         """Run fn() on the UI thread and return its result (for dialogs from worker threads)."""
-        ev = threading.Event(); box = []
-        self.q.put(('ask', lambda: (box.append(fn()), ev.set()))); ev.wait(); return box[0]
+        ev = threading.Event(); box = [None]
+        def run():
+            try: box[0] = fn()
+            except Exception as e: self.say(f'internal error in a dialog: {e}', 'ERR')
+            finally: ev.set()                                     # the worker waiting below is always released
+        self.q.put(('ask', run)); ev.wait(); return box[0]
 
     # ---------------------------------------------------------------- poller (worker thread)
     def _poller(self):
@@ -1189,10 +1206,12 @@ class App(tk.Tk):
 
     # ---------------------------------------------------------------- logs
     def _tail_logs(self):
-        self._tail_mirror()
+        try: self._tail_mirror()
+        except Exception: pass
         new = []
         for n, _ in LOG_SOURCES:
-            for ln in self.tails[n].read_new(): new.append((n, ln))
+            try: new.extend((n, ln) for ln in self.tails[n].read_new())
+            except OSError: pass                                  # rotated or locked just now: the next round reads it
         if new:
             self.log_lines.extend(new)
             if not self.paused.get():
@@ -1391,12 +1410,14 @@ class App(tk.Tk):
                                    'This makes two small changes in your game folder so the game uses the textures that are streamed to it:\n\n'
                                    "1. In sp26\\steam_settings\\configs.main.ini: offline=0 and disable_lan_only=1 (the game stops reporting offline mode). "
                                    'A copy of the original is kept next to it.\n'
-                                   "2. sp26\\xpak_cache becomes a link to the game's xpak_cache folder. A real folder in the way is renamed, not deleted.\n\n"
+                                   "2. sp26\\xpak_cache becomes a link to the game's xpak_cache folder. A real folder in the way is renamed, not deleted. "
+                                   '(On a drive that cannot hold folder links, such as exFAT or FAT32, only change 1 can be made, and HD textures need the game on an NTFS drive.)\n\n'
                                    'Windows may ask for permission if the game is in Program Files.\n\nContinue?', parent=self): return
         def go():
             ok, msg = session.run_fix(self.cfg, ('game_fix', None), self.say); self.say(f"game setup: {'ok' if ok else 'FAILED'} - {msg}", 'OK' if ok else 'ERR')
             self._gfc = None
-            if ok: self.q.put(('ask', lambda: messagebox.showinfo('Game setup', 'Done: ' + msg + '\n\nStart (or restart) the game from its launcher now.', parent=self)))
+            if ok and gamefix.state() == 'limited': self.q.put(('ask', lambda: messagebox.showwarning('Game setup', 'The online-mode change is made: ' + msg + '\n\nHD textures need the game folder on an NTFS drive. Move the game to an NTFS drive, then choose its new folder in Settings, Game folder.', parent=self)))
+            elif ok: self.q.put(('ask', lambda: messagebox.showinfo('Game setup', 'Done: ' + msg + '\n\nStart (or restart) the game from its launcher now.', parent=self)))
             else: self.q.put(('ask', lambda: messagebox.showerror('Game setup', 'The setup could not be finished (the Doctor shows what is still missing):\n\n' + msg, parent=self)))
         self.bg('game setup', go)
 
@@ -1466,7 +1487,7 @@ class App(tk.Tk):
     def _open_best_report(self, force=False):
         """Fill the Report tab: the newest saved report (it is also selected in the Saved list); with none yet, write one from the proxy log if it has traffic, else say why it is empty. Without `force` a report that is already shown stays."""
         if not hasattr(self, 'rep_txt') or not (force or self._report_is_blank()): return
-        saved = sorted(glob.glob(os.path.join(paths.SESSIONS, '*.md')), key=os.path.getmtime)
+        saved = sorted(glob.glob(os.path.join(glob.escape(paths.SESSIONS), '*.md')), key=os.path.getmtime)
         for p in reversed(saved):
             try: md = open(p, encoding='utf-8').read()
             except OSError: continue

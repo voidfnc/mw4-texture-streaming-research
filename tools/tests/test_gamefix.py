@@ -1,6 +1,6 @@
 """Tests for the game setup (ccslib/gamefix.py): the settings-file edit, the cache link, apply / undo, and how the Doctor and the guide use it.
 Everything runs in temp folders that look like a game folder; the real game folder is never touched and no game process is looked at."""
-import copy, json, os, shutil, stat, sys, tempfile, unittest
+import copy, json, os, shutil, stat, subprocess, sys, tempfile, unittest
 from unittest import mock
 
 TOOLS = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -272,6 +272,133 @@ class Command(Quiet):
             self.assertEqual(gamefix.apply_elevating(root, say=lambda *_: None), (True, 'changed: elevated'))
         with mock.patch.object(gamefix, 'apply', side_effect=PermissionError('denied')), mock.patch.object(procs, 'run_elevated', return_value=None):
             ok, msg = gamefix.apply_elevating(root, say=lambda *_: None); self.assertFalse(ok); self.assertIn('declined', msg)
+
+
+NO_LINKS = (False, 'exFAT')
+
+
+class DriveWithoutLinks(Quiet):
+    """exFAT and FAT32 drives cannot hold a folder link: Windows answers 'Incorrect function' (WinError 1). The settings change is still made, the link is left out and
+    the reason is said plainly; nothing is renamed or removed for a link that cannot be made."""
+    def setUp(self):
+        super().setUp(); p = mock.patch.object(gamefix, 'link_support', return_value=NO_LINKS); p.start(); self.addCleanup(p.stop)
+
+    def test_only_the_settings_change_is_made_and_the_reason_is_given(self):
+        root = make_game('n1'); L = gamefix.layout(root); self.assertEqual(gamefix.state(root), 'needed'); r = gamefix.apply(root)
+        self.assertEqual(r['done'], ['configs.main.ini']); self.assertTrue(r['status']['ok'] and r['status']['limited']); self.assertEqual(gamefix.state(root), 'limited')
+        self.assertFalse(os.path.lexists(L['link']), 'no link, no folder either'); self.assertEqual(gamefix.state_fs(root), ('limited', 'exFAT'))
+        msg = gamefix._message(r); self.assertIn('cannot hold folder links', msg); self.assertIn('exFAT', msg); self.assertIn('configs.main.ini', msg)
+        again = gamefix.apply(root); self.assertEqual(again['done'], []); self.assertIn('already', gamefix._message(again)); self.assertIn('exFAT', gamefix._message(again))
+
+    def test_a_real_folder_with_files_is_not_moved_aside_for_a_link_that_cannot_be_made(self):
+        root = make_game('n2', link='dir'); L = gamefix.layout(root); gamefix.apply(root)
+        self.assertEqual(slurp(os.path.join(L['link'], 'old.xpak'), 'rb'), b'old'); self.assertFalse(os.path.exists(os.path.join(L['sp26'], gamefix.ASIDE_NAME)))
+        self.assertEqual(gamefix.state(root), 'limited')
+
+    def test_when_nothing_else_is_missing_the_link_alone_is_not_a_problem(self):
+        root = make_game('n3', config='[main::connectivity]\noffline=0\ndisable_lan_only=1\n'); s = gamefix.status(root)
+        self.assertEqual((s['ok'], s['limited'], s['problems']), (True, True, [])); self.assertIn('NTFS', gamefix.describe(s))
+        self.assertEqual(gamefix.apply(root)['done'], [])
+
+    def test_undo_after_a_limited_setup_restores_the_file_and_has_no_link_to_remove(self):
+        root = make_game('n4'); L = gamefix.layout(root); gamefix.apply(root); r = gamefix.undo(root)
+        self.assertEqual(r['done'], ['configs.main.ini']); self.assertEqual(slurp(L['config']), '[main::connectivity]\noffline=1\n'); self.assertEqual(gamefix.state(root), 'needed')
+
+    def test_the_drive_is_looked_at_only_when_a_link_would_have_to_be_made(self):
+        ok = make_game('n6')
+        with mock.patch.object(gamefix, 'link_support', return_value=(True, 'NTFS')): gamefix.apply(ok)
+        with mock.patch.object(gamefix, 'link_support', side_effect=AssertionError('a finished link needs no probe')): self.assertEqual(gamefix.state(ok), 'ok')
+
+    def test_the_doctor_row_warns_and_the_checklist_does_not_pass(self):
+        root = make_game('n7')
+        with mock.patch.object(gamefix.paths, 'GAME_ROOT', root):
+            gamefix.apply(root); r = doctor.check_game_setup(); self.assertEqual(r['level'], 'warn'); self.assertEqual(r['fix'], ('game_undo', None)); self.assertIn('NTFS', r['detail']); self.assertIn('HD textures need', r['detail'])
+        f = dict(configured=True, folder_root='C:\\g', folder_exists=True, folder_score=3, port=80, free_gib=100, game_setup='limited')
+        pre = next(x for x in guide.evaluate(guide.new_state(path='quick'), f) if x['id'] == 'preflight')
+        self.assertFalse(pre['done'], 'the setup is required: without the link HD textures cannot work'); self.assertIn('NTFS', pre['detail']); self.assertEqual(pre['actions'], [('doctor', 'Open the Doctor')], 'no Set up button: there is nothing it could do')
+    def test_the_command_line_reports_a_limited_setup_as_done(self):
+        root = make_game('n8'); res = os.path.join(TMP, 'n8.json'); self.assertEqual(gamefix.main(['apply', '--root', root, '--result-file', res]), 0)
+        d = json.load(open(res, encoding='utf-8')); self.assertTrue(d['ok']); self.assertIn('cannot hold folder links', d['message'])
+
+    def test_there_is_no_skip_for_the_setup(self):
+        from ccslib import home
+        self.assertNotIn('skip_setup', home.ACTIONS)
+        f = dict(configured=True, folder_root='C:\\g', folder_exists=True, folder_score=3, port=80, free_gib=100, game_setup='needed', setup_skipped=True)       # an old settings value is ignored
+        self.assertFalse(next(x for x in guide.evaluate(guide.new_state(path='quick'), f) if x['id'] == 'preflight')['done'])
+
+class LinkFailures(Quiet):
+    """The drive probe can say yes (or not know) and the link still fail: the errors must say which change they belong to."""
+    def setUp(self):
+        super().setUp(); p = mock.patch.object(gamefix, 'link_support', return_value=(True, 'NTFS')); p.start(); self.addCleanup(p.stop)
+
+    def test_windows_incorrect_function_from_the_link_becomes_a_limited_setup_and_everything_is_put_back(self):
+        e = OSError(1, 'Incorrect function', None, 1)
+        for how in ('dir', 'empty'):
+            root = make_game('f1' + how, link=how); L = gamefix.layout(root)
+            with mock.patch('_winapi.CreateJunction', side_effect=e): r = gamefix.apply(root)
+            self.assertEqual(r['done'], ['configs.main.ini'], how); self.assertIn('cannot hold folder links', gamefix._message(r)); self.assertTrue(os.path.isdir(L['link']), how + ': the folder is back')
+            self.assertFalse(os.path.exists(os.path.join(L['sp26'], gamefix.ASIDE_NAME)))
+            if how == 'dir': self.assertEqual(slurp(os.path.join(L['link'], 'old.xpak'), 'rb'), b'old')
+            self.assertEqual(r['aside'], '')
+
+    def test_make_junction_names_the_drive_problem(self):
+        root = make_game('f2'); L = gamefix.layout(root)
+        with mock.patch('_winapi.CreateJunction', side_effect=OSError(1, 'Incorrect function', None, 1)), self.assertRaises(gamefix.LinkUnsupported) as c: gamefix.make_junction(L['link'], L['target'])
+        self.assertIn('cannot hold folder links', str(c.exception)); self.assertIn('Incorrect function', str(c.exception))
+        with mock.patch('_winapi.CreateJunction', side_effect=OSError(5, 'Access is denied', None, 5)), self.assertRaises(PermissionError): gamefix.make_junction(L['link'], L['target'])
+        with mock.patch('_winapi.CreateJunction', side_effect=OSError(3, 'The system cannot find the path', None, 3)), self.assertRaises(OSError) as c: gamefix.make_junction(L['link'], L['target'])
+        self.assertNotIsInstance(c.exception, gamefix.LinkUnsupported)
+
+    def test_another_link_error_names_the_change_and_says_the_settings_file_was_changed(self):
+        root = make_game('f3'); L = gamefix.layout(root)
+        with mock.patch.object(gamefix, 'make_junction', side_effect=OSError('boom')), self.assertRaises(OSError) as c: gamefix.apply(root)
+        m = str(c.exception); self.assertIn('the settings file was changed', m); self.assertIn('sp26\\xpak_cache could not be made', m); self.assertIn('boom', m)
+        self.assertEqual(gamefix.read_keys(slurp(L['config']))['offline'], '0', 'the settings change stands (and Undo takes it back)')
+        root = make_game('f3b', config='[main::connectivity]\noffline=0\ndisable_lan_only=1\n')
+        with mock.patch.object(gamefix, 'make_junction', side_effect=OSError('boom')), self.assertRaises(OSError) as c: gamefix.apply(root)
+        self.assertNotIn('settings file was changed', str(c.exception))
+
+    def test_a_failing_settings_write_names_the_file(self):
+        root = make_game('f4')
+        with mock.patch.object(gamefix, '_write', side_effect=OSError('disk full')), self.assertRaises(OSError) as c: gamefix.apply(root)
+        self.assertIn('could not change configs.main.ini: disk full', str(c.exception))
+        with mock.patch.object(gamefix, '_write', side_effect=PermissionError('denied')), self.assertRaises(PermissionError): gamefix.apply(make_game('f4b'))
+
+    def test_the_text_for_windows_error_1_says_what_it_usually_means(self):
+        t = gamefix.friendly(OSError(1, 'Incorrect function', None, 1)); self.assertIn('Incorrect function', t); self.assertIn('does not support', t)
+        self.assertEqual(gamefix.friendly(OSError('plain')), 'plain')
+
+
+class DriveProbe(unittest.TestCase):
+    def test_the_real_probe_knows_this_drive_and_never_raises(self):
+        sup, fs = gamefix.link_support(TMP); self.assertIn(sup, (True, None)); self.assertIsInstance(fs, str)          # the temp folder is on an NTFS drive here
+        self.assertEqual(gamefix.link_support(os.path.join(TMP, 'not', 'there')), (sup, fs), 'a folder that does not exist yet is judged by its nearest existing parent')
+        self.assertEqual(gamefix.link_support('Z:\\no\\such\\drive')[0] in (None, False), True)
+
+    def test_the_probe_reads_the_reparse_point_flag(self):
+        self.assertEqual(gamefix.FILE_SUPPORTS_REPARSE_POINTS, 0x80)
+
+
+class RealExfatDrive(unittest.TestCase):
+    """Opt-in (CCS_TEST_EXFAT=1, needs administrator rights): makes a 64 MB virtual disk formatted exFAT, mounts it, runs the game setup on a folder there, then removes the disk."""
+    @unittest.skipUnless(os.environ.get('CCS_TEST_EXFAT') == '1' and procs.is_admin(), 'set CCS_TEST_EXFAT=1 and run as administrator')
+    def test_the_game_setup_on_a_real_exfat_volume(self):
+        vhd = os.path.join(TMP, 'exfat.vhd'); script = os.path.join(TMP, 'dp.txt')
+        def dp(text):
+            put(script, text); return subprocess.run(['diskpart', '/s', script], capture_output=True, text=True, errors='replace').stdout
+        try:
+            free = [x for x in 'ZYXWVUTSRQPONMLKJIHGFED' if not os.path.exists(x + ':\\')]; drive = free[0]
+            out = dp(f'create vdisk file="{vhd}" maximum=64 type=fixed\nselect vdisk file="{vhd}"\nattach vdisk\ncreate partition primary\nformat fs=exfat quick label=CCSTEST\nassign letter={drive}\n')
+            self.assertTrue(os.path.isdir(drive + ':\\'), out)
+            root = os.path.join(drive + ':\\', 'Game'); st = os.path.join(root, 'sp26', 'steam_settings'); os.makedirs(st); put(os.path.join(st, 'configs.main.ini'), '[main::connectivity]\noffline=1\n')
+            os.makedirs(os.path.join(root, 'xpak_cache'))
+            sup, fs = gamefix.link_support(root); self.assertEqual((sup, fs.lower()), (False, 'exfat'))
+            L = gamefix.layout(root)
+            with self.assertRaises(gamefix.LinkUnsupported): gamefix.make_junction(L['link'], L['target'])              # without the probe: Windows' own answer, WinError 1
+            with mock.patch.object(procs, 'image_running', return_value=[]): r = gamefix.apply(root)
+            self.assertEqual(r['done'], ['configs.main.ini']); self.assertEqual(gamefix.state(root), 'limited'); self.assertIn('exFAT', gamefix._message(r))
+        finally:
+            dp(f'select vdisk file="{vhd}"\ndetach vdisk\n')
 
 
 class UsedByTheApp(Quiet):

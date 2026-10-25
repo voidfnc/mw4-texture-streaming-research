@@ -49,12 +49,10 @@ def _maps_host(line):
 def parse(text):
     """-> dict(block=[lines] or None, block_span=(i,j) or None, foreign=[(idx, ip, line)], lines=[...])"""
     lines = _split(text)
-    span = None
+    span = None; begin = None
     for i, l in enumerate(lines):
-        if l.strip() == BEGIN:
-            for j in range(i + 1, len(lines)):
-                if lines[j].strip() == END: span = (i, j); break
-            break
+        if l.strip() == BEGIN: begin = i                      # the last BEGIN before the first END: a stray BEGIN left by hand must not swallow the lines up to our block
+        elif l.strip() == END and begin is not None: span = (begin, i); break
     foreign = []
     for i, l in enumerate(lines):
         if span and span[0] <= i <= span[1]: continue
@@ -83,6 +81,14 @@ def status(path=None):
     return dict(state=state_of(p), block=p['block'], foreign=[(i + 1, ip, l) for i, ip, l in p['foreign']], path=path or paths.hosts_path())
 
 
+def _without_host(line):
+    """A hand-added line that maps HOST (and maybe other names) -> the same line without HOST, or None when HOST was its only name."""
+    m = _HOSTLINE.match(line)
+    if not m: return None
+    keep = [n for n in m.group(2).split() if n.lower() != paths.HOST]
+    return f"{m.group(1)} {' '.join(keep)}" + (f'  {m.group(3)}' if m.group(3) else '') if keep else None
+
+
 def _block_lines():
     return [BEGIN] + [f'{ip} {paths.HOST}' for ip in LOOPBACK] + [END]
 
@@ -95,12 +101,15 @@ def compute(text, mode, force=False):
     if mode == 'apply' and bad and not force:
         raise HostsError(f'{paths.HOST} is mapped to a non-loopback address outside our block (line {bad[0][0] + 1}: {bad[0][2].strip()}); refusing without force')
     # drop our existing block and any hand-added loopback lines for HOST (adopted into the block on apply, removed on remove)
-    drop = set()
+    drop = set(); rewrite = {}
     if p['span']: drop |= set(range(p['span'][0], p['span'][1] + 1))
     for i, ip, l in p['foreign']:
-        if ip in LOOPBACK or force: drop.add(i)
-    kept = [l for i, l in enumerate(lines) if i not in drop]
-    insert_at = p['span'][0] if p['span'] else None
+        if ip in LOOPBACK or force:
+            rest = _without_host(l)                              # other names on the same line (127.0.0.1 localhost HOST) stay mapped
+            if rest is None: drop.add(i)
+            else: rewrite[i] = rest
+    kept = [rewrite.get(i, l) for i, l in enumerate(lines) if i not in drop]
+    insert_at = p['span'][0] - sum(1 for d in drop if d < p['span'][0]) if p['span'] else None       # where the block was, after the lines before it were dropped
     if mode == 'apply':
         if insert_at is not None and insert_at <= len(kept):
             kept[insert_at:insert_at] = _block_lines()          # re-create the block where it was
@@ -129,7 +138,7 @@ def backup(path=None, tag=''):
 
 
 def list_backups():
-    return sorted(glob.glob(os.path.join(paths.HOSTS_BACKUPS, 'hosts.*')), reverse=True)
+    return sorted(glob.glob(os.path.join(glob.escape(paths.HOSTS_BACKUPS), 'hosts.*')), reverse=True)
 
 
 def _denied_hint(p):

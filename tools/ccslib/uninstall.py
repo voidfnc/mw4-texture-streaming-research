@@ -14,7 +14,7 @@ HOSTS_PRESENT, HELPERS_RUNNING = 1, 2
 
 def helper_names():
     """Names of helper processes with a pid file (the control window itself is not one)."""
-    return sorted(os.path.splitext(os.path.basename(p))[0] for p in glob.glob(os.path.join(paths.RUN, '*.pid')))
+    return sorted(os.path.splitext(os.path.basename(p))[0] for p in glob.glob(os.path.join(glob.escape(paths.RUN), '*.pid')))
 
 
 def state():

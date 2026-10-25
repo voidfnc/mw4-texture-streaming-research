@@ -32,6 +32,8 @@ def scenarios():
         'choose': home.build(guide.new_state(), facts()),
         'choose offline low space': home.build(guide.new_state(), facts(free_gib=30.0), pick='offline'),
         'setup': home.build(state(), facts(game_setup='needed')),
+        'setup no links': home.build(state(), facts(game_setup='needed', game_fs='exFAT')),
+        'setup limited': home.build(state(), facts(game_setup='limited', game_fs='exFAT')),
         'ready': home.build(state(), facts()),
         'ready busy': home.build(state(), facts(), busy=True),
         'starting': home.build(state(), facts(proxy_alive=True), starting=True),
@@ -53,7 +55,7 @@ def scenarios():
 class HomeViewTests(unittest.TestCase):
     def test_every_state_maps_to_the_expected_mode(self):
         modes = {k: v['mode'] for k, v in scenarios().items()}
-        self.assertEqual(modes, {'find searching': 'find', 'find found': 'find', 'find none': 'find', 'find odd folder': 'find', 'find missing folder': 'find', 'choose': 'choose', 'choose offline low space': 'choose',
+        self.assertEqual(modes, {'find searching': 'find', 'find found': 'find', 'find none': 'find', 'find odd folder': 'find', 'find missing folder': 'find', 'choose': 'choose', 'choose offline low space': 'choose', 'setup no links': 'setup', 'setup limited': 'setup',
                                  'setup': 'setup', 'ready': 'ready', 'ready busy': 'ready', 'starting': 'starting', 'waiting': 'waiting', 'playing': 'playing', 'game closed': 'playing', 'finished': 'finished',
                                  'problem refused': 'problem', 'problem cancelled': 'problem', 'problem port': 'problem', 'problem disk': 'problem', 'problem game open': 'problem', 'problem hosts lost': 'problem',
                                  'playing with alert': 'playing', 'waiting with alert': 'waiting'})
@@ -79,6 +81,24 @@ class HomeViewTests(unittest.TestCase):
         o = s['choose offline low space']; self.assertEqual([x['selected'] for x in o['choices']], [False, True]); self.assertEqual(o['primary'][0], 'choose_offline')
         self.assertIn(('Not enough free space on this drive', 'bad'), o['choices'][1]['bullets']); self.assertNotIn(('Not enough free space on this drive', 'bad'), c['choices'][1]['bullets'])
         self.assertEqual(s['setup']['primary'][0], 'game_setup'); self.assertEqual(s['setup']['secondary'], [('help', 'What does this do?')])
+
+    def test_step_3_is_required_and_says_so_when_the_drive_cannot_hold_the_link(self):
+        s = scenarios(); self.assertIn('two settings change', s['setup']['sub']); n = s['setup no links']
+        self.assertIn('exFAT', n['sub']); self.assertIn('NTFS', n['sub']); self.assertIn('only the online-mode change', n['sub']); self.assertNotIn('two settings change', n['sub'])
+        self.assertEqual((n['mode'], n['wizard'], n['primary'][0]), ('setup', (3, 3), 'game_setup')); self.assertEqual([a for a, _ in n['secondary']], ['find_folder', 'help'])
+        lim = s['setup limited']; self.assertEqual((lim['mode'], lim['headline']), ('setup', 'HD textures cannot work on this drive')); self.assertIn('NTFS', lim['sub']); self.assertIn('exFAT', lim['sub'])
+        self.assertEqual(lim['primary'][0], 'find_folder', 'the way forward is another folder, not Turn on'); self.assertNotIn('turn_on', [lim['primary'][0]] + [a for a, _ in lim['secondary']])
+        for name, v in s.items():
+            if v['mode'] == 'setup': self.assertNotIn('skip_setup', [v['primary'][0]] + [a for a, _ in v['secondary']] + [a for a, _ in v['links']], name)
+        self.assertEqual(home.build(state(), facts(game_setup='limited', game_fs='exFAT', setup_skipped=True))['mode'], 'setup', 'an old "skipped" value changes nothing')
+        row = lambda g: {r['label']: r for sec in home.build(state(), facts(game_setup=g, game_fs='exFAT'))['settings'] for r in sec['rows']}['One-time game setup']
+        self.assertEqual((row('limited')['value'], row('limited')['action'], row('limited')['tone']), ('Not possible on this drive', '', 'warn')); self.assertEqual(row('needed')['action'], 'game_setup')
+        self.assertEqual(home.build(state(), facts(game_setup='ok'))['mode'], 'ready')
+    def test_a_running_proxy_without_a_finished_session_offers_turn_on_instead_of_turning_on_for_ever(self):
+        f = facts(proxy_alive=True)                                             # for example started by hand in Advanced mode: no hosts entry, no session
+        self.assertEqual(home.build(state(), f)['mode'], 'ready'); self.assertEqual(home.build(state(), f)['primary'][0], 'turn_on')
+        b = home.build(state(), f, busy=True); self.assertEqual((b['mode'], b['busy']), ('starting', True), 'while something really runs it still shows that')
+        self.assertEqual(home.build(state(), f, starting=True)['mode'], 'starting')
 
     def test_a_folder_the_user_confirmed_is_accepted(self):
         f = facts(folder_score=0); st = state(confirmed_root=f['folder_root']); self.assertEqual(home.build(st, f)['mode'], 'ready')

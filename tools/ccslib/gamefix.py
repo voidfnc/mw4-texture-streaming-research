@@ -31,6 +31,10 @@ class NotApplicable(Exception):
     pass
 
 
+class LinkUnsupported(OSError):
+    """The drive cannot hold folder links (FAT32 and exFAT have no reparse points). Not a failure of this tool: the settings change can still be made."""
+
+
 def layout(root=None):
     """The paths this module works with, for a game folder."""
     root = os.path.normpath(root or paths.GAME_ROOT); sp = os.path.join(root, 'sp26'); st = os.path.join(sp, 'steam_settings')
@@ -148,8 +152,35 @@ def link_state(link, target):
     return 'dir' if os.path.isdir(link) else 'file'
 
 
+FILE_SUPPORTS_REPARSE_POINTS = 0x80
+ERRORS_NO_LINKS = (1, 50)                       # ERROR_INVALID_FUNCTION ("Incorrect function"), ERROR_NOT_SUPPORTED: what Windows answers when a drive cannot hold a link
+
+
+def link_support(path):
+    """Can the drive that holds `path` hold folder links (junctions)? -> (True | False | None, file system name). NTFS and ReFS can, exFAT and FAT32 cannot; None = could not
+    tell (the link is then simply tried)."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k = ctypes.windll.kernel32; p = os.path.abspath(path)
+        while p and not os.path.exists(p):
+            up = os.path.dirname(p)
+            if up == p: break
+            p = up
+        vol = ctypes.create_unicode_buffer(1024)
+        if not k.GetVolumePathNameW(wintypes.LPCWSTR(p), vol, 1024): return None, ''
+        fs = ctypes.create_unicode_buffer(64); flags = wintypes.DWORD(0)
+        if not k.GetVolumeInformationW(wintypes.LPCWSTR(vol.value), None, 0, None, None, ctypes.byref(flags), fs, 64): return None, ''
+        return bool(flags.value & FILE_SUPPORTS_REPARSE_POINTS), fs.value
+    except Exception: return None, ''
+
+
+def _no_links_text(fs=''):
+    return f"this drive{f' ({fs})' if fs else ''} cannot hold folder links, so sp26\\xpak_cache could not be linked to the game cache"
+
+
 def make_junction(link, target):
-    """Directory junction `link` -> `target`. Raises PermissionError when the folder needs administrator rights."""
+    """Directory junction `link` -> `target`. Raises PermissionError when the folder needs administrator rights and LinkUnsupported when the drive cannot hold links."""
     try:
         import _winapi; _winapi.CreateJunction(target, link)
     except ImportError:
@@ -159,6 +190,7 @@ def make_junction(link, target):
             raise (PermissionError if 'denied' in msg.lower() else OSError)(msg or 'mklink failed')
     except OSError as e:
         if getattr(e, 'winerror', 0) == 5: raise PermissionError(str(e)) from e
+        if getattr(e, 'winerror', 0) in ERRORS_NO_LINKS: raise LinkUnsupported(f"{_no_links_text(link_support(os.path.dirname(link))[1])} (Windows said: {e})") from e
         raise
 
 
@@ -172,7 +204,7 @@ def _empty(d):
 def status(root=None, check_game=True):
     """What is set now (read-only, never raises): dict(applicable, why, ok, config_ok, link_state, problems, ...). `applicable` is False when this is not the layout the
     two settings are about (no sp26/steam_settings next to the game). `check_game` looks for a running game (starts `tasklist`, so the window's own timer skips it)."""
-    L = layout(root); s = dict(L, applicable=False, why='', ok=True, config_ok=True, keys={}, problems=[], game_running=False, link_state='missing')
+    L = layout(root); s = dict(L, applicable=False, why='', ok=True, config_ok=True, keys={}, problems=[], notes=[], game_running=False, link_state='missing', link_unsupported=False, fs='', limited=False)
     if not os.path.isdir(L['settings']):
         s['why'] = 'no sp26/steam_settings folder in the game folder, so nothing to set up'; return s
     if os.path.normcase(os.path.normpath(paths.XPAK_CACHE)) == os.path.normcase(L['link']):
@@ -189,26 +221,37 @@ def status(root=None, check_game=True):
         s['problems'].append(f"the game's Steam settings are in offline mode ({CONFIG_NAME}: offline=1)" if off == '1' else
                              f'{CONFIG_NAME} does not set online mode (offline=0)' if off != '0' else f'{CONFIG_NAME} is missing disable_lan_only=1')
     s['link_state'] = link_state(L['link'], L['target'])
-    if s['link_state'] != 'ok':
+    if s['link_state'] in ('missing', 'dir', 'broken', 'file'):                                                  # only when a link would have to be made: a drive that cannot hold one is not a problem to fix
+        sup, s['fs'] = link_support(L['sp26']); s['link_unsupported'] = sup is False
+    if s['link_unsupported']: s['notes'].append(_no_links_text(s['fs']))
+    elif s['link_state'] != 'ok':
         s['problems'].append({'missing': 'sp26\\xpak_cache does not exist, so the game does not look in the cache the helper fills',
                               'wrong': 'sp26\\xpak_cache is a link to somewhere other than the game cache (' + os.path.realpath(L['link']) + ')',
                               'broken': 'sp26\\xpak_cache is a link to a folder that no longer exists',
                               'dir': 'sp26\\xpak_cache is a separate folder, not the cache the helper fills',
                               'file': 'sp26\\xpak_cache is a file'}[s['link_state']])
-    s['ok'] = s['config_ok'] and s['link_state'] == 'ok'
+    s['ok'] = s['config_ok'] and (s['link_state'] == 'ok' or s['link_unsupported'])
+    s['limited'] = s['ok'] and s['link_unsupported']                                                     # everything that can be done here is done; the link cannot be made on this drive
     return s
 
 
 def state(root=None):
-    """'ok' | 'needed' | 'na' - the short answer for the guide and the Doctor."""
-    s = status(root, check_game=False); return 'na' if not s['applicable'] else ('ok' if s['ok'] else 'needed')
+    """'ok' | 'limited' (done as far as this drive allows: no folder links) | 'needed' | 'na' - the short answer for the guide and the Doctor."""
+    s = status(root, check_game=False); return 'na' if not s['applicable'] else ('limited' if s['limited'] else 'ok' if s['ok'] else 'needed')
+
+
+def state_fs(root=None):
+    """(state(), the name of the drive's file system when it cannot hold folder links, else '') - one look at the folder for the window's checklist."""
+    s = status(root, check_game=False)
+    return ('na' if not s['applicable'] else 'limited' if s['limited'] else 'ok' if s['ok'] else 'needed'), (s['fs'] or '?') if s['link_unsupported'] else ''
 
 
 def apply(root=None):
-    """Make both changes. -> dict(done=[...], aside='' , status=...). Raises NotApplicable, GameBusy, PermissionError, OSError. Idempotent."""
+    """Make both changes. -> dict(done=[...], aside='', notes=[...], status=...). Raises NotApplicable, GameBusy, PermissionError, OSError. Idempotent. On a drive that cannot hold
+    folder links only the settings change is made and `notes` says why the link was left out; an error names the change it belongs to."""
     s = status(root)
     if not s['applicable']: raise NotApplicable(s['why'])
-    if s['ok']: return dict(done=[], aside='', status=s)
+    if s['ok']: return dict(done=[], aside='', notes=list(s['notes']), status=s)
     if s['game_running']: raise GameBusy('the game is running: close it, then apply the game setup')
     if s['link_state'] == 'file': raise OSError(f"{s['link']} is a file, not a folder: move it away first")
     if s['link_state'] == 'wrong': raise OSError(f"sp26\\xpak_cache is already a link, to {os.path.realpath(s['link'])}: that is your own setup, so it was left alone. Remove that link if you want this tool to set it up")
@@ -217,10 +260,13 @@ def apply(root=None):
         text = _read(s['config']) if os.path.exists(s['config']) else ''
         if '\x00' in text: raise OSError(f'{CONFIG_NAME} is not a plain text file (UTF-16?): edit it by hand, see docs/USAGE.md')
         if os.path.exists(s['config']) and not os.access(s['config'], os.W_OK): raise OSError(f'{CONFIG_NAME} is read-only: clear the read-only attribute (file properties) and try again')
-    done = []; aside = ''
+    done = []; aside = ''; notes = list(s['notes'])
     if not s['config_ok']:
-        _backup_once(s['config'], s['backup']); _write(s['config'], set_keys(text)); done.append(CONFIG_NAME)
-    if s['link_state'] != 'ok':
+        try: _backup_once(s['config'], s['backup']); _write(s['config'], set_keys(text))
+        except PermissionError: raise
+        except OSError as e: raise OSError(f'could not change {CONFIG_NAME}: {friendly(e)}') from e
+        done.append(CONFIG_NAME)
+    if s['link_state'] != 'ok' and not s['link_unsupported']:
         os.makedirs(s['target'], exist_ok=True)
         if s['link_state'] == 'broken': os.rmdir(s['link'])                                           # removes the link only
         elif s['link_state'] == 'dir':
@@ -233,13 +279,17 @@ def apply(root=None):
                     if getattr(e, 'winerror', 0) == 32: raise OSError(f'sp26\\xpak_cache is in use by another program (is the game still closing?): {e}') from e   # asking for rights would not help
                     raise
         try: make_junction(s['link'], s['target'])
-        except BaseException:
+        except BaseException as e:
             if aside and not os.path.lexists(s['link']):
                 try: os.rename(aside, s['link'])                                                         # put the folder back where it was
                 except OSError: pass
-            raise
-        done.append('sp26\\xpak_cache')
-    return dict(done=done, aside=aside, status=status(root))
+            elif s['link_state'] == 'dir' and not aside and not os.path.lexists(s['link']): os.makedirs(s['link'], exist_ok=True)       # the empty folder that was removed to make room
+            if isinstance(e, LinkUnsupported): notes.append(str(e)); aside = ''                          # the drive says no: the settings change stands, the link is left out
+            elif isinstance(e, OSError) and not isinstance(e, PermissionError):
+                raise OSError(('the settings file was changed, but ' if done else '') + f'the cache link sp26\\xpak_cache could not be made: {friendly(e)}') from e
+            else: raise
+        else: done.append('sp26\\xpak_cache')
+    return dict(done=done, aside=aside, notes=notes, status=status(root))
 
 
 def undo(root=None):
@@ -266,9 +316,16 @@ def undo(root=None):
     return dict(done=done, notes=notes, status=status(root))
 
 
+def friendly(e):
+    """The text of an OSError for a person: Windows' bare 'Incorrect function' says nothing."""
+    if getattr(e, 'winerror', 0) in ERRORS_NO_LINKS: return f"Windows said \"{getattr(e, 'strerror', '') or e}\" (error {e.winerror}), which usually means this drive does not support the operation"
+    return str(e)
+
+
 def describe(s):
     """One line for the Doctor / the guide."""
     if not s['applicable']: return s['why']
+    if s['limited']: return 'online mode is set, but ' + '; '.join(s['notes']) + '; HD textures need the game folder on an NTFS drive'
     if s['ok']: return 'online mode is set and sp26\\xpak_cache is linked to the game cache'
     return '; '.join(s['problems']) + (' (close the game first)' if s['game_running'] else '')
 
@@ -303,7 +360,7 @@ def _undo_message(r):
 
 def _message(r):
     msg = ('changed: ' + ', '.join(r['done'])) if r['done'] else 'already set up, nothing to change'
-    return msg + (f" (the folder that was in the way is now {r['aside']})" if r.get('aside') else '')
+    return msg + (f" (the folder that was in the way is now {r['aside']})" if r.get('aside') else '') + ''.join('; ' + n for n in r.get('notes') or [])
 
 
 def main(argv=None):

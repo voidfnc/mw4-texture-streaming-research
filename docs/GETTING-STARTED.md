@@ -71,6 +71,7 @@ The Home screen shows a short card with the likely cause and a button. The usual
 | "Another program is using the port" | Something else listens on port 80, so the game would talk to it instead of the helper. | Open *Check my PC* (the Doctor): it names the program and can stop it. |
 | "The hosts entry is gone" | The helper runs, but the entry that sends the game to it was removed (security software sometimes does this). | *Put it back*, and allow the tool in the security software. |
 | "The game is running but nothing reached the helper" | The game was probably started before the session, or a VPN / secure-DNS setting bypasses the hosts file. | Close the game and launch it again after *Turn on HD textures*, then open *Check my PC*. |
+| "The setup could not be finished ... Incorrect function" (step 3) | The game folder is on a drive that cannot hold folder links (exFAT or FAT32), so the cache link, which HD textures need, cannot be made. Current versions say this on the screen. | Move the game folder to an NTFS drive, then press *Choose another folder* and pick its new place. |
 | "The game's servers did not answer" | No internet, or a VPN / firewall in the way. | Check the connection, then *Check my PC*. |
 
 ## What happened after the session

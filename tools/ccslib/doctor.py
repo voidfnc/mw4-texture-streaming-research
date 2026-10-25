@@ -67,7 +67,7 @@ def check_proxy(cfg):
         total, rows = _mirror_rows(1)
         if rows:
             sid, wire, flag = rows[0]; i = sid & (2**64 - 1)
-            c = http.client.HTTPConnection('127.0.0.1', port, timeout=5); c.request('HEAD', f'/pc/iw9_3/23/{i & 0xff:02x}/{i:016x}_{wire:08x}_{flag}'); r = c.getresponse(); r.read(); c.close()
+            c = http.client.HTTPConnection('127.0.0.1', port, timeout=5); c.request('HEAD', f'/pc/iw9_3/23/{i & 0xff:02x}/{i:016x}_{wire:08x}_{flag}', headers={'X-CCS-Probe': '1'}); r = c.getresponse(); r.read(); c.close()
             ok = r.status == 200 and int(r.getheader('Content-Length', -1)) == wire
             out.append(_c('Proxy serves chunk', 'ok' if ok else 'fail', f"HEAD {i:016x} -> {r.status} len={r.getheader('Content-Length')} etag={r.getheader('ETag')} cod-key={r.getheader('x-amz-meta-cod-key')}"))
     except Exception as e:
@@ -131,6 +131,7 @@ def check_game_setup():
     from . import gamefix
     s = gamefix.status()
     if not s['applicable']: return _c('Game setup', 'info', gamefix.describe(s))
+    if s['limited']: return _c('Game setup', 'warn', gamefix.describe(s), ('game_undo', None) if os.path.exists(s['backup']) and not s['game_running'] else None)    # all that this drive allows is done; there is nothing left to fix
     if s['ok']: return _c('Game setup', 'ok', gamefix.describe(s), ('game_undo', None) if os.path.exists(s['backup']) and not s['game_running'] else None)   # undo only where this tool made the change
     return _c('Game setup', 'warn', 'streamed textures may not be used by the game until this is set: ' + gamefix.describe(s), None if s['game_running'] else ('game_fix', None))
 
@@ -140,6 +141,7 @@ def check_locations():
 
 
 def run_all(cfg):
+    cfg = config.effective(cfg)                          # the profile's port, offline and guard values are what the session really uses
     paths.reload(); res = check_locations()
     res += check_hosts(); res.append(check_port(cfg)); res += check_proxy(cfg); res.append(check_mirror(cfg))
     res += check_pack(cfg); res.append(check_upstream()); res.append(check_disk(cfg)); res.append(check_game()); res.append(check_game_setup())
