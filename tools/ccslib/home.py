@@ -92,11 +92,11 @@ def summary_text(s):
 
 def settings_rows(st, f, extra=None):
     """The Settings drawer: sections of rows (icon, label, value, action). extra = dict(motion=bool, pack=text for the offline copy)."""
-    extra = extra or {}; path = st['path'] or 'quick'; gs = f.get('game_setup'); setup = {'needed': 'Needs a change', 'ok': 'Done'}.get(gs, 'Not needed')
+    extra = extra or {}; path = st['path'] or 'quick'; gs = f.get('game_setup'); setup = {'needed': 'Needs a change', 'ok': 'Done', 'limited': 'Not possible on this drive'}.get(gs, 'Not needed')
     return [dict(title='Textures', rows=[dict(icon='wifi' if path != 'offline' else 'download', label='How textures load', value='While I play' if path != 'offline' else 'From my offline copy', action='switch_path', tone=''),
                                          dict(icon='download', label='Offline copy', value=extra.get('pack', 'Not downloaded'), action='open_download', tone='')]),
             dict(title='Game', rows=[dict(icon='folder', label='Game folder', value=short_path(f.get('folder_root', ''), 1), action='find_folder', tone=''),
-                                     dict(icon='bolt', label='One-time game setup', value=setup, action='game_setup' if gs == 'needed' else '', tone='warn' if gs == 'needed' else 'ok' if gs == 'ok' else '')]),
+                                     dict(icon='bolt', label='One-time game setup', value=setup, action='game_setup' if gs == 'needed' else '', tone='warn' if gs in ('needed', 'limited') else 'ok' if gs == 'ok' else '')]),
             dict(title='Help', rows=[dict(icon='shield', label='Check my PC', value='', action='open_check', tone=''), dict(icon='help', label='What do the words mean?', value='', action='help', tone=''),
                                      dict(icon='chart', label='Reports and logs', value='', action='open_report', tone=''), dict(icon='gamepad', label='Before / after test', value='', action='abtest', tone='')]),
             dict(title='Look and feel', rows=[dict(icon='globe', label='Language', value=extra.get('language', 'English'), action='pick_language', tone=''), dict(icon='refresh', label='Reduce motion', value='On (Windows setting)' if extra.get('system_motion') else 'On' if extra.get('motion') else 'Off',
@@ -236,11 +236,17 @@ def build(state, f, note='', busy=False, starting=False, found=None, pick=None, 
                                bullets=[('Works with little or no internet', 'ok'), ('About 54 to 82 GB of disk', 'warn' if low else 'ok'), ('Download can be paused any time', 'ok')] + ([('Not enough free space on this drive', 'bad')] if low else []))],
                  primary=('choose_' + sel, 'Continue', 'arrow'))
         return v
-    needs_setup = f.get('game_setup') == 'needed'
-    if not live and not f.get('proxy_alive') and needs_setup:
-        v.update(mode='setup', layout='wizard', wizard=(3, 3), headline='One small change in your game folder', footer=('off', 'First-time setup'), links=[('open_advanced', 'Advanced mode')],
-                 sub='So the game uses the textures this tool sends it, two settings change: the game goes into online mode and its cache folder gets a link. A backup is made first and you can undo it any time.',
-                 primary=('game_setup', 'Make the change', 'check'), secondary=[('help', 'What does this do?')])
+    gs = f.get('game_setup'); fs = f.get('game_fs')              # fs: set when the game's drive cannot hold folder links (exFAT, FAT32): the cache link, which HD textures need, cannot be made there
+    if not live and not f.get('proxy_alive') and gs in ('needed', 'limited'):          # required, so there is no way past this step except doing it (or, for experts, Advanced mode)
+        if gs == 'limited':
+            v.update(mode='setup', layout='wizard', wizard=(3, 3), headline='HD textures cannot work on this drive', footer=('off', 'First-time setup'), links=[('open_advanced', 'Advanced mode')],
+                     sub=i18n.t('The online-mode change is made. HD textures also need the game folder on an NTFS drive, because the game setup links its cache folder and this drive ({0}) cannot hold folder links. Move the game to an NTFS drive, then choose its new folder.', fs or '?'),
+                     primary=('find_folder', 'Choose another folder', 'folder'), secondary=[('help', 'What does this do?')])
+            return v
+        sub = (i18n.t('So the game uses the textures this tool sends it, the game goes into online mode. HD textures also need the game folder on an NTFS drive: this drive ({0}) cannot hold the folder link of the game setup, so only the online-mode change can be made here. Move the game to an NTFS drive, then choose its new folder.', fs) if fs else
+               'So the game uses the textures this tool sends it, two settings change: the game goes into online mode and its cache folder gets a link. A backup is made first and you can undo it any time.')
+        v.update(mode='setup', layout='wizard', wizard=(3, 3), headline='One small change in your game folder', footer=('off', 'First-time setup'), links=[('open_advanced', 'Advanced mode')], sub=sub,
+                 primary=('game_setup', 'Make the change', 'check'), secondary=([('find_folder', 'Choose another folder')] if fs else []) + [('help', 'What does this do?')])
         return v
     # ---- the hero layout
     v['cards'] = _cards(st, f); gone = []
@@ -261,7 +267,7 @@ def build(state, f, note='', busy=False, starting=False, found=None, pick=None, 
         if alert: v['alert'] = alert; v['footer'] = ('warn', 'Needs your attention')
         return v
     pre = _preflight_alert(st, f); has_note = bool(note and alert and alert['id'] in HEADLINES); lost = bool(alert and alert['id'] == 'hosts_lost')
-    if (f.get('proxy_alive') and not (has_note or lost)) or starting:
+    if (f.get('proxy_alive') and busy and not (has_note or lost)) or starting:           # only while something is really starting: a proxy that runs without a finished session offers Turn on again
         v.update(mode='starting', steps=(STEP_LABELS, 1), ring=dict(kind='work', frac=0.28, icon='power', big='', small=''), headline='Turning on...', sub='This takes a few seconds.',
                  primary=('turn_on', 'Turning on...', 'power'), busy=True)
         return v

@@ -152,6 +152,19 @@ class WidgetTests(unittest.TestCase):
         i = ui.icon(self.root, 'check', 16, '#ffffff'); self.assertIs(i, ui.icon(self.root, 'check', 16, '#ffffff')); self.assertEqual(i.width(), 16)
         f = ui.font(self.root, 14); self.assertEqual(f[1], -14); self.assertEqual(len(ui.font(self.root, 20, 'head', True)) >= 2, True)
 
+    def test_the_cache_limit_never_frees_a_picture_that_is_on_screen(self):
+        """The animations make a new picture per step; once the cache was full the OLDEST ones were freed, which are the permanent ones (logo, icons): Tk then said
+        `image "pyimageNN" doesn't exist` when such an item was touched again."""
+        make = lambda: (2, 2, bytes(16)); cv = tk.Canvas(self.root); self.addCleanup(cv.destroy)
+        shown = ui.photo(cv, ('shown-forever',), make); name = shown.name; item = cv.create_image(0, 0, image=shown); del shown      # only the cache and the canvas hold it now
+        cache = self.root.__dict__['_ui_images']
+        for n in range(ui.CACHE_MAX * 2 + 50): ui.photo(cv, ('step', n), make)                       # far past the limit, none of these is shown
+        gc.collect()
+        self.assertIn(('shown-forever',), cache); self.assertEqual(int(self.root.tk.call('image', 'width', name)), 2)         # still there for Tk
+        cv.itemconfigure(item, image=name)                                                          # touching the item is fine (it raised TclError when the picture was gone)
+        self.assertLessEqual(len(cache), ui.CACHE_MAX, 'pictures nothing shows are still dropped')
+        last = ui.photo(cv, ('last',), make); self.assertIs(ui.photo(cv, ('last',), make), last)    # the newest is kept even when everything else is in use
+
 
 if __name__ == '__main__':
     unittest.main()

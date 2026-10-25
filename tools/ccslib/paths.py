@@ -96,7 +96,7 @@ def validate():
     if not CONFIGURED: add('Game folder', 'fail', 'not configured yet (Game tab -> Locations). Tools would fall back to the folder they live in: ' + GAME_ROOT)
     elif not os.path.isdir(GAME_ROOT): add('Game folder', 'fail', f'does not exist: {GAME_ROOT}')
     else: add('Game folder', 'ok', GAME_ROOT)
-    lists = glob.glob(os.path.join(GAME_ROOT, 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(GAME_ROOT, 'sp26', '*_cdn.xpak'))
+    lists = glob.glob(os.path.join(glob.escape(GAME_ROOT), 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(glob.escape(GAME_ROOT), 'sp26', '*_cdn.xpak'))
     add('CDN chunk lists', 'ok' if lists else 'warn', f'{len(lists)} *_cdn.xpak files under cod26/ and sp26/' if lists else 'none found under cod26/ or sp26/. The proxy still works without them; the mirror and the detail-level cap need them (wrong game folder?)')
     exes = [e for e in GAME_EXES if os.path.exists(os.path.join(GAME_ROOT, e))]
     add('Game executable', 'ok' if exes else 'info', ', '.join(exes) if exes else f'none of {", ".join(GAME_EXES)} in the folder (process names are matched, so this is only informational)')

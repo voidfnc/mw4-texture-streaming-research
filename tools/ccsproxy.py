@@ -27,6 +27,7 @@ ROOT = paths.GAME_ROOT
 LOG = os.path.join(paths.WORK, 'ccsproxy.log')
 HOST = 'cod-assets.cdn.callofduty.com'
 PAT = re.compile(r'^/pc/iw9_3/23/([0-9a-f]{2})/([0-9a-f]{16})_([0-9a-f]{8})_([01])$')
+NOSTAT = collections.defaultdict(int)     # where a probe's counts go
 lock = threading.Lock(); stat = dict(req=0, ok=0, skip=0, miss=0, err=0, retry=0, cliabort=0, mirror=0, bytes=0, mbytes=0)
 RAW = {}
 SKIPS = collections.Counter()      # tier-withheld ids -> how often the engine asked again (does a 404 cause a retry storm?)
@@ -79,16 +80,30 @@ def log(m):
         print(l, flush=True); open(LOG, 'a', encoding='utf-8').write(l + '\n')
 
 def load_index():
-    for fn in glob.glob(os.path.join(ROOT, 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(ROOT, 'sp26', '*_cdn.xpak')):
+    for fn in glob.glob(os.path.join(glob.escape(ROOT), 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(glob.escape(ROOT), 'sp26', '*_cdn.xpak')):
         for r in cdnxpak.parse(fn):
             RAW[r['id']] = r['raw']
     log(f"index: {len(RAW)} chunk ids")
 
+def parse_range(h, size):
+    """One `bytes=a-b` / `bytes=a-` / `bytes=-n` range of an object of `size` bytes -> (first, last), both included. None = no usable header (send the whole object); 'bad' = it cannot be
+    satisfied (416); 'skip' = something not served here (several ranges, another unit): the request is handled as it was before ranges were served."""
+    if not h: return None
+    mo = re.fullmatch(r'\s*bytes\s*=\s*(\d*)\s*-\s*(\d*)\s*', h)
+    if not mo or not (mo.group(1) or mo.group(2)): return 'skip'
+    a, b = mo.groups()
+    if not a:
+        n = int(b); return 'bad' if n == 0 or size == 0 else (max(0, size - n), size - 1)
+    a = int(a)
+    if b and int(b) < a: return None                       # not a valid range: ignored, as a server must
+    return 'bad' if a >= size else (a, min(int(b), size - 1) if b else size - 1)
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
     def log_message(self, *a): pass
-    def reply(self, code, body=b'', ctype='text/plain', extra=()):
-        self.send_response(code); self.send_header('Content-Length', str(len(body))); self.send_header('Content-Type', ctype)
+    def reply(self, code, body=b'', ctype='text/plain', extra=(), clen=None):
+        self.send_response(code); self.send_header('Content-Length', str(len(body) if clen is None else clen)); self.send_header('Content-Type', ctype)
         for k, v in extra: self.send_header(k, v)
         self.end_headers()
         if self.command != 'HEAD': self.wfile.write(body)
@@ -97,41 +112,55 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         self._t0 = time.perf_counter()
         a = self.server.args; path = self.path.split('?')[0]
+        probe = bool(self.headers.get('X-CCS-Probe'))     # the Doctor's own check is not game traffic: not counted, not recorded, not logged
+        st = NOSTAT if probe else stat; rec = (lambda *x, **k: None) if probe else record; lg = (lambda *x, **k: None) if probe else log
         if path == '/__ccs/stats':      # GUI status endpoint (loopback listeners only; never forwarded)
             return self.reply(200, json.dumps(snapshot()).encode(), 'application/json')
-        with lock: stat['req'] += 1
+        with lock: st['req'] += 1
         m = PAT.match(path); note = ''
         if m:      # detail level: the cap applies to the mirror too (a 4K mirror must not hand out >cap chunks to a 1440p-class setting)
             cid = int(m.group(2), 16); raw = RAW.get(cid)
             if raw is not None and raw > a.max_raw_mib * 2**20:
-                with lock: stat['skip'] += 1; SKIPS[cid] += 1
-                record(path, cid, raw, 'skip', 404, 0, ms=self.ms()); log(f"SKIP-TIER {self.command} {path} raw={raw/2**20:.1f}MiB"); return self.reply(404)
-        if m and a.origin and not self.headers.get('Range'):
-            # offline origin: serve the verbatim CDN object (+ stored ETag / x-amz-meta-cod-key) from the local mirror
+                with lock: st['skip'] += 1; SKIPS[cid] += 1
+                rec(path, cid, raw, 'skip', 404, 0, ms=self.ms()); lg(f"SKIP-TIER {self.command} {path} raw={raw/2**20:.1f}MiB"); return self.reply(404)
+        if m and a.origin:
+            # offline origin: serve the verbatim CDN object (+ stored ETag / x-amz-meta-cod-key) from the local mirror, whole or as one byte range
             cid = int(m.group(2), 16); wire = int(m.group(3), 16)
             p = os.path.join(a.origin, 'objects', m.group(1), f'{cid:016x}_{wire:08x}_{m.group(4)}')
+            rng = None if self.command == 'HEAD' else parse_range(self.headers.get('Range'), wire); body = None
             try:
-                if os.path.getsize(p) == wire:
-                    body = open(p, 'rb').read() if self.command == 'GET' else b''
-                    et, ck = MKEY.get(cid, (None, None)); extra = [('Accept-Ranges', 'bytes')]
-                    if et: extra.append(('ETag', f'"{et}"'))
-                    if ck: extra.append(('x-amz-meta-cod-key', ck))
-                    if self.command == 'HEAD': self.send_response(200); self.send_header('Content-Length', str(wire)); [self.send_header(k, v) for k, v in extra]; self.end_headers()
-                    else: self.reply(200, body, 'application/octet-stream', extra)
-                    with lock: stat['mirror'] += 1; stat['ok'] += 1; stat['mbytes'] += wire if self.command == 'GET' else 0
-                    record(path, cid, RAW.get(cid), 'mirror', 200, wire, ms=self.ms())
-                    return log(f"{self.command} {path} -> 200 {wire}B MIRROR")
+                if rng != 'skip' and os.path.getsize(p) == wire:
+                    if self.command == 'HEAD' or rng == 'bad': body = b''
+                    else:
+                        with open(p, 'rb') as fh:
+                            if rng: fh.seek(rng[0]); body = fh.read(rng[1] - rng[0] + 1)
+                            else: body = fh.read()
             except OSError:
-                pass            # not in the mirror -> fall through to the upstream
-            except Exception as e:
-                with lock: stat['cliabort'] += 1
-                return log(f"CLIENT-ABORT {path}: {e}")
+                body = None     # not in the mirror (or unreadable) -> falls through to the upstream
+            if body is not None:
+                et, ck = MKEY.get(cid, (None, None)); extra = [('Accept-Ranges', 'bytes')]; code = 200
+                if et: extra.append(('ETag', f'"{et}"'))
+                if ck: extra.append(('x-amz-meta-cod-key', ck))
+                if rng == 'bad': code = 416; extra.append(('Content-Range', f'bytes */{wire}'))
+                elif rng: code = 206; extra.append(('Content-Range', f'bytes {rng[0]}-{rng[1]}/{wire}'))
+                try:        # a failure here is the game cancelling the request: it is not a mirror miss, and nothing more may be written to that socket
+                    if self.command == 'HEAD': self.send_response(200); self.send_header('Content-Length', str(wire)); [self.send_header(k, v) for k, v in extra]; self.end_headers()
+                    else: self.reply(code, body, 'application/octet-stream', extra)
+                except Exception as e:
+                    with lock: st['cliabort'] += 1
+                    self.close_connection = True
+                    return lg(f"CLIENT-ABORT {path}: {e}")
+                n = wire if code == 200 else len(body)
+                with lock:
+                    if code in (200, 206): st['mirror'] += 1; st['ok'] += 1; st['mbytes'] += n if self.command == 'GET' else 0
+                rec(path, cid, RAW.get(cid), 'mirror', code, n, ms=self.ms())
+                return lg(f"{self.command} {path} -> {code} {n}B MIRROR")
         if m:
-            if stat['bytes'] > a.budget_gib * 2**30:
-                record(path, cid, raw, 'budget', 503, 0, ms=self.ms()); log(f"BUDGET exhausted {stat['bytes']/2**30:.2f} GiB"); return self.reply(503)
+            if st['bytes'] > a.budget_gib * 2**30:
+                rec(path, cid, raw, 'budget', 503, 0, ms=self.ms()); lg(f"BUDGET exhausted {st['bytes']/2**30:.2f} GiB"); return self.reply(503)
             if getattr(a, 'offline', False):      # mirror-only test mode: a mirror gap must show up as a 404, never as a silent upstream fetch
-                with lock: stat['miss'] += 1
-                record(path, cid, raw, 'offline-miss', 404, 0, ms=self.ms()); log(f"MISS-OFFLINE {self.command} {path} raw={raw}"); return self.reply(404)
+                with lock: st['miss'] += 1
+                rec(path, cid, raw, 'offline-miss', 404, 0, ms=self.ms()); lg(f"MISS-OFFLINE {self.command} {path} raw={raw}"); return self.reply(404)
             note = f"raw={raw}"
         # chunk objects: the URL carries the wire size, so a full (non-Range) body must match it exactly
         want = int(m.group(3), 16) if m and not self.headers.get('Range') and self.command == 'GET' else None
@@ -147,13 +176,13 @@ class H(BaseHTTPRequestHandler):
                 break
             except Exception as e:
                 last = e; r = None
-                with lock: stat['retry'] += 1
-                log(f"RETRY {attempt}/{a.retries + 1} {path}: {e}")
+                with lock: st['retry'] += 1
+                lg(f"RETRY {attempt}/{a.retries + 1} {path}: {e}")
                 time.sleep(min(0.25 * 2 ** (attempt - 1), 2.0))
         if r is None:
-            with lock: stat['err'] += 1
-            if m: record(path, int(m.group(2), 16), RAW.get(int(m.group(2), 16)), 'err', 502, 0, ms=self.ms())
-            log(f"ERR-UPSTREAM {path}: {last} (gave up after {a.retries + 1} tries)")
+            with lock: st['err'] += 1
+            if m: rec(path, int(m.group(2), 16), RAW.get(int(m.group(2), 16)), 'err', 502, 0, ms=self.ms())
+            lg(f"ERR-UPSTREAM {path}: {last} (gave up after {a.retries + 1} tries)")
             try: self.reply(502)
             except Exception: pass
             return
@@ -162,20 +191,21 @@ class H(BaseHTTPRequestHandler):
         extra = [(k, v) for k, v in r.getheaders()
                  if k.lower() in ('content-range', 'etag', 'last-modified', 'accept-ranges', 'cache-control', 'expires')
                  or k.lower().startswith('x-amz-meta-')]
+        up_len = r.getheader('Content-Length') if self.command == 'HEAD' else None          # a HEAD answer has no body, but it states the size the GET would have
         try:
-            self.reply(r.status, body, r.getheader('Content-Type', 'application/octet-stream'), extra)
+            self.reply(r.status, body, r.getheader('Content-Type', 'application/octet-stream'), extra, clen=int(up_len) if up_len and up_len.isdigit() else None)
         except Exception as e:
             # the game closed/cancelled the request while we were writing: not an upstream fault
-            with lock: stat['cliabort'] += 1
-            log(f"CLIENT-ABORT {path}: {e}")
+            with lock: st['cliabort'] += 1
+            lg(f"CLIENT-ABORT {path}: {e}")
             self.close_connection = True
             return
         with lock:
-            stat['bytes'] += len(body) if self.command == 'GET' else 0
-            if r.status in (200, 206): stat['ok'] += 1
-            else: stat['miss'] += 1
-        if m: record(path, int(m.group(2), 16), RAW.get(int(m.group(2), 16)), 'upstream', r.status, len(body), ms=self.ms())
-        log(f"{self.command} {path} -> {r.status} {len(body)}B {note} range={self.headers.get('Range','-')} total={stat['bytes']/2**30:.3f}GiB")
+            st['bytes'] += len(body) if self.command == 'GET' else 0
+            if r.status in (200, 206): st['ok'] += 1
+            else: st['miss'] += 1
+        if m: rec(path, int(m.group(2), 16), RAW.get(int(m.group(2), 16)), 'upstream', r.status, len(body), ms=self.ms())
+        lg(f"{self.command} {path} -> {r.status} {len(body)}B {note} range={self.headers.get('Range','-')} total={st['bytes']/2**30:.3f}GiB")
 
 class S6(ThreadingHTTPServer):
     address_family = socket.AF_INET6; daemon_threads = True

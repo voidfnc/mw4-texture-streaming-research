@@ -158,6 +158,11 @@ It stops with a plain message, and changes nothing more, when `configs.main.ini`
 `sp26\xpak_cache` is already a link to somewhere else (that is your own setup, so it is left alone; a link to a folder that no longer exists is replaced). If making the link
 fails after a folder was moved aside, the folder is moved back.
 
+**Drives that cannot hold folder links.** HD textures need both changes, so the game folder has to be on an NTFS drive. exFAT and FAT32 drives (common for secondary game drives and external disks) have no folder
+links; Windows answers the attempt with "[WinError 1] Incorrect function". The program checks the drive first (`fsutil fsinfo volumeinfo D:` shows the *File System Name*). On such a drive it makes only the
+online-mode change, leaves `sp26\xpak_cache` as it is, and says so: the first-run step becomes *HD textures cannot work on this drive*, which names the file system and offers *Choose another folder* once the game
+has been moved to an NTFS drive. The step cannot be skipped. Settings shows *Not possible on this drive*, and the Doctor's *Game setup* row shows a warning.
+
 ```
 ccs-cli.exe --ccs-run gamefix status       what is set now (from source: python tools\ccs.py --ccs-run gamefix status)
 ccs-cli.exe --ccs-run gamefix apply        make both changes

@@ -277,7 +277,7 @@ def cmd_run(a):
                         conn = None
                     if conn is None: conn_ip = edge['ip']; conn = http.client.HTTPConnection(conn_ip, a.upstream_port, timeout=60)
                     conn.request('GET', path, headers=upstream.headers()); r = conn.getresponse()
-                    if r.status in (429, 503): r.read(); raise Throttled(upstream.retry_after(r))
+                    if r.status in (429, 503): r.read(); raise Throttled(upstream.retry_after(r.headers))
                     body = read_body(r, lim)
                     if r.status == 404: good = ('404', None, None); break
                     et = (r.getheader('ETag') or '').strip('"').split(':')[0]   # legacy objects use "md5:timestamp"

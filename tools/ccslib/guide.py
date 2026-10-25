@@ -72,7 +72,7 @@ def score_folder(root):
         has_exe = any(os.path.isfile(os.path.join(root, e)) for e in paths.GAME_EXES)
         if not has_dir and not has_exe: return 0
         if not has_dir: return 1
-        lists = glob.glob(os.path.join(root, 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(root, 'sp26', '*_cdn.xpak'))
+        lists = glob.glob(os.path.join(glob.escape(root), 'cod26', '*_cdn.xpak')) + glob.glob(os.path.join(glob.escape(root), 'sp26', '*_cdn.xpak'))
         return 3 if lists else 2
     except OSError:
         return 0
@@ -235,6 +235,7 @@ def evaluate(state, f):
     if f.get('game_running') and not live: problems.append('the game is running: close it, start the session, then launch it again')
     setup = f.get('game_setup') == 'needed'
     if setup: problems.append('the game folder needs one small setup so the game uses the streamed textures (online mode and a cache link)')
+    if f.get('game_setup') == 'limited': problems.append('the game folder is on a drive that cannot hold the cache link (exFAT or FAT32): HD textures need the game on an NTFS drive')
     pdone = live or 'session' in ms or (fok and not problems)
     acts = ([('game_setup', 'Set up the game')] if setup else []) + ([('doctor', 'Open the Doctor')] if problems and (not setup or len(problems) > 1) else [])
     add('preflight', pdone, 'Port, disk space, the game folder setup and the game being closed all look fine.' if not problems else 'Needs attention: ' + '; '.join(problems) + '.', acts)
