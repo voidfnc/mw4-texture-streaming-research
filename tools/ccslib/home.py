@@ -63,6 +63,9 @@ def _preflight_alert(st, f):
     """A plain card for what stops the session from starting now, or None."""
     path = st['path'] or 'quick'
     if f.get('blocked_by'):
+        if str(f['blocked_by']).lower() == 'system':               # Windows itself: a Windows web service holds the port, the Doctor says which and can stop it
+            return dict(id='port_busy', title=f"Windows is using port {f.get('port', 80)}", text='HD textures need that port for themselves. Windows itself holds it, usually through a web service such as IIS. Check my PC shows which one and can stop it.',
+                        actions=[('open_check', 'Check my PC')])
         return dict(id='port_busy', title=f"Another program is using port {f.get('port', 80)}", text=f"HD textures need that port for themselves ({f['blocked_by']} has it now). Check my PC shows what is using it and can free it.", actions=[('open_check', 'Check my PC')])
     free = f.get('free_gib'); need = guide.MIN_FREE_GIB.get(path, 2.0)
     if free is not None and free < need:

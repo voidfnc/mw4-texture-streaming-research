@@ -108,6 +108,30 @@ def port_owner(port, addrs=('127.0.0.1', '[::1]')):
     return res
 
 
+# Windows itself: the System process (pid 4 is the HTTP.sys driver behind IIS and other web services) and the core service hosts. Ending them is impossible or breaks Windows.
+PROTECTED = frozenset({'system', 'system idle process', 'registry', 'memory compression', 'smss.exe', 'csrss.exe', 'wininit.exe', 'services.exe', 'lsass.exe', 'winlogon.exe', 'svchost.exe'})
+# Windows services that register their address with HTTP.sys and so show up as "System" on a port: (service name, display name)
+HTTP_SERVICES = (('W3SVC', 'World Wide Web Publishing Service'), ('SQLServerReportingServices', 'SQL Server Reporting Services'), ('ReportServer', 'SQL Server Reporting Services'),
+                 ('MsDepSvc', 'Web Deployment Agent Service'), ('PeerDistSvc', 'BranchCache'))
+
+
+def is_protected(owner):
+    """True for a port owner that is part of Windows (pid 0 / 4, the System process, core service hosts): no fix offers to end it."""
+    return owner.get('pid') in (0, 4) or str(owner.get('name') or '').lower() in PROTECTED
+
+
+def service_running(name, run=None):
+    """Is the Windows service `name` running? (sc query; the state NUMBER is read, 4 = running, because the word after it is translated)"""
+    try: out = (run or subprocess.run)(['sc.exe', 'query', name], capture_output=True, text=True, errors='replace', timeout=15, creationflags=CREATE_NO_WINDOW).stdout
+    except Exception: return False
+    m = re.search(r'STATE\s*:\s*(\d+)', out or ''); return bool(m) and m.group(1) == '4'
+
+
+def http_services(run=None):
+    """The known Windows web services that are running now and may be what holds a port through the System process -> [(service name, display name)]."""
+    return [(n, label) for n, label in HTTP_SERVICES if service_running(n, run)]
+
+
 def _pid_name(pid):
     try:
         out = subprocess.run(['tasklist', '/FI', f'PID eq {pid}', '/FO', 'CSV', '/NH'], capture_output=True, text=True, errors='replace', timeout=15, creationflags=CREATE_NO_WINDOW).stdout

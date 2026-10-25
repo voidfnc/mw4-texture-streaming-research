@@ -28,6 +28,13 @@ def check_port(cfg):
     port = cfg['proxy']['port']; own = procs.status('proxy'); owners = procs.port_owner(port)
     if not owners: return _c(f'Port {port}', 'ok' if not own['alive'] else 'fail', 'free' if not own['alive'] else 'proxy process alive but not listening')
     if own['alive'] and all(o['pid'] == own['pid'] for o in owners): return _c(f'Port {port}', 'ok', f"owned by our proxy (pid {own['pid']})")
+    prot = [o for o in owners if procs.is_protected(o)]
+    if prot:                                                       # Windows itself (System, pid 4): it cannot be ended; usually a Windows web service registered the port
+        who = ', '.join(f"{o['name']}, pid {o['pid']}" for o in prot); svcs = procs.http_services()
+        if svcs: return _c(f'Port {port}', 'fail', f"Port {port} is held by Windows itself ({who}). It cannot be ended like a program, but these Windows web services are running and may be the reason: {', '.join(n for _, n in svcs)}. "
+                           'Stopping one frees the port; start it again later in services.msc if you use it.', ('stop_service', svcs[0][0]))
+        return _c(f'Port {port}', 'fail', f"Port {port} is held by Windows itself ({who}), which usually means a Windows web service (IIS or similar) is registered on it. It cannot be ended like a program. "
+                  'In an administrator command prompt, "netsh http show servicestate view=requestq" shows which program uses it; stop that service in services.msc, then check again.')
     return _c(f'Port {port}', 'fail', 'taken by ' + ', '.join(f"{o['name']} pid {o['pid']} ({o['addr']})" for o in owners), ('kill_port_owner', [(o['pid'], o['name']) for o in owners]))
 
 
