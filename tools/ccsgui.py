@@ -1385,7 +1385,7 @@ class App(tk.Tk):
             tk.Label(self.doc_frame, text='●', fg=col[r['level']], bg=BG, font=('Segoe UI', 12)).grid(row=i, column=0, padx=(8, 4), pady=3, sticky='n')
             ttk.Label(self.doc_frame, text=r['name'], style='H.TLabel', width=20).grid(row=i, column=1, sticky='nw', pady=3)
             ttk.Label(self.doc_frame, text=r['detail'], wraplength=640, justify='left').grid(row=i, column=2, sticky='nw', pady=3, padx=6)
-            if r.get('fix'): ttk.Button(self.doc_frame, text='Fix: ' + {'hosts_apply': 'apply hosts (UAC)', 'flush_dns': 'flush DNS (UAC)', 'start_proxy': 'start proxy', 'restart_proxy': 'restart proxy', 'kill_port_owner': 'stop port owner', 'game_fix': 'set up the game', 'game_undo': 'undo the game setup'}[r['fix'][0]],
+            if r.get('fix'): ttk.Button(self.doc_frame, text='Fix: ' + {'hosts_apply': 'apply hosts (UAC)', 'flush_dns': 'flush DNS (UAC)', 'start_proxy': 'start proxy', 'restart_proxy': 'restart proxy', 'kill_port_owner': 'stop port owner', 'stop_service': 'stop web service (UAC)', 'game_fix': 'set up the game', 'game_undo': 'undo the game setup'}[r['fix'][0]],
                                            command=lambda fx=r['fix'], n=r['name']: self.do_fix(fx, n)).grid(row=i, column=3, padx=8, pady=2, sticky='ne')
         self.doc_frame.columnconfigure(2, weight=1)
 
@@ -1395,6 +1395,9 @@ class App(tk.Tk):
         if fix[0] == 'kill_port_owner':
             who = ', '.join(f'{n} (pid {p})' for p, n in fix[1])
             if not messagebox.askyesno('Stop port owner', f'Terminate {who}?\n\nOnly do this if it is a stale proxy or something you do not need.', parent=self): return
+        if fix[0] == 'stop_service':
+            if not messagebox.askyesno('Stop web service', f'Stop the Windows service {fix[1]}?\n\nThis frees the port for the helper. Anything that service hosts on this PC stops until you start it again (services.msc). '
+                                       'Windows may ask for permission first.\n\nContinue?', parent=self): return
         def go():
             ok, msg = session.run_fix(self.cfg, fix, self.say); self.say(f"fix {name}: {'ok' if ok else 'FAILED'} - {msg}", 'OK' if ok else 'ERR')
             res = doctor.run_all(self.cfg); self.q.put(('ask', lambda: self._show_doctor(res)))

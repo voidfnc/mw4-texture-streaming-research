@@ -51,6 +51,8 @@ def start(cfg, say=print):
     else:
         say('hosts: override already present')
     owners = procs.port_owner(port)
+    if owners and not procs.status('proxy')['alive'] and any(procs.is_protected(o) for o in owners):
+        return False, f"port {port} is in use by Windows itself ({', '.join(o['name'] + ', pid ' + str(o['pid']) for o in owners)}): Check my PC (the Doctor) shows what holds it and how to free it"
     if owners and not procs.status('proxy')['alive']:
         return False, f'port {port} already in use by ' + ', '.join(f"{o['name']} (pid {o['pid']})" for o in owners)
     if procs.status('proxy')['alive'] and not proxyctl.fetch_stats(port):
@@ -109,10 +111,28 @@ def run_fix(cfg, fix, say=print):
     if act == 'game_undo':
         from . import gamefix; return gamefix.undo_elevating(say=say)
     if act == 'kill_port_owner':
+        bad = []
         for pid, name in arg:
+            if procs.is_protected(dict(pid=pid, name=name)): say(f'{name} pid {pid}: not ended, it is part of Windows'); bad.append(f'{name} pid {pid} is part of Windows'); continue
             r = subprocess.run(['taskkill', '/PID', str(pid), '/F'], capture_output=True, text=True, errors='replace', creationflags=procs.CREATE_NO_WINDOW)
             say(f'killed {name} pid {pid}: ' + ('ok' if r.returncode == 0 else (r.stdout + r.stderr).strip()))
+            if r.returncode != 0: bad.append(f'{name} pid {pid}: ' + (r.stdout + r.stderr).strip()[:160])
+        pids = {p for p, _ in arg}; t0 = time.time()
+        while time.time() - t0 < 3 and any(o['pid'] in pids for o in procs.port_owner(port)): time.sleep(0.5)
+        left = [o for o in procs.port_owner(port) if o['pid'] in pids]
+        if bad or left: return False, 'could not free the port: ' + '; '.join(bad or [f"{o['name']} pid {o['pid']} still holds it" for o in left])
         return True, 'port owner(s) terminated'
+    if act == 'stop_service':
+        name = str(arg)
+        if name not in {n for n, _ in procs.HTTP_SERVICES}: return False, f'{name} is not a service this tool stops'
+        say(f'stopping the Windows service {name} (Windows may ask for permission)')
+        code = procs.run_elevated(['sc.exe', 'stop', name])
+        if code is None: return False, 'permission was declined, nothing was stopped'
+        t0 = time.time()
+        while time.time() - t0 < 25 and (procs.service_running(name) or procs.port_owner(port)): time.sleep(1)
+        owners = procs.port_owner(port)
+        if owners: return False, f'{name} was asked to stop (exit {code}), but port {port} is still in use by ' + ', '.join(f"{o['name']} (pid {o['pid']})" for o in owners)
+        return True, f'{name} stopped and port {port} is free; start it again later with: sc start {name}'
     return False, f'unknown fix {act}'
 
 

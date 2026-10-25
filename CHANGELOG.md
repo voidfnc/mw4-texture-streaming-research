@@ -1,7 +1,17 @@
 # Changelog
 
 ## Unreleased
-**Multiplayer / HQ (`cod.exe`): experimental support so people can test it.**
+**Multiplayer / HQ (`cod.exe`): experimental support so people can test it, and a fix for port 80 held by Windows itself.**
+
+- **Fix: "Terminate System (pid 4)" did nothing.** When Windows itself holds port 80 (the System process, pid 4, which is the web server driver behind IIS and other Windows web services), the Doctor offered
+  *stop port owner* for it, Windows refused, and the fix still reported success. Now:
+  - a port owner that is part of Windows (System, `svchost.exe`, the core service hosts) is never offered for ending;
+  - the Doctor says that Windows itself holds the port and names the running Windows web services that may be the reason (World Wide Web Publishing Service / IIS, SQL Server Reporting Services, Web Deployment
+    Agent, BranchCache), and offers *stop web service (UAC)* for the first one after a confirmation; it says how to start it again (`sc start <name>`);
+  - when no known service is running it explains instead, with the administrator command that shows which program uses the port;
+  - a fix reports success only when the port is really free afterwards; failures say which program could not be ended and why;
+  - the home screen and the failed-start message say "Windows" instead of "another program" in this case.
+  The new texts are translated into all languages.
 
 - **netwatch follows any game program.** It was tied to `sp26-cod.exe`; it now watches every name in the game process list (default `sp26-cod.exe` and `cod.exe`) and says which program made each DNS lookup or connection.
   With it on, a support bundle shows what the multiplayer / HQ game connects to.
