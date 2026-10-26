@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Fix: step 3 of the setup ("one small change in your game folder") could fail with a raw Windows message ("The file or directory is corrupted and unreadable").** This happens when Windows itself can no
+  longer read that folder's file system data, usually because the drive was also written to by another operating system. The tool cannot repair this, so it now says so plainly and points at `chkdsk <drive>: /f`
+  (run from an administrator command prompt) instead of showing Windows' bare error text.
+
 ## 0.4.3-beta
 **Multiplayer / HQ (`cod.exe`): experimental support so people can test it, and a fix for port 80 held by Windows itself.**
 

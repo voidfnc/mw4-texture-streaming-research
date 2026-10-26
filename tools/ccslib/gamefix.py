@@ -154,6 +154,7 @@ def link_state(link, target):
 
 FILE_SUPPORTS_REPARSE_POINTS = 0x80
 ERRORS_NO_LINKS = (1, 50)                       # ERROR_INVALID_FUNCTION ("Incorrect function"), ERROR_NOT_SUPPORTED: what Windows answers when a drive cannot hold a link
+ERRORS_CORRUPT = (1392, 1393)                   # ERROR_FILE_CORRUPT, ERROR_DISK_CORRUPT: Windows can no longer read this folder's own file system data
 
 
 def link_support(path):
@@ -267,10 +268,15 @@ def apply(root=None):
         except OSError as e: raise OSError(f'could not change {CONFIG_NAME}: {friendly(e)}') from e
         done.append(CONFIG_NAME)
     if s['link_state'] != 'ok' and not s['link_unsupported']:
-        os.makedirs(s['target'], exist_ok=True)
-        if s['link_state'] == 'broken': os.rmdir(s['link'])                                           # removes the link only
+        try: os.makedirs(s['target'], exist_ok=True)
+        except OSError as e: raise OSError(f'could not create {s["target"]}: {friendly(e)}') from e
+        if s['link_state'] == 'broken':
+            try: os.rmdir(s['link'])                                                                  # removes the link only
+            except OSError as e: raise OSError(f'could not remove the broken sp26\\xpak_cache link: {friendly(e)}') from e
         elif s['link_state'] == 'dir':
-            if _empty(s['link']): os.rmdir(s['link'])
+            if _empty(s['link']):
+                try: os.rmdir(s['link'])
+                except OSError as e: raise OSError(f'could not remove the empty sp26\\xpak_cache folder: {friendly(e)}') from e
             else:
                 aside = os.path.join(s['sp26'], ASIDE_NAME)
                 if os.path.exists(aside): aside += time.strftime('-%Y%m%d-%H%M%S')
@@ -278,6 +284,7 @@ def apply(root=None):
                 except PermissionError as e:
                     if getattr(e, 'winerror', 0) == 32: raise OSError(f'sp26\\xpak_cache is in use by another program (is the game still closing?): {e}') from e   # asking for rights would not help
                     raise
+                except OSError as e: raise OSError(f'could not move sp26\\xpak_cache out of the way: {friendly(e)}') from e
         try: make_junction(s['link'], s['target'])
         except BaseException as e:
             if aside and not os.path.lexists(s['link']):
@@ -319,6 +326,9 @@ def undo(root=None):
 def friendly(e):
     """The text of an OSError for a person: Windows' bare 'Incorrect function' says nothing."""
     if getattr(e, 'winerror', 0) in ERRORS_NO_LINKS: return f"Windows said \"{getattr(e, 'strerror', '') or e}\" (error {e.winerror}), which usually means this drive does not support the operation"
+    if getattr(e, 'winerror', 0) in ERRORS_CORRUPT:
+        return (f"Windows says this folder's own file system data is damaged (error {e.winerror}), which this tool cannot repair. Run chkdsk on that drive to fix it: close the game and this helper, "
+                'open an administrator command prompt, run "chkdsk <drive letter>: /f" (a restart may be asked for), then try the game folder setup again.')
     return str(e)
 
 
