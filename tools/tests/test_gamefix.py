@@ -368,6 +368,25 @@ class LinkFailures(Quiet):
         t = gamefix.friendly(OSError(1, 'Incorrect function', None, 1)); self.assertIn('Incorrect function', t); self.assertIn('does not support', t)
         self.assertEqual(gamefix.friendly(OSError('plain')), 'plain')
 
+    def test_the_text_for_a_corrupted_folder_points_at_chkdsk(self):
+        for code in gamefix.ERRORS_CORRUPT:
+            t = gamefix.friendly(OSError(code, 'The file or directory is corrupted and unreadable', None, code))
+            self.assertIn('chkdsk', t); self.assertIn(str(code), t); self.assertIn('cannot repair', t)
+
+    def test_a_corrupted_folder_fails_cleanly_instead_of_with_windows_raw_text(self):
+        corrupt = OSError(1392, 'The file or directory is corrupted and unreadable', None, 1392)
+        for how in ('dir', 'empty'):
+            root = make_game('fc' + how, link=how)
+            with mock.patch.object(os, 'rmdir', side_effect=corrupt) if how == 'empty' else mock.patch.object(os, 'rename', side_effect=corrupt):
+                with self.assertRaises(OSError) as c: gamefix.apply(root)
+            self.assertIn('chkdsk', str(c.exception)); self.assertNotIn('WinError', str(c.exception))
+        root = make_game('fc_mkdir', link='dir')
+        with mock.patch.object(os, 'makedirs', side_effect=corrupt), self.assertRaises(OSError) as c: gamefix.apply(root)
+        self.assertIn('chkdsk', str(c.exception))
+        root = make_game('fc_junction', link='dir')
+        with mock.patch.object(gamefix, 'make_junction', side_effect=corrupt), self.assertRaises(OSError) as c: gamefix.apply(root)
+        self.assertIn('chkdsk', str(c.exception))
+
 
 class DriveProbe(unittest.TestCase):
     def test_the_real_probe_knows_this_drive_and_never_raises(self):
