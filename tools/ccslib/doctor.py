@@ -106,7 +106,8 @@ def check_pack(cfg):
     return out
 
 
-def check_upstream():
+def check_upstream(offline=False, complete=False):
+    """offline = the profile never uses the internet; complete = the offline copy holds every piece asked for. Either way an unreachable edge is not a problem."""
     try:
         ip, src = upstream.candidates_info()[0]; c = http.client.HTTPConnection(ip, 80, timeout=4); c.request('HEAD', '/', headers=upstream.headers()); r = c.getresponse(); r.read(); c.close()
         if src == 'fallback':
@@ -114,7 +115,37 @@ def check_upstream():
                                               'let the tool look the name up, and it will remember the nearest edge')
         return _c('Upstream CDN', 'ok', f'edge {ip} ({src}) answers (HTTP {r.status}); the mirror measures the candidates before it downloads')
     except Exception as e:
+        if offline: return _c('Upstream CDN', 'info', f'edge not reachable ({e}); this profile uses only the offline copy, so the internet is not needed')
+        if complete: return _c('Upstream CDN', 'info', f'edge not reachable ({e}); the offline copy is complete, so the internet is not needed')
         return _c('Upstream CDN', 'warn', f'edge not reachable ({e}); mirror-only operation still works')
+
+
+NETWORK_LEVEL_NONE = 1                                  # NetworkConnectivityLevelHintNone: no network connection of any kind (0 = unknown, 2 = local only, 3 = internet, 4 = limited internet, 5 = hidden)
+
+
+def network_level():
+    """The connectivity level Windows reports (GetNetworkConnectivityHint, the same call the game makes before it asks for any texture), or None where Windows does not offer it."""
+    if os.name != 'nt': return None
+    try:
+        import ctypes
+
+        class Hint(ctypes.Structure):
+            _fields_ = [('level', ctypes.c_int), ('cost', ctypes.c_int), ('approaching', ctypes.c_ubyte), ('over', ctypes.c_ubyte), ('roaming', ctypes.c_ubyte)]
+        h = Hint()
+        if ctypes.windll.iphlpapi.GetNetworkConnectivityHint(ctypes.byref(h)) != 0: return None
+        return h.level
+    except Exception: return None
+
+
+def check_network():
+    """The game only asks for textures while Windows reports some network connection. A PC with no network adapter reports none, and then no texture is ever requested."""
+    lv = network_level()
+    if lv is None: return _c('Windows network status', 'info', 'not available on this version of Windows')
+    if lv == NETWORK_LEVEL_NONE:
+        return _c('Windows network status', 'warn', 'Windows reports no network connection at all (no network adapter that is switched on). The game checks this and then does not ask for any textures, '
+                                                    'not even from your offline copy. Give Windows a network adapter that is connected (a virtual one is enough, see "A PC with no network card" in the Getting started guide), then restart the game')
+    if lv == 2: return _c('Windows network status', 'ok', 'Windows reports a network connection without internet; the game still asks for textures, and your offline copy answers them')
+    return _c('Windows network status', 'ok', 'Windows reports a network connection')
 
 
 def check_disk(cfg):
@@ -155,7 +186,8 @@ def run_all(cfg):
     cfg = config.effective(cfg)                          # the profile's port, offline and guard values are what the session really uses
     paths.reload(); res = check_locations()
     res += check_hosts(); res.append(check_port(cfg)); res += check_proxy(cfg); res.append(check_mirror(cfg))
-    res += check_pack(cfg); res.append(check_upstream()); res.append(check_disk(cfg)); res.append(check_game()); res.append(check_game_setup())
+    pk = check_pack(cfg); res += pk
+    res.append(check_upstream(bool(cfg['proxy'].get('offline')), any(r['name'] == 'Texture pack' and r['level'] == 'ok' for r in pk))); res.append(check_network()); res.append(check_disk(cfg)); res.append(check_game()); res.append(check_game_setup())
     try:
         import tkinter; res.append(_c('Python', 'ok', f'{sys.version.split()[0]}, tkinter {tkinter.TkVersion}'))
     except Exception as e: res.append(_c('Python', 'warn', f'tkinter missing: {e}'))

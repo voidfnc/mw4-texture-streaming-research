@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+**New: the Doctor now says when Windows reports no network at all, which stops the game from asking for textures.**
+
+- **New: *Check my PC* has a "Windows network status" row.** The game only asks for textures while Windows reports some network connection. On a PC with no network adapter at all it never asks, so textures stay as in the
+  base game even with a complete offline copy, and every other Doctor row can still be green. The row shows a warning in that case and explains what is needed; the Getting started guide has a new section, *A PC with no network card*
+  (a virtual adapter is enough). The new text is translated into all languages.
+- **Change: "Upstream CDN: edge not reachable" is no longer a warning when the offline copy is complete or the profile uses only the offline copy.** The internet is not needed there, so the row now says so as information.
+
 ## 0.4.4-beta
 **Fix: step 3 of the setup could fail with a raw Windows error on a damaged game-folder file system.**
 

@@ -451,6 +451,22 @@ class DoctorSessionTests(unittest.TestCase):
         self.assertEqual(doctor.check_proxy(dict(proxy=dict(port=free_port()), guard={}, profile='Default'))[0]['fix'], ('start_proxy', None))
         self.assertEqual(session.run_fix(config.load(), ('nope', None), lambda m: None)[0], False)
 
+    def test_no_network_adapter_is_a_warning_the_game_would_not_ask_for_textures(self):
+        from unittest import mock
+        for lv, level in ((1, 'warn'), (0, 'ok'), (2, 'ok'), (3, 'ok'), (4, 'ok'), (5, 'ok')):
+            with mock.patch.object(doctor, 'network_level', return_value=lv): r = doctor.check_network()
+            self.assertEqual((r['name'], r['level']), ('Windows network status', level), lv)
+        with mock.patch.object(doctor, 'network_level', return_value=1): self.assertIn('no network connection at all', doctor.check_network()['detail'])
+        with mock.patch.object(doctor, 'network_level', return_value=None): self.assertEqual(doctor.check_network()['level'], 'info')      # Windows without the call: the game is not blocked either
+        lv = doctor.network_level(); self.assertTrue(lv is None or lv in range(0, 6))                                                         # the real call never raises
+
+    def test_an_unreachable_edge_is_only_a_warning_when_the_internet_is_still_needed(self):
+        from unittest import mock
+        with mock.patch.object(doctor.upstream, 'candidates_info', side_effect=OSError(10051, 'unreachable')):
+            self.assertEqual(doctor.check_upstream()['level'], 'warn')
+            self.assertEqual(doctor.check_upstream(complete=True)['level'], 'info'); self.assertIn('offline copy is complete', doctor.check_upstream(complete=True)['detail'])
+            self.assertEqual(doctor.check_upstream(offline=True)['level'], 'info'); self.assertIn('only the offline copy', doctor.check_upstream(offline=True)['detail'])
+
     def test_kill_port_owner_fix_terminates_process(self):
         p = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(60)']); time.sleep(0.3)
         ok, msg = session.run_fix(config.load(), ('kill_port_owner', [(p.pid, 'python.exe')]), lambda m: None)

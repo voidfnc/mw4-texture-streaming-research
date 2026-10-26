@@ -111,3 +111,12 @@ What I saw in one session afterwards (2560x1440, the single-player campaign, a c
 
 What I have not checked: whether a second session asks for fewer chunks now that the cache holds them (the report's "already in cache" figure will show it), whether the same two changes help
 on a machine whose game folder has no `sp26\steam_settings`, and whether the online mode has any other effect on the game.
+
+## 10. A third layer: the game wants Windows to report a network connection
+
+This one comes from reading the game's code, not from play. Before the game's HTTP streaming is allowed to run, the game asks Windows for its connectivity level (`GetNetworkConnectivityHint` in `Iphlpapi.dll`,
+looked up by name at startup, and kept up to date through `NotifyNetworkConnectivityHintChange`). The level is cached. If it is "none" (1), the check that gates the streaming returns false, and the game does not request
+any chunk. Levels 0 (unknown), 2 (local only), 3 (internet), 4 (limited) and 5 (hidden) all pass.
+
+What follows from that: a PC with no network adapter switched on makes the game ask for nothing, whether or not the chunks are on the local drive, and no other setting in this document changes it. A virtual adapter
+(Microsoft's KM-TEST Loopback Adapter) with a fixed address should give "local only", which passes; I have not tried it on a PC without any real adapter. The Doctor reads the same value with the same call.

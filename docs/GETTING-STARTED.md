@@ -76,6 +76,21 @@ The Home screen shows a short card with the likely cause and a button. The usual
 | "... file system data is damaged" / "corrupted and unreadable" (step 3) | Windows itself cannot read that folder's file system data any more, often from the drive being written to by another operating system. This tool cannot repair it. | Close the game and this helper, open an administrator command prompt and run `chkdsk <drive letter>: /f` (it may ask to restart), then open the program again and try step 3. |
 | Doctor: "CDN chunk lists: none found" | The game folder has no chunk lists where the program looks. The normal ones are `*_cdn.xpak` files, and the Xbox / Microsoft Store version has `*_cdn_stub.xpak` files instead, which current versions use as well. | Check that the folder you chose is the game folder (it contains `cod26` or `sp26`). On the Xbox version no renaming is needed. |
 | "The game's servers did not answer" | No internet, or a VPN / firewall in the way. | Check the connection, then *Check my PC*. |
+| Doctor: "Windows network status ... no network connection at all" (textures stay blurry, the request count stops at a few dozen) | The PC has no network adapter that is switched on, so Windows reports no connection. The game checks that and then asks for no textures at all, even though your offline copy is complete. | See *A PC with no network card* below. |
+
+## A PC with no network card
+
+The game only asks for textures while Windows reports some network connection. It does not matter that the pieces are on your own drive: with no adapter at all (no cable, no Wi-Fi, no network card) the game never asks, and the textures stay as they are in the base game.
+*Check my PC* shows this as **Windows network status**. The tool itself needs no internet once your offline copy is complete.
+
+What is needed is a network adapter that Windows sees as connected, not a real connection. A virtual one is enough:
+
+1. Open *Device Manager*, click any entry in the list, then *Action, Add legacy hardware*, *Next*, choose *Install the hardware that I manually select from a list*.
+2. Pick *Network adapters*, then the manufacturer *Microsoft* and the adapter *Microsoft KM-TEST Loopback Adapter*, and finish the wizard.
+3. In *Network Connections*, open the properties of the new adapter, then *Internet Protocol Version 4*, and give it a fixed address such as `192.168.250.1` with mask `255.255.255.0` and no gateway.
+4. Open *Check my PC* again: *Windows network status* should now be OK. Restart the game after that; the game reads the status when it starts and when it changes.
+
+This changes network settings on your PC, so it is left to you and nothing in this tool does it for you. It has not been tested on a PC that has no network card at all; if the line stays on its warning after these steps, please open an issue with the Doctor output.
 
 ## What happened after the session
 
