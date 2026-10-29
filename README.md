@@ -194,6 +194,8 @@ security software with hosts-file protection (pause it briefly or allow `MW4 Tex
 untouched, and the message says so. I don't turn off anyone's security software and I don't change permissions on system files for you; that is your call. If you
 would rather not let the tool write the file at all, you can add the two lines yourself (`ccs-cli.exe --ccs-run ccshosts diff apply`, or `python tools\ccshosts.py diff apply` from source, shows them).
 
+**The hosts file does not exist, or Windows ignores the block.** Some tweak tools delete the hosts file; the tool treats a missing file as an empty one and creates it with only its marked block when you turn HD textures on. If the block is in the file but *Check my PC* still shows the *Resolver* row failing, Windows is answering from DNS anyway: *Flush DNS* does not help then, and the usual causes are security software with hosts-file protection, a VPN or a DNS tool that answers name lookups itself, or a hosts file saved as UTF-16 (the tool rewrites it as plain UTF-8 and keeps a backup). Pause that software for a minute and check again; the *Resolver diagnosis* row says more. See [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#when-something-goes-wrong).
+
 **Textures are streamed (the report shows requests and answers) but still look low.** In some game folders the Steam settings put the game in offline mode, and the game can look for its
 cache in `sp26\xpak_cache` while the engine fills `xpak_cache`. The Doctor's *Game setup* row (and the first-run step *One small change in your game folder*) fixes both after you confirm: it sets
 `offline=0` and `disable_lan_only=1` in `sp26\steam_settings\configs.main.ini` (a copy of the original is kept) and links `sp26\xpak_cache` to `xpak_cache`. Close the game first,
@@ -206,7 +208,7 @@ pieces it found; "off" while a session runs means none were found, so check the 
 and can be switched in Settings. More in [docs/USAGE.md](docs/USAGE.md#using-an-offline-copy-you-have-already-downloaded).
 
 **The counters stay at zero right after the game starts.** In my sessions the game began asking for texture pieces once it had loaded into gameplay, not at the launcher or the main menu. Load a mission and give it a minute before judging;
-if the counters are still at zero a minute or two later, the Doctor tells you why.
+if the counters are still at zero a minute or two later, the Doctor tells you why. A PC with no network adapter at all asks for nothing either, because the game checks that Windows reports a network connection: the Doctor's *Windows network status* row shows it, and [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md#a-pc-with-no-network-card) says what to do.
 
 **"'NoneType' object has no attribute 'splitlines'" when starting a session.** That was a bug on Windows installs with a non-English language, fixed in 0.1.1.
 Update to the latest version. If you still see it, open an issue with the support bundle from the Doctor tab (check its contents first).

@@ -223,7 +223,10 @@ Automatic uses the language you picked in the installer, else the Windows displa
 | Port 80 is taken | The Doctor names the owner; the fix asks before ending it |
 | Proxy not answering | Doctor, Fix: restart proxy. The traceback is in `tools\work\run\proxy.out` |
 | Report missing | Reports are written when the game process exits; if you stopped the session first, press *Generate report* in the Report tab |
-| Want help | Doctor, *Export support bundle* (a zip with logs and settings, no game files) and attach it to an issue after checking its contents |
+| *No such file or directory ... drivers\etc\hosts* when starting a session, or the Doctor says the hosts file itself does not exist | Windows has no hosts file (some tweak tools delete it). It is treated as an empty file; *Turn on HD textures* (or the Doctor's *Apply*) creates it with only our marked block, and *Turn off* takes the block out again |
+| The Doctor's *Resolver* row fails although *Hosts override* is OK | The block is in the file but Windows still answers from DNS. *Flush DNS* does not help then. See *Resolver diagnosis* in the Doctor and [Getting started](GETTING-STARTED.md#when-something-goes-wrong): usually security software with hosts-file protection, a VPN or a DNS tool, or a hosts file saved as UTF-16 (the tool now rewrites it as UTF-8 and keeps a backup) |
+| Nothing reaches the helper and the PC has no network adapter | Windows reports "no network", and the game then asks for no textures at all. See *A PC with no network card* in [Getting started](GETTING-STARTED.md#a-pc-with-no-network-card); the Doctor's *Windows network status* row shows it |
+| Want help | Doctor, *Export support bundle* (a zip with logs, settings and facts about name resolution, the network and the game cache: no game files, no file content, no addresses) and attach it to an issue after checking its contents |
 
 ### Hosts file: permission denied
 
