@@ -40,7 +40,8 @@ def start(cfg, say=print):
     if bad: return False, 'setup needed - ' + '; '.join(f"{r['name']}: {r['detail']}" for r in bad) + '  (Game tab -> Locations)'
     try: upstream.system_edges() and upstream.remember(upstream.system_edges())      # nearest edge, while the system resolver still gives it (the override hides it)
     except Exception: pass
-    st = hosts.status()['state']; rc = hosts.resolve_check()
+    try: st = hosts.status()['state']; rc = hosts.resolve_check()
+    except OSError as e: return False, f'cannot read the Windows hosts file: {hosts.friendly(e)}'
     if st in ('FOREIGN', 'MIXED') and rc['ok']:
         say(f'hosts: override active as {st} lines (works; use Hosts tab -> Apply to adopt them into the managed block)')
     elif st != 'OK' or not rc['ok']:

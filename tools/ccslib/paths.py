@@ -116,8 +116,22 @@ def validate():
     return out
 
 
+def database_path():
+    """The folder Windows reads its hosts file from (the DataBasePath value of the Tcpip service), or None when it cannot be read."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r'SYSTEM\CurrentControlSet\Services\Tcpip\Parameters') as k: v, _ = winreg.QueryValueEx(k, 'DataBasePath')
+        return os.path.expandvars(v) if v else None
+    except Exception: return None
+
+
 def hosts_path():
-    return os.environ.get('CCS_HOSTS_PATH') or os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'drivers', 'etc', 'hosts')
+    """The hosts file Windows reads: the default place, or the folder a PC points to instead (DataBasePath), when that folder exists."""
+    env = os.environ.get('CCS_HOSTS_PATH')
+    if env: return env
+    default = os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'drivers', 'etc', 'hosts'); d = database_path()
+    if d and os.path.isdir(d) and os.path.normcase(os.path.normpath(os.path.join(d, 'hosts'))) != os.path.normcase(os.path.normpath(default)): return os.path.join(d, 'hosts')
+    return default
 
 
 def ensure_dirs():

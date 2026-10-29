@@ -111,3 +111,34 @@ What I saw in one session afterwards (2560x1440, the single-player campaign, a c
 
 What I have not checked: whether a second session asks for fewer chunks now that the cache holds them (the report's "already in cache" figure will show it), whether the same two changes help
 on a machine whose game folder has no `sp26\steam_settings`, and whether the online mode has any other effect on the game.
+
+## 10. A third layer: the game wants Windows to report a network connection
+
+This one comes from reading the game's code, not from play. Before the game's HTTP streaming is allowed to run, the game asks Windows for its connectivity level (`GetNetworkConnectivityHint` in `Iphlpapi.dll`,
+looked up by name at startup, and kept up to date through `NotifyNetworkConnectivityHintChange`). The level is cached. If it is "none" (1), the check that gates the streaming returns false, and the game does not request
+any chunk. Levels 0 (unknown), 2 (local only), 3 (internet), 4 (limited) and 5 (hidden) all pass.
+
+What follows from that: a PC with no network adapter switched on makes the game ask for nothing, whether or not the chunks are on the local drive, and no other setting in this document changes it. A virtual adapter
+(Microsoft's KM-TEST Loopback Adapter) with a fixed address should give "local only", which passes; I have not tried it on a PC without any real adapter. The Doctor reads the same value with the same call.
+
+That level is not the only condition. The function that decides whether a download may start also logs why it did not (the reasons it names are `dvar`, `throttling_restriction`, `gamerprofile` and `unknown`), and a
+network-health check feeds a throttle level in the range 0 to 5 (0 means no downloads); a player-profile setting is another switch. I did not trace the last two to the end, so I cannot say which of them matters
+on a given PC. The support bundle therefore carries what Windows reports (level, cost, adapters and their state, never addresses) and what the game's own cache holds, so a PC where the level is fine and nothing is
+asked can be told apart from one where the level is the cause.
+
+## 11. Next: the multiplayer version
+
+Everything above comes from the single-player campaign (`sp26-cod.exe`). The multiplayer version is the open part: whether it requests its textures from the same server in the same shape, what it does with a mirror
+answer, and whether it has conditions of its own before it asks. I am going to install it and test it with this tool on a private local network, then write down what the helper sees and fix what the tool gets wrong.
+Nothing about multiplayer is verified yet; section 7 lists it as unverified, and it stays there until a test shows otherwise.
+
+## 12. Windows can ignore a correct hosts block
+
+The whole redirect rests on Windows answering from the hosts file. Three ways that fails without the block being wrong:
+
+- **There is no hosts file.** Some tweak tools delete it. The toolkit used to fail on every start with a bare "No such file or directory"; a missing file is now an empty one, and the first Apply creates it.
+- **The file is not in the usual place.** Windows reads it from the folder named by `DataBasePath` under `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters`. The toolkit now edits that one when it differs from the default.
+- **The file is saved as UTF-16** (Notepad's "Unicode"). Windows does not read such a file, and an edit made as if it were UTF-8 would mix two encodings. It is now decoded properly and written back as plain UTF-8, with a backup.
+
+Beyond that, a block can be present and correct while the resolver still answers from DNS: the usual suspects are security software with hosts-file protection and VPN or DNS tools that answer lookups themselves.
+Flushing the DNS cache does not change that, which is why the Doctor now says so instead of offering it again and again.

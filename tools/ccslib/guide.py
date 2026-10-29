@@ -363,11 +363,13 @@ def coach(state, f, last=''):
     live = live_session(f)
     names = [str(n).lower() for n in f.get('game_names') or []]; mp = bool(names) and not any(n.startswith('sp26') for n in names)       # only the multiplayer / HQ program (cod.exe) is running
     if live and f.get('game_running') and f.get('requests', 0) == 0 and f.get('game_secs', 0) >= (240 if mp else 90):
-        if mp: card('no_traffic', 'Multiplayer / HQ: nothing has reached the helper yet', 'Multiplayer and HQ support is experimental. The helper only sees a request when the game asks for a texture, which may happen only once a match or map loads, '
+        if mp: card('no_traffic', 'Multiplayer / HQ: nothing has reached the helper yet', 'Only cod.exe (the HQ menu) is running, and it asks for almost nothing by itself. The campaign textures are requested by a second program, sp26-cod.exe, '
+                    'which starts when you start the campaign from HQ: start it and play a while. '
+                    'Multiplayer and HQ support is experimental. The helper only sees a request when the game asks for a texture, which may happen only once a match or map loads, '
                     'and this version of the game may not use this route at all. Play a match and look again. If it stays at zero, turn on "Start netwatch" in Advanced mode (Proxy tab), play a match, '
                     'then export the support bundle from the Doctor and attach it to a bug report: it shows what the game connects to.', [('doctor', 'Open the Doctor')])
         else: card('no_traffic', 'The game is running but nothing reached the helper', 'Most often the game was started before the session. Close it and launch it again. '
-                   'Otherwise a VPN, "secure DNS" or security software may be bypassing the hosts file. The Doctor tests exactly that.', [('doctor', 'Open the Doctor')])
+                   'Otherwise a VPN, "secure DNS" or security software may be bypassing the hosts file, or the PC has no network connection at all (the game asks for nothing then). The Doctor tests exactly that.', [('doctor', 'Open the Doctor')])
     if f.get('free_gib') is not None and f['free_gib'] < 5 and (live or f.get('game_running')):
         card('disk_low', 'Very little disk space left', f"Only {f['free_gib']:.1f} GiB free. The game cache grows while you play, and the disk guard will stop the game at its limit. Free some space on the drive.", [])
     if last and not any(c['id'] in ('hosts_lost',) for c in cards):
@@ -389,12 +391,18 @@ def coach(state, f, last=''):
 
 # ------------------------------------------------------------------------------------------------ what happened, and a way to check
 
+SHORT_SESSION = ('A short session often asks for little or nothing: the game keeps what it has already received in its own cache, and asks mostly when you reach somewhere new. '
+                 'Play a while longer, in places you have not been, before you judge.')
+
+
 def explain(summary):
     """The short "what happened" text for a finished session: a list of lines (empty when nothing is known)."""
     s = numbers(summary); req = int(s.get('req', 0))
     if not s: return []
     if req == 0:
-        return ['Nothing reached the helper during the last session, so the game was not served by it.', 'The Doctor can tell you why (most often the game was already running when the session started).']
+        out = ['Nothing reached the helper during the last session, so the game was not served by it.', 'The Doctor can tell you why (most often the game was already running when the session started).']
+        if 0 < s.get('secs', 0) < 1800: out.append(SHORT_SESSION)
+        return out
     mir, up, err, skip = int(s.get('mirror', 0)), int(s.get('upok', 0)), int(s.get('err', 0)), int(s.get('skip', 0))
     mins = int(s.get('secs', 0) // 60)
     out = [f"The game asked for {req:,} texture pieces" + (f' in about {mins} min' if mins >= 1 else '') + '. ' +
@@ -402,6 +410,7 @@ def explain(summary):
     bits = ['No failed requests.' if not err else f'{err:,} requests failed (the game asks again, a few are normal).']
     if skip: bits.append(f'{skip:,} pieces were left out on purpose by your detail level.')
     out.append(' '.join(bits))
+    if req < 300 and 0 < s.get('secs', 0) < 1800: out.append(SHORT_SESSION)
     out.append('That is what the tool can see: which pieces the game asked for and that they were delivered. How the picture looks is decided by the game, so to judge it on your PC use the before/after test.')
     return out
 

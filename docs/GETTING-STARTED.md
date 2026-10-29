@@ -76,6 +76,29 @@ The Home screen shows a short card with the likely cause and a button. The usual
 | "... file system data is damaged" / "corrupted and unreadable" (step 3) | Windows itself cannot read that folder's file system data any more, often from the drive being written to by another operating system. This tool cannot repair it. | Close the game and this helper, open an administrator command prompt and run `chkdsk <drive letter>: /f` (it may ask to restart), then open the program again and try step 3. |
 | Doctor: "CDN chunk lists: none found" | The game folder has no chunk lists where the program looks. The normal ones are `*_cdn.xpak` files, and the Xbox / Microsoft Store version has `*_cdn_stub.xpak` files instead, which current versions use as well. | Check that the folder you chose is the game folder (it contains `cod26` or `sp26`). On the Xbox version no renaming is needed. |
 | "The game's servers did not answer" | No internet, or a VPN / firewall in the way. | Check the connection, then *Check my PC*. |
+| Doctor: "Windows network status ... no network connection at all" (textures stay blurry, the request count stops at a few dozen) | The PC has no network adapter that is switched on, so Windows reports no connection. The game checks that and then asks for no textures at all, even though your offline copy is complete. | See *A PC with no network card* below. |
+| "start failed: [Errno 2] No such file or directory: '...\drivers\etc\hosts'" / Doctor: "the hosts file itself does not exist on this PC" | Windows has no hosts file at all (some tweak or "debloat" tools delete it). Current versions treat that as an empty file. | Press *Turn on HD textures* (or the Doctor's *Apply*): the file is created with only our marked block. *Turn off* takes the block out again. |
+| Doctor: "Resolver" fails although "Hosts override" is OK, and "Resolver diagnosis" says something outside the file overrides it | The block is in the hosts file, but Windows still answers from DNS. Flushing the DNS cache does not help then. The usual causes are security software with hosts-file protection, a VPN or DNS tool that answers name lookups itself, or a group policy. A hosts file saved as UTF-16 is also ignored by Windows (*Apply* now writes it as plain UTF-8 and keeps a backup). | Pause the security software, VPN or DNS tool for a minute and press *Check my PC* again. If it stays red, export the support bundle (Advanced mode, Doctor): `state/resolver.txt` shows what Windows reports about the file and the DNS Client service. |
+| Doctor: "Disk guard ... ends the game when the cache folder reaches ... GiB" | The game's cache folder is already close to the guard's limit (the game's own files can start out large), so the guard would end the game early in a long session. | Raise the limit in Advanced mode, Settings (*Disk guard: xpak_cache limit*), or move the game cache to a bigger drive. |
+
+## A PC with no network card
+
+The game only asks for textures while Windows reports some network connection. It does not matter that the pieces are on your own drive: with no adapter at all (no cable, no Wi-Fi, no network card) the game never asks, and the textures stay as they are in the base game.
+*Check my PC* shows this as **Windows network status**. The tool itself needs no internet once your offline copy is complete.
+
+What is needed is a network adapter that Windows sees as connected, not a real connection. A virtual one is enough:
+
+1. Open *Device Manager*, click any entry in the list, then *Action, Add legacy hardware*, *Next*, choose *Install the hardware that I manually select from a list*.
+2. Pick *Network adapters*, then the manufacturer *Microsoft* and the adapter *Microsoft KM-TEST Loopback Adapter*, and finish the wizard.
+3. In *Network Connections*, open the properties of the new adapter, then *Internet Protocol Version 4*, and give it a fixed address such as `192.168.250.1` with mask `255.255.255.0` and no gateway.
+4. Open *Check my PC* again: *Windows network status* should now be OK. Restart the game after that; the game reads the status when it starts and when it changes.
+
+This changes network settings on your PC, so it is left to you and nothing in this tool does it for you. It has not been tested on a PC that has no network card at all, and it may not be enough on its own: the game has other conditions before it asks for textures that this tool cannot see. Two things help to find out which one applies:
+
+- If the *Windows network status* row still shows its warning after the steps above, check in *Network Connections* that the new adapter shows as *Enabled* and not as *Network cable unplugged*.
+- If the row is OK and the game still asks for nothing, export the support bundle (Advanced mode, Doctor) and attach it to an issue: `state/network.txt` shows what Windows reports (the connectivity level, the adapters and their state, no addresses), and `state/cache.txt` shows what the game's own cache holds.
+
+A short session also often asks for little or nothing, because the game keeps what it has already received in its own cache and asks mostly when you reach somewhere new. Play a while, in places you have not been, before you judge.
 
 ## What happened after the session
 
@@ -96,6 +119,10 @@ Some setups show a difference and some do not. The test tells you which it is fo
 
 ## Testing multiplayer / HQ (experimental)
 
+**On an HQ install** (for example the Steam game *Call of Duty HQ*), `cod.exe` is only the HQ menu. The campaign runs as a second program, `sp26-cod.exe`, which starts when you start the campaign from HQ, and it is that program
+that asks for the campaign textures. With only `cod.exe` open the helper sees almost nothing, so a test in the HQ menu proves nothing: start the campaign, play for 15 to 20 minutes, then look at the numbers or export the
+support bundle (its *Game* row names the programs that were running).
+
 The campaign (`sp26-cod.exe`) is what this tool was built and tested on. Multiplayer and HQ run as `cod.exe`; the tool detects it, but nobody has confirmed that this part of the game asks the same server for
 its textures. If you want to help find out:
 
@@ -103,6 +130,10 @@ its textures. If you want to help find out:
 2. Turn HD textures on, start the game, play a match or load a map, then look at the number of delivered textures on the home screen.
 3. If it stays at zero, open *Doctor*, press *Export support bundle (zip)* and attach it to a bug report (it holds the helper's log and, with netwatch on, the names and addresses the game connected to).
    Nothing from your game folder is in it, and your Windows user name is removed.
+
+**What the maintainer is doing about it.** The multiplayer version of the game is going to be installed and tested with this tool on a private local network, to find out whether multiplayer and HQ ask for their textures
+through the same route, what the game does when that route is answered from the mirror, and which fixes the tool needs for it. Results, and any change to the tool that follows, will be added to this guide, to
+[FINDINGS](FINDINGS.md) and to the changelog. Until then everything about multiplayer and HQ stays experimental, as above.
 
 The disk guard only ends `sp26-cod.exe` by default. It never ends `cod.exe` during an online match unless you add that name yourself in the settings. Whether the publisher's anti-cheat accepts a changed
 hosts file is not something this project can promise; see the [disclaimer](../DISCLAIMER.md).

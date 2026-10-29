@@ -101,6 +101,69 @@ class HostsTests(unittest.TestCase):
         hosts.apply(flush=False); hosts.remove(flush=False)
         self.assertEqual(open(paths.hosts_path(), 'rb').read().decode(), orig)
 
+    def test_a_missing_hosts_file_is_an_empty_one_and_apply_creates_it(self):
+        from unittest import mock
+        p = os.path.join(TMP, 'nohosts', 'etc', 'hosts')
+        with mock.patch.dict(os.environ, {'CCS_HOSTS_PATH': p}):
+            self.assertEqual(hosts.read(), ('', '\r\n')); self.assertEqual(hosts.status()['state'], 'ABSENT')
+            self.assertFalse(hosts.remove(flush=False)['changed']); self.assertFalse(os.path.exists(p))               # nothing of ours to take out, and nothing is created for it
+            r = hosts.apply(flush=False); self.assertTrue(r['changed']); self.assertIsNone(r['backup'])              # there was nothing to back up; the folder and the file are created
+            t = open(p, 'rb').read(); self.assertTrue(t.startswith(hosts.BEGIN.encode() + b'\r\n')); self.assertNotIn(b'\n', t.replace(b'\r\n', b''))
+            self.assertEqual(hosts.status()['state'], 'OK'); self.assertFalse(hosts.apply(flush=False)['changed'])
+            hosts.remove(flush=False); self.assertEqual(hosts.status()['state'], 'ABSENT')
+
+    def test_a_missing_hosts_file_whose_folder_cannot_be_made_fails_cleanly(self):
+        from unittest import mock
+        p = os.path.join(TMP, 'nohosts2', 'etc', 'hosts'); real_makedirs = os.makedirs
+        with mock.patch.dict(os.environ, {'CCS_HOSTS_PATH': p}), mock.patch.object(hosts.os, 'makedirs', side_effect=lambda d, *a, **k: (_ for _ in ()).throw(OSError(5, 'denied')) if d == os.path.dirname(p) else real_makedirs(d, *a, **k)):
+            with self.assertRaises(hosts.HostsError) as cm: hosts.apply(flush=False)
+        self.assertIn('does not exist', str(cm.exception)); self.assertFalse(os.path.exists(p))
+
+    def test_the_doctor_says_when_the_hosts_file_itself_is_missing(self):
+        from unittest import mock
+        with mock.patch.dict(os.environ, {'CCS_HOSTS_PATH': os.path.join(TMP, 'nohosts3', 'hosts')}):
+            r = doctor.check_hosts()[0]
+        self.assertEqual((r['level'], r['fix']), ('fail', ('hosts_apply', None))); self.assertIn('does not exist', r['detail'])
+
+    def test_a_utf16_hosts_file_is_read_properly_and_written_back_as_utf8(self):
+        from unittest import mock
+        p = os.path.join(TMP, 'utf16', 'hosts'); os.makedirs(os.path.dirname(p), exist_ok=True)
+        with mock.patch.dict(os.environ, {'CCS_HOSTS_PATH': p}):
+            open(p, 'wb').write(WIN_HOSTS.encode('utf-16'))                                               # Notepad's "Unicode"
+            f = hosts.file_facts(); self.assertEqual(f['encoding'], 'utf-16'); self.assertGreater(f['nul_bytes'], 0); self.assertIn('UTF-16', hosts.diagnose())
+            text, nl = hosts.read(); self.assertEqual(text, WIN_HOSTS); self.assertEqual(nl, '\r\n')           # the other lines are not garbled
+            hosts.apply(flush=False); raw = open(p, 'rb').read()
+            self.assertNotIn(b'\0', raw); self.assertTrue(raw.decode('utf-8').startswith(WIN_HOSTS)); self.assertEqual(hosts.status()['state'], 'OK'); self.assertIsNone(hosts.diagnose())
+
+    def test_the_resolver_report_holds_no_file_content(self):
+        rep = hosts.resolver_report(); self.assertEqual(set(rep), {'hosts_file', 'file_in_use_is_default', 'data_base_path', 'dns_client_service_running', 'resolver', 'diagnosis'})
+        put(WIN_HOSTS); f = hosts.file_facts(); self.assertEqual((f['encoding'], f['nul_bytes'], f['lines']), ('ascii or utf-8', 0, WIN_HOSTS.count('\n')))
+        self.assertNotIn('Docker', json.dumps(hosts.resolver_report()))
+
+    def test_windows_own_hosts_folder_is_used_when_a_pc_points_to_another(self):
+        from unittest import mock
+        other = os.path.join(TMP, 'etc-elsewhere'); os.makedirs(other, exist_ok=True)
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('CCS_HOSTS_PATH', None)
+            with mock.patch.object(paths, 'database_path', return_value=other): self.assertEqual(paths.hosts_path(), os.path.join(other, 'hosts'))
+            with mock.patch.object(paths, 'database_path', return_value=os.path.join(TMP, 'no-such-folder')): self.assertTrue(paths.hosts_path().lower().endswith(os.path.join('drivers', 'etc', 'hosts')))
+            with mock.patch.object(paths, 'database_path', return_value=None): self.assertTrue(paths.hosts_path().lower().endswith(os.path.join('drivers', 'etc', 'hosts')))
+
+    def test_the_doctor_explains_a_block_that_windows_ignores(self):
+        from unittest import mock
+        put(WIN_HOSTS); hosts.apply(flush=False)
+        bad = dict(v4=['23.1.1.1'], v6=['ERR x'], ok=False)
+        with mock.patch.object(hosts, 'resolve_check', return_value=bad): res = doctor.check_hosts()
+        names = [r['name'] for r in res]; self.assertIn('Resolver diagnosis', names); self.assertEqual(res[names.index('Resolver')]['level'], 'fail')
+        self.assertIn('something outside the file', res[names.index('Resolver diagnosis')]['detail'])
+        with mock.patch.object(hosts, 'resolve_check', return_value=dict(v4=['127.0.0.1'], v6=['::1'], ok=True)): self.assertNotIn('Resolver diagnosis', [r['name'] for r in doctor.check_hosts()])
+
+    def test_backups_are_listed_newest_first_also_past_ten_in_one_second(self):
+        for n in ('hosts.29991231-235959', 'hosts.29991231-235959-2', 'hosts.29991231-235959-10', 'hosts.29991231-235959-9', 'hosts.29991231-235958-30'): open(os.path.join(paths.HOSTS_BACKUPS, n), 'w').close()
+        try: self.assertEqual([os.path.basename(b) for b in hosts.list_backups()][:5], ['hosts.29991231-235959-10', 'hosts.29991231-235959-9', 'hosts.29991231-235959-2', 'hosts.29991231-235959', 'hosts.29991231-235958-30'])
+        finally:
+            for n in ('hosts.29991231-235959', 'hosts.29991231-235959-2', 'hosts.29991231-235959-10', 'hosts.29991231-235959-9', 'hosts.29991231-235958-30'): os.remove(os.path.join(paths.HOSTS_BACKUPS, n))
+
     def test_backup_restore(self):
         orig = put(WIN_HOSTS); hosts.apply(flush=False)
         bk = hosts.list_backups()[0]; hosts.restore_backup(bk, flush=False)
@@ -372,6 +435,14 @@ class ReportTests(unittest.TestCase):
              '00:00:03 RETRY 1/4 /pc/iw9_3/23/aa/00000000000000aa_00000010_1: boom', "00:01:00 stats {'req': 7, 'ok': 5}"]
         open(p, 'w', encoding='utf-8').write('\n'.join(L) + '\n'); return p
 
+    def test_a_cache_emptied_during_the_run_is_said_in_the_report(self):
+        seg = report.segments(self.log())[1]
+        ids = [hex(0x1000 + n) for n in range(10)]; base = dict(taken=0, records=10, unique=10, ids=ids)
+        gone = dict(taken=1, records=4, unique=4, ids=ids[:3] + [hex(self.A)])                 # 7 of the 10 ids it held at the start are gone
+        kept = dict(taken=1, records=9, unique=9, ids=ids[:9])                                  # ordinary eviction
+        c = report.build(seg, catalogue=self.CAT, baseline=base, post=gone, cfg={})['cache']; self.assertIn('emptied or replaced', c['note']); self.assertIn('70%', c['note'])
+        self.assertNotIn('note', report.build(seg, catalogue=self.CAT, baseline=base, post=kept, cfg={})['cache'])
+
     def test_segments_split_and_dates(self):
         s = report.segments(self.log())
         self.assertEqual(len(s), 2); self.assertIsNone(s[0]['date']); self.assertEqual(s[1]['date'], '2026-10-20'); self.assertEqual(s[0]['nreq'], 1); self.assertEqual(s[1]['nreq'], 7)
@@ -451,6 +522,59 @@ class DoctorSessionTests(unittest.TestCase):
         self.assertEqual(doctor.check_proxy(dict(proxy=dict(port=free_port()), guard={}, profile='Default'))[0]['fix'], ('start_proxy', None))
         self.assertEqual(session.run_fix(config.load(), ('nope', None), lambda m: None)[0], False)
 
+    def test_no_network_adapter_is_a_warning_the_game_would_not_ask_for_textures(self):
+        from unittest import mock
+        for lv, level in ((1, 'warn'), (0, 'ok'), (2, 'ok'), (3, 'ok'), (4, 'ok'), (5, 'ok')):
+            with mock.patch.object(doctor, 'network_level', return_value=lv): r = doctor.check_network()
+            self.assertEqual((r['name'], r['level']), ('Windows network status', level), lv)
+        with mock.patch.object(doctor, 'network_level', return_value=1): self.assertIn('no network connection at all', doctor.check_network()['detail'])
+        with mock.patch.object(doctor, 'network_level', return_value=None): self.assertEqual(doctor.check_network()['level'], 'info')      # Windows without the call: the game is not blocked either
+        lv = doctor.network_level(); self.assertTrue(lv is None or lv in range(0, 6))                                                         # the real call never raises
+
+    def test_an_unreachable_edge_is_only_a_warning_when_the_internet_is_still_needed(self):
+        from unittest import mock
+        with mock.patch.object(doctor.upstream, 'candidates_info', side_effect=OSError(10051, 'unreachable')):
+            self.assertEqual(doctor.check_upstream()['level'], 'warn')
+            self.assertEqual(doctor.check_upstream(complete=True)['level'], 'info'); self.assertIn('offline copy is complete', doctor.check_upstream(complete=True)['detail'])
+            self.assertEqual(doctor.check_upstream(offline=True)['level'], 'info'); self.assertIn('only the offline copy', doctor.check_upstream(offline=True)['detail'])
+
+    def test_the_disk_guard_row_warns_before_a_big_cache_cuts_the_session_short(self):
+        from unittest import mock
+        cfg = dict(guard=dict(enabled=True, limit_gib=100, action='kill'))
+        with mock.patch.object(doctor, '_cache_gib', return_value=83.0):
+            r = doctor.check_guard(cfg); self.assertEqual((r['name'], r['level']), ('Disk guard', 'warn')); self.assertIn('about 17 GiB', r['detail'])
+            self.assertIsNone(doctor.check_guard(dict(guard=dict(enabled=True, limit_gib=100, action='warn')))); self.assertIsNone(doctor.check_guard(dict(guard=dict(enabled=False, limit_gib=100, action='kill'))))
+        with mock.patch.object(doctor, '_cache_gib', return_value=50.0): self.assertIsNone(doctor.check_guard(cfg))
+
+    def test_the_cache_row_is_said_only_for_large_data_files_with_an_empty_index(self):
+        from unittest import mock
+        from ccslib import cachectl
+        gib = 2 ** 30
+        with mock.patch.object(doctor.os.path, 'isdir', return_value=True):
+            with mock.patch.object(cachectl, 'summary', return_value=dict(records=0, total_bytes=81 * gib, active=0)): r = doctor.check_cache(); self.assertEqual((r['name'], r['level']), ('Game cache', 'info')); self.assertIn('81 GiB', r['detail'])
+            with mock.patch.object(cachectl, 'summary', return_value=dict(records=4650, total_bytes=81 * gib, active=9)): self.assertIsNone(doctor.check_cache())
+            with mock.patch.object(cachectl, 'summary', return_value=dict(records=0, total_bytes=1 * gib, active=0)): self.assertIsNone(doctor.check_cache())
+            with mock.patch.object(cachectl, 'summary', side_effect=OSError('busy')): self.assertIsNone(doctor.check_cache())
+        with mock.patch.object(doctor.os.path, 'isdir', return_value=False): self.assertIsNone(doctor.check_cache())
+
+    def test_the_network_report_names_adapters_without_addresses(self):
+        from unittest import mock
+        with mock.patch.object(doctor, 'network_hint', return_value=(1, 0)), mock.patch.object(doctor, '_powershell_json', return_value=[]):
+            rep = doctor.network_report()
+        self.assertEqual((rep['level'], rep['cost']), (1, 0)); self.assertEqual(set(rep), {'level', 'cost', 'level_names', 'cost_names', 'adapters', 'networks', 'default_routes'})
+        with mock.patch.object(doctor, 'network_hint', return_value=None), mock.patch.object(doctor, '_powershell_json', return_value=[]): self.assertIsNone(doctor.network_report()['level'])
+        for script in ('Get-NetAdapter', 'Get-NetConnectionProfile'):                                                        # the queries never ask for addresses
+            with mock.patch.object(doctor.subprocess, 'run') as run:
+                run.return_value = mock.Mock(stdout='[]'); doctor._powershell_json(f'{script} | Select-Object Status'); self.assertNotIn('MacAddress', run.call_args[0][0][-1])
+
+    def test_run_all_keeps_the_game_rows_whether_or_not_the_guard_and_cache_rows_appear(self):
+        from unittest import mock
+        extra = doctor._c('Disk guard', 'warn', 'x'), doctor._c('Game cache', 'info', 'y')
+        for guard, cache in ((None, None), (extra[0], None), (None, extra[1]), extra):
+            with mock.patch.object(doctor, 'check_guard', return_value=guard), mock.patch.object(doctor, 'check_cache', return_value=cache): names = [r['name'] for r in doctor.run_all(config.load())]
+            self.assertEqual(('Disk guard' in names, 'Game cache' in names), (guard is not None, cache is not None))
+            self.assertEqual(names[-3:], ['Game', 'Game setup', 'Python'])                                             # always, and in this order
+
     def test_kill_port_owner_fix_terminates_process(self):
         p = subprocess.Popen([sys.executable, '-c', 'import time;time.sleep(60)']); time.sleep(0.3)
         ok, msg = session.run_fix(config.load(), ('kill_port_owner', [(p.pid, 'python.exe')]), lambda m: None)
@@ -458,7 +582,7 @@ class DoctorSessionTests(unittest.TestCase):
 
     def test_bundle_contents(self):
         put(WIN_HOSTS); z = zipfile.ZipFile(bundle.make(config.load())); names = z.namelist()
-        for n in ('state/hosts.txt', 'state/doctor.txt', 'state/env.txt', 'state/runs.txt', 'state/gui_settings.json', 'state/game_setup.json'): self.assertIn(n, names)
+        for n in ('state/hosts.txt', 'state/resolver.txt', 'state/network.txt', 'state/cache.txt', 'state/doctor.txt', 'state/env.txt', 'state/runs.txt', 'state/gui_settings.json', 'state/game_setup.json'): self.assertIn(n, names)
         self.assertNotIn(os.path.expanduser('~'), z.read('state/game_setup.json').decode(), 'no paths in it')
         self.assertIn('Hosts override', z.read('state/doctor.txt').decode())
 
