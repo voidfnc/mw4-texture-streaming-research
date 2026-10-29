@@ -1,7 +1,7 @@
 # Changelog
 
-## Unreleased
-**New: the Doctor now says when Windows reports no network at all, which stops the game from asking for textures.**
+## 0.4.5-beta
+**A PC with no hosts file now works, and the Doctor says why a PC with no network, or with a hosts block that Windows ignores, gets no textures.**
 
 - **New: *Check my PC* has a "Windows network status" row.** The game only asks for textures while Windows reports some network connection. On a PC with no network adapter at all it never asks, so textures stay as in the
   base game even with a complete offline copy, and every other Doctor row can still be green. The row shows a warning in that case and explains what is needed; the Getting started guide has a new section, *A PC with no network card*
