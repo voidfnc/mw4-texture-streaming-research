@@ -126,7 +126,13 @@ network-health check feeds a throttle level in the range 0 to 5 (0 means no down
 on a given PC. The support bundle therefore carries what Windows reports (level, cost, adapters and their state, never addresses) and what the game's own cache holds, so a PC where the level is fine and nothing is
 asked can be told apart from one where the level is the cause.
 
-## 11. Windows can ignore a correct hosts block
+## 11. Next: the multiplayer version
+
+Everything above comes from the single-player campaign (`sp26-cod.exe`). The multiplayer version is the open part: whether it requests its textures from the same server in the same shape, what it does with a mirror
+answer, and whether it has conditions of its own before it asks. I am going to install it and test it with this tool on a private local network, then write down what the helper sees and fix what the tool gets wrong.
+Nothing about multiplayer is verified yet; section 7 lists it as unverified, and it stays there until a test shows otherwise.
+
+## 12. Windows can ignore a correct hosts block
 
 The whole redirect rests on Windows answering from the hosts file. Three ways that fails without the block being wrong:
 

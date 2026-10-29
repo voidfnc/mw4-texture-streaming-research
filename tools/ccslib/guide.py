@@ -363,7 +363,9 @@ def coach(state, f, last=''):
     live = live_session(f)
     names = [str(n).lower() for n in f.get('game_names') or []]; mp = bool(names) and not any(n.startswith('sp26') for n in names)       # only the multiplayer / HQ program (cod.exe) is running
     if live and f.get('game_running') and f.get('requests', 0) == 0 and f.get('game_secs', 0) >= (240 if mp else 90):
-        if mp: card('no_traffic', 'Multiplayer / HQ: nothing has reached the helper yet', 'Multiplayer and HQ support is experimental. The helper only sees a request when the game asks for a texture, which may happen only once a match or map loads, '
+        if mp: card('no_traffic', 'Multiplayer / HQ: nothing has reached the helper yet', 'Only cod.exe (the HQ menu) is running, and it asks for almost nothing by itself. The campaign textures are requested by a second program, sp26-cod.exe, '
+                    'which starts when you start the campaign from HQ: start it and play a while. '
+                    'Multiplayer and HQ support is experimental. The helper only sees a request when the game asks for a texture, which may happen only once a match or map loads, '
                     'and this version of the game may not use this route at all. Play a match and look again. If it stays at zero, turn on "Start netwatch" in Advanced mode (Proxy tab), play a match, '
                     'then export the support bundle from the Doctor and attach it to a bug report: it shows what the game connects to.', [('doctor', 'Open the Doctor')])
         else: card('no_traffic', 'The game is running but nothing reached the helper', 'Most often the game was started before the session. Close it and launch it again. '

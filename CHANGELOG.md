@@ -23,6 +23,11 @@
 - **New: "Game cache" note in the Doctor** when the cache folder holds 10 GiB or more of data but its index lists no textures, with what to try.
 - **Change: a short session no longer looks like a failure.** The summary and the "nothing reached the helper" card now say that a short session often asks for little or nothing, because the game keeps what it
   already received and asks mostly when you reach somewhere new.
+- **Change: the card for a game that sends nothing now tells an HQ player about the campaign program.** With only `cod.exe` (the HQ menu) running it said "multiplayer, experimental". It now says first that the
+  campaign textures are requested by a second program, `sp26-cod.exe`, which starts when the campaign is started from HQ, and that the menu alone asks for almost nothing. The getting-started guide says the same.
+- **Fix: the report no longer presents a stale "already in cache" figure as fact.** The figure compares what the game asked for with a snapshot of its cache taken when the session started. If the cache is emptied or
+  replaced while the session runs (for example by deleting the folder), most of that snapshot is gone and the figure described a cache that no longer existed (one run said 95% with an empty cache). The report now says
+  so in its cache section.
 - **Fix: the list of hosts-file backups was out of order past nine backups made within one second** (`-10` sorted before `-9`).
 
 ## 0.4.4-beta

@@ -435,6 +435,14 @@ class ReportTests(unittest.TestCase):
              '00:00:03 RETRY 1/4 /pc/iw9_3/23/aa/00000000000000aa_00000010_1: boom', "00:01:00 stats {'req': 7, 'ok': 5}"]
         open(p, 'w', encoding='utf-8').write('\n'.join(L) + '\n'); return p
 
+    def test_a_cache_emptied_during_the_run_is_said_in_the_report(self):
+        seg = report.segments(self.log())[1]
+        ids = [hex(0x1000 + n) for n in range(10)]; base = dict(taken=0, records=10, unique=10, ids=ids)
+        gone = dict(taken=1, records=4, unique=4, ids=ids[:3] + [hex(self.A)])                 # 7 of the 10 ids it held at the start are gone
+        kept = dict(taken=1, records=9, unique=9, ids=ids[:9])                                  # ordinary eviction
+        c = report.build(seg, catalogue=self.CAT, baseline=base, post=gone, cfg={})['cache']; self.assertIn('emptied or replaced', c['note']); self.assertIn('70%', c['note'])
+        self.assertNotIn('note', report.build(seg, catalogue=self.CAT, baseline=base, post=kept, cfg={})['cache'])
+
     def test_segments_split_and_dates(self):
         s = report.segments(self.log())
         self.assertEqual(len(s), 2); self.assertIsNone(s[0]['date']); self.assertEqual(s[1]['date'], '2026-10-20'); self.assertEqual(s[0]['nreq'], 1); self.assertEqual(s[1]['nreq'], 7)

@@ -119,6 +119,10 @@ Some setups show a difference and some do not. The test tells you which it is fo
 
 ## Testing multiplayer / HQ (experimental)
 
+**On an HQ install** (for example the Steam game *Call of Duty HQ*), `cod.exe` is only the HQ menu. The campaign runs as a second program, `sp26-cod.exe`, which starts when you start the campaign from HQ, and it is that program
+that asks for the campaign textures. With only `cod.exe` open the helper sees almost nothing, so a test in the HQ menu proves nothing: start the campaign, play for 15 to 20 minutes, then look at the numbers or export the
+support bundle (its *Game* row names the programs that were running).
+
 The campaign (`sp26-cod.exe`) is what this tool was built and tested on. Multiplayer and HQ run as `cod.exe`; the tool detects it, but nobody has confirmed that this part of the game asks the same server for
 its textures. If you want to help find out:
 
@@ -126,6 +130,10 @@ its textures. If you want to help find out:
 2. Turn HD textures on, start the game, play a match or load a map, then look at the number of delivered textures on the home screen.
 3. If it stays at zero, open *Doctor*, press *Export support bundle (zip)* and attach it to a bug report (it holds the helper's log and, with netwatch on, the names and addresses the game connected to).
    Nothing from your game folder is in it, and your Windows user name is removed.
+
+**What the maintainer is doing about it.** The multiplayer version of the game is going to be installed and tested with this tool on a private local network, to find out whether multiplayer and HQ ask for their textures
+through the same route, what the game does when that route is answered from the mirror, and which fixes the tool needs for it. Results, and any change to the tool that follows, will be added to this guide, to
+[FINDINGS](FINDINGS.md) and to the changelog. Until then everything about multiplayer and HQ stays experimental, as above.
 
 The disk guard only ends `sp26-cod.exe` by default. It never ends `cod.exe` during an online match unless you add that name yourself in the settings. Whether the publisher's anti-cheat accepts a changed
 hosts file is not something this project can promise; see the [disclaimer](../DISCLAIMER.md).

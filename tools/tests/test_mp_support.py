@@ -66,7 +66,7 @@ class CardTests(unittest.TestCase):
     def test_multiplayer_gets_its_own_text_and_waits_longer(self):
         self.assertEqual(self.cards(95, ['cod.exe']), [], 'a match may not have loaded yet')
         c = self.cards(250, ['cod.exe']); self.assertEqual([x['id'] for x in c], ['no_traffic'])
-        self.assertIn('Multiplayer / HQ', c[0]['title']); self.assertIn('experimental', c[0]['text']); self.assertIn('support bundle', c[0]['text']); self.assertTrue(c[0]['actions'])
+        self.assertIn('Multiplayer / HQ', c[0]['title']); self.assertIn('experimental', c[0]['text']); self.assertIn('support bundle', c[0]['text']); self.assertIn('sp26-cod.exe', c[0]['text'])            # the campaign is a second program that starts from the HQ menu; self.assertTrue(c[0]['actions'])
 
     def test_no_card_once_requests_arrive(self):
         f = dict(BASE, **dict(self.LIVE, requests=5), game_secs=500, game_names=['cod.exe']); self.assertEqual(guide.coach(guide.new_state(), f, ''), [])

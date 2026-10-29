@@ -238,6 +238,9 @@ def build(seg, catalogue=None, mirror_ids=None, baseline=None, post=None, cfg=No
         pre = len(uids & b); rep['cache'] = dict(baseline_records=baseline['records'], baseline_unique=baseline['unique'], requested_already_in_cache=pre, requested_pct_already_in_cache=round(100 * pre / len(uids), 1))
         if p is not None: rep['cache'].update(post_records=post['records'], post_unique=post['unique'], new_unique_ids=len(p - b), requested_now_in_cache=len(uids & p),
                                               dup_ratio=round(post['records'] / max(1, post['unique']), 2), record_growth=post['records'] - baseline['records'])
+        if p is not None and b and len(b - p) > len(b) / 2:       # most of what the cache held at the start is gone: it was emptied or replaced while the session ran
+            rep['cache']['note'] = (f'the cache was emptied or replaced during this run: {round(100 * len(b - p) / len(b))}% of the ids it held at the start are gone, '
+                                    'so the "already in cache" figure describes the old cache, not what the game had to work with')
     elif p is not None:
         rep['cache'] = dict(post_records=post['records'], post_unique=post['unique'], dup_ratio=round(post['records'] / max(1, post['unique']), 2), note='no baseline snapshot for this run')
     if last_stats: rep['proxy_stats_last'] = last_stats
