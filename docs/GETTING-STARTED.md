@@ -77,6 +77,9 @@ The Home screen shows a short card with the likely cause and a button. The usual
 | Doctor: "CDN chunk lists: none found" | The game folder has no chunk lists where the program looks. The normal ones are `*_cdn.xpak` files, and the Xbox / Microsoft Store version has `*_cdn_stub.xpak` files instead, which current versions use as well. | Check that the folder you chose is the game folder (it contains `cod26` or `sp26`). On the Xbox version no renaming is needed. |
 | "The game's servers did not answer" | No internet, or a VPN / firewall in the way. | Check the connection, then *Check my PC*. |
 | Doctor: "Windows network status ... no network connection at all" (textures stay blurry, the request count stops at a few dozen) | The PC has no network adapter that is switched on, so Windows reports no connection. The game checks that and then asks for no textures at all, even though your offline copy is complete. | See *A PC with no network card* below. |
+| "start failed: [Errno 2] No such file or directory: '...\drivers\etc\hosts'" / Doctor: "the hosts file itself does not exist on this PC" | Windows has no hosts file at all (some tweak or "debloat" tools delete it). Current versions treat that as an empty file. | Press *Turn on HD textures* (or the Doctor's *Apply*): the file is created with only our marked block. *Turn off* takes the block out again. |
+| Doctor: "Resolver" fails although "Hosts override" is OK, and "Resolver diagnosis" says something outside the file overrides it | The block is in the hosts file, but Windows still answers from DNS. Flushing the DNS cache does not help then. The usual causes are security software with hosts-file protection, a VPN or DNS tool that answers name lookups itself, or a group policy. A hosts file saved as UTF-16 is also ignored by Windows (*Apply* now writes it as plain UTF-8 and keeps a backup). | Pause the security software, VPN or DNS tool for a minute and press *Check my PC* again. If it stays red, export the support bundle (Advanced mode, Doctor): `state/resolver.txt` shows what Windows reports about the file and the DNS Client service. |
+| Doctor: "Disk guard ... ends the game when the cache folder reaches ... GiB" | The game's cache folder is already close to the guard's limit (the game's own files can start out large), so the guard would end the game early in a long session. | Raise the limit in Advanced mode, Settings (*Disk guard: xpak_cache limit*), or move the game cache to a bigger drive. |
 
 ## A PC with no network card
 
@@ -90,7 +93,12 @@ What is needed is a network adapter that Windows sees as connected, not a real c
 3. In *Network Connections*, open the properties of the new adapter, then *Internet Protocol Version 4*, and give it a fixed address such as `192.168.250.1` with mask `255.255.255.0` and no gateway.
 4. Open *Check my PC* again: *Windows network status* should now be OK. Restart the game after that; the game reads the status when it starts and when it changes.
 
-This changes network settings on your PC, so it is left to you and nothing in this tool does it for you. It has not been tested on a PC that has no network card at all; if the line stays on its warning after these steps, please open an issue with the Doctor output.
+This changes network settings on your PC, so it is left to you and nothing in this tool does it for you. It has not been tested on a PC that has no network card at all, and it may not be enough on its own: the game has other conditions before it asks for textures that this tool cannot see. Two things help to find out which one applies:
+
+- If the *Windows network status* row still shows its warning after the steps above, check in *Network Connections* that the new adapter shows as *Enabled* and not as *Network cable unplugged*.
+- If the row is OK and the game still asks for nothing, export the support bundle (Advanced mode, Doctor) and attach it to an issue: `state/network.txt` shows what Windows reports (the connectivity level, the adapters and their state, no addresses), and `state/cache.txt` shows what the game's own cache holds.
+
+A short session also often asks for little or nothing, because the game keeps what it has already received in its own cache and asks mostly when you reach somewhere new. Play a while, in places you have not been, before you judge.
 
 ## What happened after the session
 

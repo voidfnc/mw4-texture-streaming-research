@@ -42,6 +42,8 @@ def make(cfg=None):
             st = hosts.status(); z.writestr('state/hosts.txt', json.dumps(dict(state=st['state'], block=st['block'], foreign=st['foreign'], resolver=hosts.resolve_check()), indent=1))
             z.writestr('state/hosts-file.txt', _hosts_summary(hosts.read()[0]))
         except Exception as e: z.writestr('state/hosts.txt', f'error: {e}')
+        try: z.writestr('state/resolver.txt', scrub(json.dumps(hosts.resolver_report(), indent=1, default=str)))
+        except Exception as e: z.writestr('state/resolver.txt', f'error: {e}')
         try: z.writestr('state/doctor.txt', scrub(doctor.format_results(doctor.run_all(cfg))))
         except Exception as e: z.writestr('state/doctor.txt', f'error: {e}')
         z.writestr('state/processes.json', scrub(json.dumps({n: procs.status(n) for n in ('proxy', 'guard', 'netwatch')}, indent=1, default=str)))
@@ -50,6 +52,12 @@ def make(cfg=None):
             from . import gamefix
             gs = gamefix.status(check_game=False); z.writestr('state/game_setup.json', json.dumps({k: gs.get(k) for k in ('applicable', 'ok', 'limited', 'config_ok', 'keys', 'link_state', 'link_unsupported', 'fs')}, indent=1))
         except Exception as e: z.writestr('state/game_setup.json', f'error: {e}')
+        try: z.writestr('state/network.txt', scrub(json.dumps(doctor.network_report(), indent=1, default=str)))
+        except Exception as e: z.writestr('state/network.txt', f'error: {e}')
+        try:        # the game's own cache: per-shard sizes and record counts (no file names of the user's, no content)
+            from . import cachectl
+            z.writestr('state/cache.txt', scrub(json.dumps(cachectl.summary(), indent=1, default=str)))
+        except Exception as e: z.writestr('state/cache.txt', f'error: {e}')
         z.writestr('state/player_config.json', json.dumps(report.player_config(), indent=1))
         z.writestr('state/runs.txt', '\n'.join(f"#{s['idx']} {s.get('date')} {s['first']}-{s['last']} requests={s['nreq']}" for s in report.segments()))
         for fn in report.list_reports()[-3:]:

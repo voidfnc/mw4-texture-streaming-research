@@ -265,6 +265,8 @@ class HelpTests(unittest.TestCase):
     def test_what_happened_text(self):
         self.assertEqual((guide.explain({}), guide.explain(None), guide.explain('x'), guide.explain(dict(a='b'))), ([], [], [], []))
         z = guide.explain(dict(req=0, secs=60)); self.assertIn('Nothing reached the helper', z[0]); self.assertIn('Doctor', z[1])
+        self.assertIn(guide.SHORT_SESSION, z); self.assertNotIn(guide.SHORT_SESSION, guide.explain(dict(req=0, secs=3600)))                    # a short session may simply have had nothing new to ask for
+        self.assertIn(guide.SHORT_SESSION, guide.explain(dict(req=40, mirror=40, upok=0, err=0, skip=0, secs=120))); self.assertNotIn(guide.SHORT_SESSION, guide.explain(dict(req=5000, mirror=5000, upok=0, err=0, skip=0, secs=120)))
         t = guide.explain(dict(req=1840, mirror=0, upok=1836, err=0, skip=0, secs=1380)); self.assertIn('1,840 texture pieces in about 23 min', t[0]); self.assertIn('1,836 were fetched from the internet', t[0]); self.assertIn('No failed requests.', t[1])
         m = guide.explain(dict(req=100, mirror=60, upok=40, err=3, skip=7, secs=20)); self.assertIn('60 came from your offline copy and 40 from the internet', m[0]); self.assertNotIn('about', m[0]); self.assertIn('3 requests failed', m[1]); self.assertIn('7 pieces were left out', m[1])
         joined = ' '.join(t + m).lower(); self.assertFalse(any(w in joined for w in ('sharper', 'better', 'improve', 'faster')))        # it says what was delivered, never how the picture looks

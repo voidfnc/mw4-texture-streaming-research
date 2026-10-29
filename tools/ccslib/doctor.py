@@ -1,5 +1,5 @@
 """doctor.py - preflight checks. Each check -> dict(name, level 'ok'|'warn'|'fail'|'info', detail). Never raises, never writes."""
-import http.client, os, random, shutil, sqlite3, sys
+import http.client, json, os, random, shutil, sqlite3, subprocess, sys
 from . import config, hosts, mirrordb, pack, paths, procs, proxyctl, upstream
 
 
@@ -10,9 +10,10 @@ def _c(name, level, detail, fix=None):
 
 def check_hosts():
     try: st = hosts.status()
-    except Exception as e: return [_c('Hosts override', 'fail', f'cannot read hosts file: {e}')]
+    except Exception as e: return [_c('Hosts override', 'fail', f'cannot read hosts file: {hosts.friendly(e)}')]
     s = st['state']; out = []
-    if s == 'ABSENT': out.append(_c('Hosts override', 'fail', 'not present - the game resolves the CDN host IPv6-only and never connects (Hosts tab -> Apply)', ('hosts_apply', None)))
+    if s == 'ABSENT' and not os.path.exists(st['path']): out.append(_c('Hosts override', 'fail', 'not present, and the hosts file itself does not exist on this PC (some tweak tools delete it) - Apply creates it; the game resolves the CDN host IPv6-only and never connects without it', ('hosts_apply', None)))
+    elif s == 'ABSENT': out.append(_c('Hosts override', 'fail', 'not present - the game resolves the CDN host IPv6-only and never connects (Hosts tab -> Apply)', ('hosts_apply', None)))
     elif s == 'FOREIGN': out.append(_c('Hosts override', 'warn', 'present as hand-added lines outside the managed block (works; Apply adopts them into the block)'))
     elif s == 'PARTIAL': out.append(_c('Hosts override', 'fail', 'managed block is missing the ::1 or 127.0.0.1 line', ('hosts_apply', None)))
     elif s == 'MIXED': out.append(_c('Hosts override', 'warn', 'managed block plus duplicate hand-added lines (Apply cleans this up)'))
@@ -21,6 +22,11 @@ def check_hosts():
     out.append(_c('Resolver', 'ok' if r['ok'] else ('fail' if s in ('OK', 'FOREIGN', 'MIXED') else 'warn'),
                   f"v4={r['v4']} v6={r['v6']}" + ('' if r['ok'] else ' (expected 127.0.0.1 / ::1; try Flush DNS)'),
                   ('flush_dns', None) if not r['ok'] and s in ('OK', 'FOREIGN', 'MIXED') else None))
+    if not r['ok'] and s in ('OK', 'FOREIGN', 'MIXED'):
+        why = hosts.diagnose(st['path'])
+        out.append(_c('Resolver diagnosis', 'info', 'the hosts file is saved as UTF-16, which Windows does not read; Apply writes it as plain UTF-8 and keeps a backup' if why and 'UTF-16' in why else
+                      'the block is in the hosts file but Windows still answers from DNS, so something outside the file is overriding it: security software with hosts-file protection, a VPN or DNS tool that answers name lookups itself, '
+                      'or a group policy. Flushing the DNS cache does not help then; pause that software for a minute and check again'))
     return out
 
 
@@ -123,8 +129,8 @@ def check_upstream(offline=False, complete=False):
 NETWORK_LEVEL_NONE = 1                                  # NetworkConnectivityLevelHintNone: no network connection of any kind (0 = unknown, 2 = local only, 3 = internet, 4 = limited internet, 5 = hidden)
 
 
-def network_level():
-    """The connectivity level Windows reports (GetNetworkConnectivityHint, the same call the game makes before it asks for any texture), or None where Windows does not offer it."""
+def network_hint():
+    """(level, cost) Windows reports (GetNetworkConnectivityHint, the same call the game makes before it asks for any texture), or None where Windows does not offer it."""
     if os.name != 'nt': return None
     try:
         import ctypes
@@ -133,8 +139,29 @@ def network_level():
             _fields_ = [('level', ctypes.c_int), ('cost', ctypes.c_int), ('approaching', ctypes.c_ubyte), ('over', ctypes.c_ubyte), ('roaming', ctypes.c_ubyte)]
         h = Hint()
         if ctypes.windll.iphlpapi.GetNetworkConnectivityHint(ctypes.byref(h)) != 0: return None
-        return h.level
+        return h.level, h.cost
     except Exception: return None
+
+
+def network_level():
+    """The connectivity level alone (0 unknown, 1 none, 2 local only, 3 internet, 4 limited internet, 5 hidden), or None."""
+    h = network_hint(); return None if h is None else h[0]
+
+
+def _powershell_json(script):
+    try:
+        r = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script + ' | ConvertTo-Json -Compress'], capture_output=True, text=True, errors='replace', timeout=20, creationflags=0x08000000)
+        return json.loads(r.stdout) if r.stdout.strip() else []
+    except Exception as e: return dict(error=str(e))
+
+
+def network_report():
+    """For the support bundle: the level and cost Windows reports and the adapters and networks it sees. Names and states only: no addresses, no MAC addresses."""
+    h = network_hint()
+    return dict(level=None if h is None else h[0], cost=None if h is None else h[1], level_names={0: 'unknown', 1: 'none', 2: 'local_only', 3: 'internet', 4: 'limited_internet', 5: 'hidden'}, cost_names={0: 'unknown', 1: 'unrestricted', 2: 'fixed', 3: 'variable'},
+                adapters=_powershell_json('Get-NetAdapter | Select-Object InterfaceDescription,Status,MediaConnectionState,InterfaceType,Virtual'),
+                networks=_powershell_json('Get-NetConnectionProfile | Select-Object NetworkCategory,IPv4Connectivity,IPv6Connectivity'),
+                default_routes=_powershell_json("@(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue).Count"))
 
 
 def check_network():
@@ -148,13 +175,39 @@ def check_network():
     return _c('Windows network status', 'ok', 'Windows reports a network connection')
 
 
-def check_disk(cfg):
-    free = shutil.disk_usage(paths.ROOT).free / 2**30; cache = 0
+def _cache_gib():
+    cache = 0
     for dp, _, fn in os.walk(paths.XPAK_CACHE):
         for f in fn:
             try: cache += os.path.getsize(os.path.join(dp, f))
             except OSError: pass
-    cache /= 2**30; lim = cfg['guard']['limit_gib']
+    return cache / 2**30
+
+
+def check_guard(cfg):
+    """The disk guard ends the game when the cache folder reaches its limit. A cache that starts close to it (the engine's own files can already be large) gets cut short without warning: say so before that."""
+    g = cfg['guard']
+    if not g.get('enabled') or g.get('action') != 'kill': return None
+    cache = _cache_gib(); lim = float(g['limit_gib'])
+    if cache < lim * 0.75: return None
+    return _c('Disk guard', 'warn', f'the disk guard ends the game when the cache folder reaches {lim:g} GiB. It holds {cache:.0f} GiB now, so about {max(lim - cache, 0):.0f} GiB of new textures are left before that. '
+                                    'Raise the limit in Advanced mode, Settings ("Disk guard: xpak_cache limit") for a longer session')
+
+
+def check_cache():
+    """What the game's own cache holds (read-only). Said only when its data files are large but its index lists nothing: then the game may not be able to use any of it."""
+    if not os.path.isdir(paths.XPAK_CACHE): return None
+    try:
+        from . import cachectl
+        s = cachectl.summary(); gib = s['total_bytes'] / 2**30
+    except Exception: return None
+    if s['records'] or gib < 10: return None
+    return _c('Game cache', 'info', f'the cache folder holds {gib:.0f} GiB of data files, but its index lists no textures, so the game may not be able to use any of it (a run cut short while the game was writing can leave this). '
+                                    'If textures never improve, close the game and rename the folder xpak_cache: the game builds a fresh one')
+
+
+def check_disk(cfg):
+    free = shutil.disk_usage(paths.ROOT).free / 2**30; cache = _cache_gib(); lim = cfg['guard']['limit_gib']
     lvl = 'fail' if free < 20 else 'warn' if free < 60 or cache > lim * 0.9 else 'ok'
     return _c('Disk', lvl, f'free {free:.0f} GiB; xpak_cache {cache:.1f} GiB (guard limit {lim:g} GiB)')
 
@@ -187,7 +240,9 @@ def run_all(cfg):
     paths.reload(); res = check_locations()
     res += check_hosts(); res.append(check_port(cfg)); res += check_proxy(cfg); res.append(check_mirror(cfg))
     pk = check_pack(cfg); res += pk
-    res.append(check_upstream(bool(cfg['proxy'].get('offline')), any(r['name'] == 'Texture pack' and r['level'] == 'ok' for r in pk))); res.append(check_network()); res.append(check_disk(cfg)); res.append(check_game()); res.append(check_game_setup())
+    res.append(check_upstream(bool(cfg['proxy'].get('offline')), any(r['name'] == 'Texture pack' and r['level'] == 'ok' for r in pk))); res.append(check_network()); res.append(check_disk(cfg))
+    res += [r for r in (check_guard(cfg), check_cache()) if r]
+    res.append(check_game()); res.append(check_game_setup())
     try:
         import tkinter; res.append(_c('Python', 'ok', f'{sys.version.split()[0]}, tkinter {tkinter.TkVersion}'))
     except Exception as e: res.append(_c('Python', 'warn', f'tkinter missing: {e}'))

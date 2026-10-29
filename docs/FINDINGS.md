@@ -120,3 +120,19 @@ any chunk. Levels 0 (unknown), 2 (local only), 3 (internet), 4 (limited) and 5 (
 
 What follows from that: a PC with no network adapter switched on makes the game ask for nothing, whether or not the chunks are on the local drive, and no other setting in this document changes it. A virtual adapter
 (Microsoft's KM-TEST Loopback Adapter) with a fixed address should give "local only", which passes; I have not tried it on a PC without any real adapter. The Doctor reads the same value with the same call.
+
+That level is not the only condition. The function that decides whether a download may start also logs why it did not (the reasons it names are `dvar`, `throttling_restriction`, `gamerprofile` and `unknown`), and a
+network-health check feeds a throttle level in the range 0 to 5 (0 means no downloads); a player-profile setting is another switch. I did not trace the last two to the end, so I cannot say which of them matters
+on a given PC. The support bundle therefore carries what Windows reports (level, cost, adapters and their state, never addresses) and what the game's own cache holds, so a PC where the level is fine and nothing is
+asked can be told apart from one where the level is the cause.
+
+## 11. Windows can ignore a correct hosts block
+
+The whole redirect rests on Windows answering from the hosts file. Three ways that fails without the block being wrong:
+
+- **There is no hosts file.** Some tweak tools delete it. The toolkit used to fail on every start with a bare "No such file or directory"; a missing file is now an empty one, and the first Apply creates it.
+- **The file is not in the usual place.** Windows reads it from the folder named by `DataBasePath` under `HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters`. The toolkit now edits that one when it differs from the default.
+- **The file is saved as UTF-16** (Notepad's "Unicode"). Windows does not read such a file, and an edit made as if it were UTF-8 would mix two encodings. It is now decoded properly and written back as plain UTF-8, with a backup.
+
+Beyond that, a block can be present and correct while the resolver still answers from DNS: the usual suspects are security software with hosts-file protection and VPN or DNS tools that answer lookups themselves.
+Flushing the DNS cache does not change that, which is why the Doctor now says so instead of offering it again and again.

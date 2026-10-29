@@ -26,10 +26,16 @@ class HostsError(Exception):
 def read(path=None):
     """-> (text, newline). Decoding is lossless for our purposes (utf-8, falling back to latin-1)."""
     p = path or paths.hosts_path()
-    raw = open(p, 'rb').read()
-    try: text = raw.decode('utf-8')
-    except UnicodeDecodeError: text = raw.decode('latin-1')
-    nl = '\r\n' if raw.count(b'\r\n') >= raw.count(b'\n') - raw.count(b'\r\n') and b'\r\n' in raw else ('\n' if b'\n' in raw else '\r\n')
+    try: raw = open(p, 'rb').read()
+    except FileNotFoundError: return '', '\r\n'               # no hosts file at all (some tweak and "debloat" tools delete it): the same as an empty one; apply creates it
+    if raw[:2] in (b'\xff\xfe', b'\xfe\xff'):                   # saved as UTF-16 (Notepad's "Unicode"): Windows does not read such a file, and it is written back as UTF-8
+        try: text = raw.decode('utf-16')
+        except UnicodeDecodeError: text = raw.decode('latin-1')
+    else:
+        try: text = raw.decode('utf-8')
+        except UnicodeDecodeError: text = raw.decode('latin-1')
+    crlf = text.count('\r\n')
+    nl = '\r\n' if crlf >= text.count('\n') - crlf and crlf else ('\n' if '\n' in text else '\r\n')
     return text, nl
 
 
@@ -96,7 +102,7 @@ def _block_lines():
 def compute(text, mode, force=False):
     """-> new text for mode 'apply' | 'remove' (not yet written)."""
     p = parse(text); lines = list(p['lines'])
-    nl = '\r\n' if '\r\n' in text else '\n'
+    nl = '\r\n' if '\r\n' in text or not text else '\n'
     bad = [f for f in p['foreign'] if f[1] not in LOOPBACK]
     if mode == 'apply' and bad and not force:
         raise HostsError(f'{paths.HOST} is mapped to a non-loopback address outside our block (line {bad[0][0] + 1}: {bad[0][2].strip()}); refusing without force')
@@ -129,7 +135,9 @@ def diff(old, new):
 
 
 def backup(path=None, tag=''):
+    """Copy of the hosts file into the backup folder; None when there is no hosts file to copy."""
     p = path or paths.hosts_path(); paths.ensure_dirs()
+    if not os.path.exists(p): return None
     dst = os.path.join(paths.HOSTS_BACKUPS, f"hosts.{time.strftime('%Y%m%d-%H%M%S')}{tag}")
     n = 1
     while os.path.exists(dst): n += 1; dst = f"{dst.rsplit('.', 1)[0]}.{time.strftime('%Y%m%d-%H%M%S')}{tag}-{n}"
@@ -137,8 +145,14 @@ def backup(path=None, tag=''):
     return dst
 
 
+def _backup_key(p):
+    """Newest first: the time in the name, then the number added when several backups share a second (-2, ... -10: by value, not as text)."""
+    m = re.match(r'hosts\.(\d{8}-\d{6})(?:.*?-(\d+))?$', os.path.basename(p))
+    return (m.group(1), int(m.group(2) or 1)) if m else (os.path.basename(p), 0)
+
+
 def list_backups():
-    return sorted(glob.glob(os.path.join(glob.escape(paths.HOSTS_BACKUPS), 'hosts.*')), reverse=True)
+    return sorted(glob.glob(os.path.join(glob.escape(paths.HOSTS_BACKUPS), 'hosts.*')), key=_backup_key, reverse=True)
 
 
 def _denied_hint(p):
@@ -150,21 +164,35 @@ def _denied_hint(p):
     return 'something is blocking writes to it - usually security software with hosts-file protection (pause it, or allow python.exe), or a changed file ACL'
 
 
-def write(new_text, path=None):
-    """Backup, write in place, read back and verify; roll back on mismatch. Returns the backup path."""
+def friendly(e, path=None):
+    """The reason a hosts-file read or write failed, in words (Windows' own text for a refused read is only 'Permission denied')."""
     p = path or paths.hosts_path()
-    old = open(p, 'rb').read()
+    if isinstance(e, PermissionError): return f'Windows refused access to {p} ({e}); {_denied_hint(p)}'
+    return str(e)
+
+
+def write(new_text, path=None):
+    """Backup, write in place, read back and verify; roll back on mismatch. Returns the backup path (None when there was no hosts file: it is created, and removed again on a failure)."""
+    p = path or paths.hosts_path()
+    old = open(p, 'rb').read() if os.path.exists(p) else None
     bk = backup(p)
     data = new_text.encode('utf-8')
+    if old is None:
+        try: os.makedirs(os.path.dirname(p), exist_ok=True)
+        except OSError as e: raise HostsError(f'the hosts file does not exist and its folder could not be created ({p}): {e}')
     try: f = open(p, 'wb')
     except PermissionError as e:       # refused before anything was truncated: nothing to roll back
         raise HostsError(f'cannot write {p} ({e}); {_denied_hint(p)}. The file was not changed; backup at {bk}')
+    except OSError as e:
+        raise HostsError(f'cannot write {p} ({e})')
     try:
         with f: f.write(data)
         if open(p, 'rb').read() != data: raise HostsError('read-back mismatch')
     except Exception as e:
         try:
-            with open(p, 'wb') as f: f.write(old)
+            if old is None: os.remove(p)
+            else:
+                with open(p, 'wb') as f: f.write(old)
         except Exception as e2: raise HostsError(f'write failed ({e}) AND rollback failed ({e2}); backup at {bk}')
         raise HostsError(f'write failed, rolled back ({e})')
     return bk
@@ -181,7 +209,9 @@ def apply(path=None, force=False, flush=True):
 
 
 def remove(path=None, flush=True):
-    p = path or paths.hosts_path(); text, _ = read(p); new = compute(text, 'remove')
+    p = path or paths.hosts_path()
+    if not os.path.exists(p): return dict(changed=False, backup=None)          # no hosts file: nothing of ours in it
+    text, _ = read(p); new = compute(text, 'remove')
     if new == text: return dict(changed=False, backup=None)
     bk = write(new, p)
     if flush: flush_dns()
@@ -204,6 +234,38 @@ def flush_dns():
         return r.returncode == 0
     except Exception:
         return False
+
+
+def file_facts(path=None):
+    """What a hosts file looks like to Windows, without its content: size, attributes, encoding, line count -> dict."""
+    p = path or paths.hosts_path(); out = dict(exists=os.path.exists(p))
+    if not out['exists']: return out
+    try:
+        raw = open(p, 'rb').read(); attrs = getattr(os.stat(p), 'st_file_attributes', 0)
+        enc = 'utf-16' if raw[:2] in (b'\xff\xfe', b'\xfe\xff') else 'utf-8 with a byte order mark' if raw[:3] == b'\xef\xbb\xbf' else None
+        if enc is None:
+            try: raw.decode('utf-8'); enc = 'ascii or utf-8'
+            except UnicodeDecodeError: enc = 'another code page'
+        out.update(size=len(raw), lines=raw.count(b'\n'), encoding=enc, nul_bytes=raw.count(b'\0'), readonly=bool(attrs & stat.FILE_ATTRIBUTE_READONLY), hidden=bool(attrs & stat.FILE_ATTRIBUTE_HIDDEN), system=bool(attrs & stat.FILE_ATTRIBUTE_SYSTEM))
+    except OSError as e: out['error'] = str(e)
+    return out
+
+
+def diagnose(path=None):
+    """Why Windows may answer from DNS although our block is in the hosts file. -> a sentence, or None when the file looks fine (then something outside the file is overriding it)."""
+    f = file_facts(path)
+    if not f.get('exists'): return 'the hosts file does not exist'
+    if f.get('encoding') == 'utf-16' or f.get('nul_bytes'):
+        return 'the hosts file is saved as UTF-16 (or holds NUL bytes), which Windows does not read; Apply writes it as plain UTF-8 and keeps a backup of the old one'
+    return None
+
+
+def resolver_report(path=None):
+    """Everything about name resolution that decides whether the hosts block takes effect, for the support bundle (no file content, no personal data)."""
+    from . import procs
+    p = path or paths.hosts_path()
+    return dict(hosts_file=file_facts(p), file_in_use_is_default=os.path.normcase(os.path.normpath(p)) == os.path.normcase(os.path.normpath(os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'drivers', 'etc', 'hosts'))),
+                data_base_path=paths.database_path(), dns_client_service_running=procs.service_running('Dnscache') if os.name == 'nt' else None, resolver=resolve_check(), diagnosis=diagnose(p))
 
 
 def resolve_check(timeout=3.0):

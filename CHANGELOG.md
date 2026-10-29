@@ -7,6 +7,23 @@
   base game even with a complete offline copy, and every other Doctor row can still be green. The row shows a warning in that case and explains what is needed; the Getting started guide has a new section, *A PC with no network card*
   (a virtual adapter is enough). The new text is translated into all languages.
 - **Change: "Upstream CDN: edge not reachable" is no longer a warning when the offline copy is complete or the profile uses only the offline copy.** The internet is not needed there, so the row now says so as information.
+- **Fix: Start session failed with "No such file or directory: ...\drivers\etc\hosts" on a PC that has no hosts file.** Some tweak and "debloat" tools delete it. A missing file is now treated as an empty one: the first
+  *Turn on HD textures* creates it (with only our marked block), *Turn off* takes the block out again, and the Doctor says that the file itself is missing. Reading the file can also fail for other reasons (access
+  refused); that now says so in words instead of a bare error number.
+- **Fix: a hosts file saved as UTF-16 (Notepad's "Unicode") is read properly.** Windows ignores such a file, so the redirect could not work; the toolkit now decodes it correctly, writes it back as plain UTF-8
+  and keeps a backup, instead of mixing two encodings.
+- **Change: the hosts file the toolkit edits is the one Windows reads.** A PC can point Windows at another folder (the `DataBasePath` setting); the default place is used unless that folder exists.
+- **New: "Resolver diagnosis" in the Doctor.** When the hosts block is in the file but Windows still answers from DNS, the Doctor now says so and names the usual causes (security software with hosts-file protection,
+  a VPN or DNS tool, a group policy) instead of only offering *Flush DNS* again and again. The support bundle has a new `state/resolver.txt` (file size, encoding, attributes, the DNS Client service, what the
+  resolver returns; no file content).
+- **New: support bundle `state/network.txt` and `state/cache.txt`.** The first shows the connectivity level and cost Windows reports and the adapters and networks it sees (names and states only, no addresses). The
+  second shows the game's own cache per file (sizes, records, the size the game was told).
+- **New: "Disk guard" warning in the Doctor.** When the game's cache folder is already at three quarters of the guard's limit and the guard is set to end the game, the Doctor says how much room is left before it does.
+  The game's own cache files can start out large, which cut sessions short without a word.
+- **New: "Game cache" note in the Doctor** when the cache folder holds 10 GiB or more of data but its index lists no textures, with what to try.
+- **Change: a short session no longer looks like a failure.** The summary and the "nothing reached the helper" card now say that a short session often asks for little or nothing, because the game keeps what it
+  already received and asks mostly when you reach somewhere new.
+- **Fix: the list of hosts-file backups was out of order past nine backups made within one second** (`-10` sorted before `-9`).
 
 ## 0.4.4-beta
 **Fix: step 3 of the setup could fail with a raw Windows error on a damaged game-folder file system.**
