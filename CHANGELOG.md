@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+**After a game update the next download picks up the new chunks, the report stops calling live-served chunks "missing", and the Doctor can repair a hosts file that Windows cannot read.**
+
+- **Fix: Download did not fetch the chunks a game update added.** The downloader read the game's chunk lists once and never looked again. After an update (a new season, for example) the Texture pack tab counted the new chunks as "not mirrored yet", but
+  Download never queued them. Download now notices that the lists changed, adds the new chunks and keeps the ones you already have. *Re-init lists* uses your Texture pack scope instead of only the campaign lists, and the Doctor has a "Chunk lists" row that says when the lists changed.
+- **Change: the session report no longer calls everything outside the mirror "missing".** It now separates chunks that are in your chunk lists but not stored (Download fetches them) from chunks the game asked for that no list on your PC names. The second kind
+  is normal after a game update: they are served live from the CDN, the game receives them, and *Verify + repair* cannot change them because they are in no list.
+- **New: chunks outside the lists are remembered and downloaded too.** The helper notes them in `unlisted.txt` beside its log. The next Download (or `ccsmirror.py fetch-requested`) stores them in the mirror, so an offline copy answers them as well.
+- **New: "Hosts file permissions" row in the Doctor, with a *Repair hosts permissions* button.** Windows ignores a hosts file that its DNS Client service cannot read. The Doctor now checks the file's permissions (by group, no account names). When the file is unreadable it
+  offers to put the permissions back to the folder default and saves the old ones next to the hosts backups.
+- **Change: an unexplained Resolver mismatch is a warning, not a failure.** When the block is in the file and nothing explains why the check still sees real addresses, the session now starts anyway, because the game may use the hosts file even where this check does
+  not. If the game has run for five minutes and no texture request has arrived, the log says so and why.
+- **New: more name-resolution facts in the support bundle** (`state/resolver.txt`): the file's permissions by group, the DNS Client's cache entry for the texture server, a second lookup path, the name-resolution layers Windows has installed, and the names of VPN, DNS and security services (names only).
+
 ## 0.4.5-beta
 **A PC with no hosts file now works, and the Doctor says why a PC with no network, or with a hosts block that Windows ignores, gets no textures.**
 

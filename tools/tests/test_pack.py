@@ -130,6 +130,36 @@ class MirrorScopeTests(MirrorCliBase):
         r = self.cli('init', '--scope', 'all'); self.assertIn('missing for: dmz, hq', r.stdout)
 
 
+class MirrorUpdateTests(MirrorCliBase):
+    def test_a_game_update_adds_new_chunks_to_the_next_download(self):
+        self.assertEqual(self.cli(*self.run_args('--scope', 'sp', '--level', 'ultra')).returncode, 0); self.assertEqual(len(self.stored_ids()), 7)
+        self.assertIs(pack.lists_changed(self.dir, self.root), False)
+        make_list(os.path.join(self.root, 'sp26', 'sp26_cdn.xpak'), [(i, W(i), 1 * MiB, 1) for i in (0x101, 0x102, 0x103, 0x104, 0x105, 0x106, 0x108)])      # the update added 0x108
+        self.assertIs(pack.lists_changed(self.dir, self.root), True)
+        r = self.cli(*self.run_args('--scope', 'sp', '--level', 'ultra')); self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(self.stored_ids()), 8); self.assertIn(0x108, self.stored_ids()); self.assertIn('chunk lists changed', r.stdout)
+        self.assertIs(pack.lists_changed(self.dir, self.root), False)
+        self.assertEqual(self.cli(*self.run_args('--scope', 'sp', '--level', 'ultra')).returncode, 0); self.assertEqual(json.load(open(self.pj))['queued'], 0)
+
+    def test_lists_changed_is_none_without_an_index_or_a_record(self):
+        self.assertIsNone(pack.lists_changed(os.path.join(TMP, 'no-mirror-here'), self.root))
+
+    def test_chunks_outside_the_lists_that_the_game_asked_for_are_downloaded_too(self):
+        self.assertEqual(self.cli(*self.run_args('--scope', 'sp', '--level', 'ultra')).returncode, 0)
+        path = f'/pc/iw9_3/23/{0x9f0 & 0xff:02x}/{0x9f0:016x}_{W(0x9f0):08x}_1'
+        open(os.path.join(self.work, 'unlisted.txt'), 'w', encoding='utf-8').write(path + '\nnot a chunk path\n' + path + '\n')
+        out = self.cli('fetch-requested').stdout; self.assertIn('1 new chunk(s) queued', out)
+        self.assertIn('nothing new', self.cli('fetch-requested').stdout)
+        self.assertEqual(self.cli(*self.run_args('--scope', 'sp', '--level', 'ultra')).returncode, 0)
+        self.assertIn(0x9f0, self.stored_ids()); self.assertEqual(os.path.getsize(os.path.join(self.dir, 'objects', f'{0x9f0 & 0xff:02x}', f'{0x9f0:016x}_{W(0x9f0):08x}_1')), W(0x9f0))
+        self.assertEqual(pack.plan('sp', None, 'ultra', root=self.root, mirror_dir=self.dir)['total']['chunks'], 7, 'the plan still counts only what the lists name')
+
+    def test_a_download_picks_up_what_the_proxy_noted_without_a_separate_step(self):
+        path = f'/pc/iw9_3/23/{0x9f1 & 0xff:02x}/{0x9f1:016x}_{W(0x9f1):08x}_1'
+        open(os.path.join(self.work, 'unlisted.txt'), 'w', encoding='utf-8').write(path + '\n')
+        self.assertEqual(self.cli(*self.run_args('--scope', 'sp', '--level', 'standard')).returncode, 0); self.assertIn(0x9f1, self.stored_ids())
+
+
 class MirrorMaintenanceTests(MirrorCliBase):
     def fill(self): self.assertEqual(self.cli(*self.run_args('--scope', 'all', '--level', 'ultra')).returncode, 0)
 

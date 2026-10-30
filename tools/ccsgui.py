@@ -420,7 +420,7 @@ class App(tk.Tk):
         ttk.Button(b, text='Kill now', style='Danger.TButton', command=lambda: self.say('mirror run killed' if mirrorctl.kill() else 'mirror run is not running')).pack(side='left', padx=4)
         ttk.Button(b, text='Verify 500 random', command=lambda: self._m_oneshot(['verify', '--n', '500'])).pack(side='left', padx=(16, 4))
         ttk.Button(b, text='Retry failed', command=lambda: self._m_oneshot(['retry-failed'])).pack(side='left', padx=4)
-        ttk.Button(b, text='Re-init lists', command=lambda: self._m_oneshot(['init'])).pack(side='left', padx=4)
+        ttk.Button(b, text='Re-init lists', command=lambda: self._m_oneshot(self._init_args())).pack(side='left', padx=4)
         pr = ttk.LabelFrame(f, text='Progress'); pr.pack(fill='x'); self.m_bar = ttk.Progressbar(pr, maximum=1000); self.m_bar.pack(fill='x', padx=10, pady=(8, 2))
         self.m_lbl = ttk.Label(pr, text='no run in progress'); self.m_lbl.pack(anchor='w', padx=10, pady=(0, 8))
         mid = ttk.Frame(f); mid.pack(fill='both', expand=True, pady=8)
@@ -444,11 +444,17 @@ class App(tk.Tk):
         if not mirrordb.writable(paths.MIRROR):
             messagebox.showerror('Mirror', f'You cannot write to the mirror folder:\n{paths.MIRROR}\n\nChoose a folder you can write to (Game tab, Mirror folder, then Save locations). A mirror that is already there is still used as it is.', parent=self); return
         if not self._bulk_ack(): return
-        if not os.path.exists(os.path.join(paths.MIRROR, 'index.sqlite')): self.say('mirror not initialised - running init first', 'WARN'); self._m_oneshot(['init']); return
+        if not os.path.exists(os.path.join(paths.MIRROR, 'index.sqlite')): self.say('mirror not initialised - running init first', 'WARN'); self._m_oneshot(self._init_args()); return
         kw = dict(self.cfg['mirror']); kw['tier'] = config.effective(self.cfg)['mirror']['tier']          # the Texture pack detail level sets the cap unless it is unlinked
         st = mirrorctl.start(**kw); self.say(f"mirror run started (pid {st['pid']}): workers={kw['workers']} tier<={kw['tier']:g}MiB budget={kw['budget_gib']}GiB (index rows, no scope filter)", 'OK')
 
     def do_mirror_pause(self): self.say('mirror: pause requested (in-flight objects finish)' if mirrorctl.pause() else 'mirror run is not running', 'OK')
+
+    def _init_args(self):
+        """`init` for the Texture pack scope (a bare `init` loads only the campaign lists)."""
+        pk = config.effective(self.cfg)['pack']; a = ['init', '--scope', pk['scope']]
+        if pk['scope'] == 'custom' and pk.get('packages'): a += ['--packages', pk['packages'] if isinstance(pk['packages'], str) else ','.join(pk['packages'])]
+        return a
 
     def _m_oneshot(self, args):
         if procs.status('mirror-' + args[0])['alive']: self.say(f'mirror {args[0]} is still running', 'WARN'); return
@@ -1146,6 +1152,9 @@ class App(tk.Tk):
                 win = self._game_ended()
                 # no live proxy needed: the report reads the proxy log, so it also works when the session was stopped while the game was still shutting down
                 self.say('game exited - generating the session report' + (' for this launch' if win else '')); self.bg('report', self._make_report, -1, win, True)
+            if g and not self._game_prev: self._noreq_warned = False; self._game_req0 = ps['stat']['req'] if ps else 0
+            if g and ps and not getattr(self, '_noreq_warned', True) and time.time() - self.game_start > 300 and ps['stat']['req'] - getattr(self, '_game_req0', 0) <= 0:
+                self._noreq_warned = True; threading.Thread(target=self._warn_no_traffic, daemon=True).start()
             self._game_prev = bool(g)
             fr = s.get('free');
             if fr is not None: self.light('disk', 'fail' if fr < 20 else 'warn' if fr < 60 else 'ok', f'{fr:.0f} GiB free')
@@ -1154,6 +1163,14 @@ class App(tk.Tk):
             self.c_warn.configure(text='Game is running: the cache may be mid-write (read-only view; backup/restore/install are blocked).' if g else '')
         self._home_tick_safe()
         self.after(1000, self._refresh)
+
+    def _warn_no_traffic(self):
+        """The game has run 5 minutes and not one texture request reached the proxy: say why that can happen (menus are quiet; a hosts entry Windows ignores is the other reason)."""
+        try: r = hosts.resolve_check()
+        except Exception: r = None
+        if r and r['ok']: msg = i18n.t('No texture request has reached the tool in the 5 minutes since the game started. That is normal on menus; the name lookup is correct, so textures will be requested once a map loads.')
+        else: msg = i18n.t('No texture request has reached the tool in the 5 minutes since the game started, and Windows is not sending the texture server name to this PC ({0}). Run Check my PC, then Settings -> Save a support bundle.', hosts.diagnose() or i18n.t('something outside the hosts file overrides it: a VPN, DNS or security program'))
+        self.q.put(('ask', lambda: self.say(msg, 'OK' if r and r['ok'] else 'WARN')))
 
     def _refresh_counters(self, ps, s):
         if not ps:
@@ -1385,7 +1402,7 @@ class App(tk.Tk):
             tk.Label(self.doc_frame, text='●', fg=col[r['level']], bg=BG, font=('Segoe UI', 12)).grid(row=i, column=0, padx=(8, 4), pady=3, sticky='n')
             ttk.Label(self.doc_frame, text=r['name'], style='H.TLabel', width=20).grid(row=i, column=1, sticky='nw', pady=3)
             ttk.Label(self.doc_frame, text=r['detail'], wraplength=640, justify='left').grid(row=i, column=2, sticky='nw', pady=3, padx=6)
-            if r.get('fix'): ttk.Button(self.doc_frame, text='Fix: ' + {'hosts_apply': 'apply hosts (UAC)', 'flush_dns': 'flush DNS (UAC)', 'start_proxy': 'start proxy', 'restart_proxy': 'restart proxy', 'kill_port_owner': 'stop port owner', 'stop_service': 'stop web service (UAC)', 'game_fix': 'set up the game', 'game_undo': 'undo the game setup'}[r['fix'][0]],
+            if r.get('fix'): ttk.Button(self.doc_frame, text='Fix: ' + {'hosts_apply': 'apply hosts (UAC)', 'flush_dns': 'flush DNS (UAC)', 'hosts_acl': 'repair hosts permissions (UAC)', 'start_proxy': 'start proxy', 'restart_proxy': 'restart proxy', 'kill_port_owner': 'stop port owner', 'stop_service': 'stop web service (UAC)', 'game_fix': 'set up the game', 'game_undo': 'undo the game setup'}[r['fix'][0]],
                                            command=lambda fx=r['fix'], n=r['name']: self.do_fix(fx, n)).grid(row=i, column=3, padx=8, pady=2, sticky='ne')
         self.doc_frame.columnconfigure(2, weight=1)
 
@@ -1530,7 +1547,7 @@ class App(tk.Tk):
             try: report.save_snapshot(post, os.path.join(paths.SESSIONS, time.strftime('baseline-%Y%m%d-%H%M%S.json')))
             except OSError: pass
         self._report_key = key; r = rep['requests']; c = rep.get('cache', {}); g = rep.get('mirror_gaps', {})
-        self.say(f"report saved: {m}\n  requests={r['total']} unique={r['unique_ids']} >4MiB ids={rep['over_4mib']['ids']} mirror-gaps={g.get('missing_count', '?')} already-in-cache={c.get('requested_pct_already_in_cache', '?')}%", 'OK')
+        self.say(f"report saved: {m}\n  requests={r['total']} unique={r['unique_ids']} >4MiB ids={rep['over_4mib']['ids']} not-in-mirror={g.get('listed_missing_count', g.get('missing_count', '?'))} unlisted-served-live={g.get('unlisted_count', 0)} already-in-cache={c.get('requested_pct_already_in_cache', '?')}%", 'OK')
         self.q.put(('ask', lambda: (self._show_report(md), self._refresh_runs(), self._goto('Report') if not auto else None)))
 
     def _read_proxy_form(self):

@@ -137,6 +137,16 @@ afterwards. The game asks for its textures at the content server's name and the 
    came from your offline copy. If the *Mirror* light says "off" while the session runs, no copy was found in the mirror folder: check the folder, and that the profile is not *Capture* (which uses no mirror).
 4. **How textures load.** *While I play* or *From my offline copy* (the first-run question, or Settings) only changes what the window shows; the button switches between them at any time.
 
+## After a game update (a new season)
+
+A game update can add new chunk lists next to the old ones. The mirror keeps what it has; only the new chunks are missing.
+
+1. Update the game first (Steam, or the launcher you use), and start it once if the update asks for that, so its new chunk lists are on disk.
+2. Open the Texture pack tab and press **Download** again. It notices that the game's chunk lists changed, adds the new chunks to the list of things to fetch and stores only those; what you already have is kept. The Doctor's *Chunk lists* row says when the lists changed.
+3. Chunks that no list names (the report says "not in any chunk list on this PC") are served live from the CDN and noted in `unlisted.txt` next to the helper's log; the next Download stores them as well, so an offline copy answers them too.
+
+*Verify + repair* only re-checks chunks that are already stored. It cannot add new content, and it does not touch chunks that are in no list.
+
 ## Game setup: online mode and the cache link
 
 Streaming only helps if the game then uses what it received. In a game folder that has a `sp26\steam_settings` folder, two things can stop that:
@@ -224,7 +234,9 @@ Automatic uses the language you picked in the installer, else the Windows displa
 | Proxy not answering | Doctor, Fix: restart proxy. The traceback is in `tools\work\run\proxy.out` |
 | Report missing | Reports are written when the game process exits; if you stopped the session first, press *Generate report* in the Report tab |
 | *No such file or directory ... drivers\etc\hosts* when starting a session, or the Doctor says the hosts file itself does not exist | Windows has no hosts file (some tweak tools delete it). It is treated as an empty file; *Turn on HD textures* (or the Doctor's *Apply*) creates it with only our marked block, and *Turn off* takes the block out again |
-| The Doctor's *Resolver* row fails although *Hosts override* is OK | The block is in the file but Windows still answers from DNS. *Flush DNS* does not help then. See *Resolver diagnosis* in the Doctor and [Getting started](GETTING-STARTED.md#when-something-goes-wrong): usually security software with hosts-file protection, a VPN or a DNS tool, or a hosts file saved as UTF-16 (the tool now rewrites it as UTF-8 and keeps a backup) |
+| The Doctor's *Resolver* row fails or warns although *Hosts override* is OK | The block is in the file but Windows still answers from DNS. *Flush DNS* does not help then. See *Resolver diagnosis* and *Hosts file permissions* in the Doctor and [Getting started](GETTING-STARTED.md#when-something-goes-wrong): usually a hosts file the DNS Client service cannot read (the Doctor offers *Repair hosts permissions*), security software with hosts-file protection, a VPN or a DNS tool, or a hosts file saved as UTF-16 (the tool rewrites it as UTF-8 and keeps a backup). A warning does not stop the session: start the game, and the log says if no texture request arrives |
+| The report lists ids "not in any chunk list on this PC" | The game asked for chunks that none of your chunk lists names (common after a game update). The helper served them live from the CDN and the game received them; nothing is wrong and *Verify + repair* cannot change them. Press **Download** to store them in the mirror, see *After a game update* above |
+| After a game update the Texture pack tab shows chunks "not mirrored yet" | Press **Download**: it notices that the game's chunk lists changed and fetches only the new chunks |
 | Nothing reaches the helper and the PC has no network adapter | Windows reports "no network", and the game then asks for no textures at all. See *A PC with no network card* in [Getting started](GETTING-STARTED.md#a-pc-with-no-network-card); the Doctor's *Windows network status* row shows it |
 | Want help | Doctor, *Export support bundle* (a zip with logs, settings and facts about name resolution, the network and the game cache: no game files, no file content, no addresses) and attach it to an issue after checking its contents |
 
@@ -245,9 +257,9 @@ hosts file at all, add the two lines the *Hosts* tab shows yourself (`ccshosts.p
 
 | Tool | Purpose |
 |---|---|
-| `ccshosts.py status \| diff \| apply \| remove \| verify \| flush \| backups \| restore-backup` | hosts manager (`--elevate` asks for UAC unless already administrator) |
+| `ccshosts.py status \| diff \| apply \| remove \| verify \| flush \| repair-acl \| backups \| restore-backup` | hosts manager (`--elevate` asks for UAC unless already administrator) |
 | `ccsproxy.py --origin <mirror> [--offline] [--max-raw-mib N]` | the proxy |
-| `ccsmirror.py plan \| init \| run \| status \| verify \| prune \| retry-failed` | the mirror |
+| `ccsmirror.py plan \| init \| run \| status \| verify \| prune \| retry-failed \| fetch-requested` | the mirror |
 | `ccsreport.py --list \| --segment N [--from HH:MM:SS --to HH:MM:SS]` | session reports |
 | `diskguard.py --limit-gib N --action kill\|warn` | cache size guard |
 | `ccs.py --ccs-run gamefix status \| apply \| undo` (packaged: `ccs-cli.exe --ccs-run gamefix ...`) | game setup, see above |

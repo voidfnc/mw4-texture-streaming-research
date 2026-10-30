@@ -10,7 +10,7 @@ Rules: never touch other lines (except adopting our own hand-added loopback line
 timestamped backup before every write; in-place write (keeps the file's ACL) with read-back verify + rollback;
 refuse to replace a foreign mapping of HOST to a non-loopback address unless force=True.
 """
-import difflib, glob, os, re, shutil, socket, stat, subprocess, time
+import difflib, glob, json, os, re, shutil, socket, stat, subprocess, time
 from . import paths
 
 BEGIN = '# >>> ccs-managed (MW4 texture CDN loopback) >>>'
@@ -265,7 +265,76 @@ def resolver_report(path=None):
     from . import procs
     p = path or paths.hosts_path()
     return dict(hosts_file=file_facts(p), file_in_use_is_default=os.path.normcase(os.path.normpath(p)) == os.path.normcase(os.path.normpath(os.path.join(os.environ.get('SystemRoot', r'C:\Windows'), 'System32', 'drivers', 'etc', 'hosts'))),
-                data_base_path=paths.database_path(), dns_client_service_running=procs.service_running('Dnscache') if os.name == 'nt' else None, resolver=resolve_check(), diagnosis=diagnose(p))
+                data_base_path=paths.database_path(), dns_client_service_running=procs.service_running('Dnscache') if os.name == 'nt' else None, resolver=resolve_check(), diagnosis=diagnose(p),
+                permissions=acl_facts(p) if os.name == 'nt' else None, windows=resolver_extra() if os.name == 'nt' else None)
+
+
+# SIDs of the groups the DNS Client service (it runs as Network Service) is a member of: a read right for any of them lets it read the hosts file
+_DNS_READERS = {'S-1-1-0': 'Everyone', 'S-1-5-32-545': 'Users', 'S-1-5-11': 'Authenticated Users', 'S-1-5-20': 'Network Service'}
+_SID_NAMES = dict(_DNS_READERS, **{'S-1-5-18': 'SYSTEM', 'S-1-5-19': 'Local Service', 'S-1-5-32-544': 'Administrators', 'S-1-5-32-546': 'Guests'})
+_READ_WORDS = {'FullControl', 'Modify', 'ReadAndExecute', 'Read', 'ReadData', 'ListDirectory'}
+
+
+def _rights_read(rights):
+    """Does a FileSystemRights text (or number, for generic rights) include the right to read the file's content?"""
+    r = str(rights).strip()
+    try: return bool(int(r) & 0xFFFFFFFF & (0x80000000 | 0x10000000 | 0x1 | 0x20000))
+    except ValueError: pass
+    return any(w.strip() in _READ_WORDS for w in r.split(','))
+
+
+def acl_can_read(entries):
+    """entries: [{sid, type, rights}] of the hosts file -> True when the DNS Client service may read it, False when nothing grants it or a deny takes it away."""
+    allow = any(e.get('type') == 'Allow' and e.get('sid') in _DNS_READERS and _rights_read(e.get('rights')) for e in entries)
+    deny = any(e.get('type') == 'Deny' and e.get('sid') in _DNS_READERS and _rights_read(e.get('rights')) for e in entries)
+    return allow and not deny
+
+
+def _ps_json(script, timeout=25):
+    """Run a PowerShell snippet that returns an object -> parsed JSON; dict(error=...) on a failure."""
+    try:
+        r = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script + ' | ConvertTo-Json -Depth 4 -Compress'], capture_output=True, text=True, errors='replace', timeout=timeout, creationflags=0x08000000)
+        return json.loads(r.stdout) if r.stdout.strip() else ([] if not r.stderr.strip() else dict(error=r.stderr.strip()[:200]))      # an empty list prints nothing
+    except Exception as e: return dict(error=str(e))
+
+
+def acl_facts(path=None, ps=None):
+    """Who may do what with the hosts file, by well-known group (no account names), and whether the DNS Client service can read it. None when it cannot be told (not Windows, no PowerShell)."""
+    p = path or paths.hosts_path(); q = p.replace("'", "''")
+    d = (ps or _ps_json)("$a = Get-Acl -LiteralPath '" + q + "'; @{protected = [bool]$a.AreAccessRulesProtected; entries = @($a.Access | ForEach-Object { @{sid = $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value; type = [string]$_.AccessControlType; rights = [string]$_.FileSystemRights; inherited = [bool]$_.IsInherited} })}")
+    if not isinstance(d, dict) or 'entries' not in d: return None
+    es = d['entries'] if isinstance(d['entries'], list) else [d['entries']]
+    es = [e for e in es if isinstance(e, dict)]
+    return dict(inheritance_blocked=bool(d.get('protected')), dns_client_can_read=acl_can_read(es),
+                entries=[dict(who=_SID_NAMES.get(e.get('sid'), 'another account'), type=e.get('type'), rights=e.get('rights'), inherited=bool(e.get('inherited'))) for e in es])
+
+
+def repair_acl(path=None):
+    """Put the hosts file's permissions back to what its folder gives (a copy of the old ones is kept next to the hosts backups). Needs administrator rights."""
+    p = path or paths.hosts_path(); paths.ensure_dirs()
+    keep = os.path.join(paths.HOSTS_BACKUPS, time.strftime('hostsacl.%Y%m%d-%H%M%S.txt'))
+    s = subprocess.run(['icacls', p, '/save', keep], capture_output=True, text=True, errors='replace', timeout=30, creationflags=0x08000000)
+    if s.returncode != 0: raise HostsError(f'could not save the current permissions ({(s.stdout + s.stderr).strip()[:200]}); nothing was changed')
+    r = subprocess.run(['icacls', p, '/reset'], capture_output=True, text=True, errors='replace', timeout=30, creationflags=0x08000000)
+    if r.returncode != 0: raise HostsError(f'icacls /reset failed: {(r.stdout + r.stderr).strip()[:200]}; the old permissions are saved in {keep}')
+    return dict(changed=True, saved=keep)
+
+
+VPN_DNS_SECURITY = ('nord', 'openvpn', 'expressvpn', 'protonvpn', 'wireguard', 'mullvad', 'surfshark', 'cyberghost', 'privateinternetaccess', 'windscribe', 'tailscale', 'zerotier', 'cloudflarewarp', 'adguard', 'nextdns',
+                    'kaspersky', 'avp', 'avast', 'avg', 'norton', 'mcafee', 'bitdefender', 'vsserv', 'ekrn', 'malwarebytes', 'sophos', 'webroot', 'spybot', 'pdanet', 'proxifier', 'sandboxie', 'acrylic', 'simplednscrypt')
+
+
+def resolver_extra(ps=None):
+    """For the support bundle: how Windows itself answers for the CDN name (DNS Client cache entry, a second lookup path), the name-resolution layers installed, and the names of VPN, DNS or security services present."""
+    run = ps or _ps_json; h = paths.HOST
+    out = dict(dns_client_cache=run("@(Get-DnsClientCache -Entry '" + h + "' -ErrorAction SilentlyContinue | Select-Object Entry,Type,Status,Data)"),
+               dotnet_lookup=run("@([System.Net.Dns]::GetHostAddresses('" + h + "') | ForEach-Object { $_.IPAddressToString })"),
+               namespace_providers=run("@(Get-ChildItem 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WinSock2\\Parameters\\NameSpace_Catalog5\\Catalog_Entries' -ErrorAction SilentlyContinue | ForEach-Object { $p = Get-ItemProperty $_.PSPath; @{library = [string]$p.LibraryPath; enabled = $p.Enabled} })"),
+               nrpt_policies=run("@(Get-DnsClientNrptPolicy -ErrorAction SilentlyContinue).Count"))
+    sv = run("@(Get-Service | Select-Object Name,Status)")
+    if isinstance(sv, list): out['vpn_dns_security_services'] = sorted(f"{s.get('Name')}: {s.get('Status')}" for s in sv if isinstance(s, dict) and any(k in str(s.get('Name', '')).lower() for k in VPN_DNS_SECURITY))
+    else: out['vpn_dns_security_services'] = sv
+    return out
 
 
 def resolve_check(timeout=3.0):

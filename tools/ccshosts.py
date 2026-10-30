@@ -7,6 +7,7 @@
   python tools/ccshosts.py remove                     # needs admin; restores normal DNS for the CDN host
   python tools/ccshosts.py verify                     # what the system resolver returns (v4/v6)
   python tools/ccshosts.py flush
+  python tools/ccshosts.py repair-acl                # needs admin: hosts file permissions back to the folder default (old ones saved)
   python tools/ccshosts.py backups | restore-backup NAME
 
 Common: --elevate (re-run via UAC), --result-file PATH (JSON result; used by the GUI because an elevated child cannot pipe).
@@ -19,12 +20,12 @@ from ccslib import hosts, launch, procs, paths
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='ccshosts', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('cmd', choices=('status', 'diff', 'apply', 'remove', 'verify', 'flush', 'backups', 'restore-backup'))
+    ap.add_argument('cmd', choices=('status', 'diff', 'apply', 'remove', 'verify', 'flush', 'repair-acl', 'backups', 'restore-backup'))
     ap.add_argument('arg', nargs='?')
     ap.add_argument('--json', action='store_true'); ap.add_argument('--force', action='store_true'); ap.add_argument('--no-flush', action='store_true')
     ap.add_argument('--elevate', action='store_true'); ap.add_argument('--result-file')
     a = ap.parse_args(argv)
-    writes = a.cmd in ('apply', 'remove', 'flush', 'restore-backup')
+    writes = a.cmd in ('apply', 'remove', 'flush', 'repair-acl', 'restore-backup')
     if writes and a.elevate and not procs.is_admin() and not os.environ.get('CCS_HOSTS_PATH'):
         rf = a.result_file or os.path.join(paths.RUN, 'hosts-result.json'); paths.ensure_dirs()
         if os.path.exists(rf): os.remove(rf)
@@ -43,6 +44,7 @@ def main(argv=None):
         elif a.cmd == 'remove': res.update(hosts.remove(flush=not a.no_flush))
         elif a.cmd == 'verify': res.update(hosts.resolve_check())
         elif a.cmd == 'flush': res['flushed'] = hosts.flush_dns()
+        elif a.cmd == 'repair-acl': res.update(hosts.repair_acl()); res['flushed'] = hosts.flush_dns()
         elif a.cmd == 'backups': res['backups'] = hosts.list_backups()
         elif a.cmd == 'restore-backup': res.update(hosts.restore_backup(a.arg, flush=not a.no_flush))
         if a.cmd in ('apply', 'remove', 'restore-backup'): res['state'] = hosts.status()['state']

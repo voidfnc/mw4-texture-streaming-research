@@ -30,6 +30,7 @@ PAT = re.compile(r'^/pc/iw9_3/23/([0-9a-f]{2})/([0-9a-f]{16})_([0-9a-f]{8})_([01
 NOSTAT = collections.defaultdict(int)     # where a probe's counts go
 lock = threading.Lock(); stat = dict(req=0, ok=0, skip=0, miss=0, err=0, retry=0, cliabort=0, mirror=0, bytes=0, mbytes=0)
 RAW = {}
+UNLISTED = set()      # chunk paths the game asked for that are in no chunk list on this PC (new content): served from the CDN and noted for `ccsmirror fetch-requested`
 SKIPS = collections.Counter()      # tier-withheld ids -> how often the engine asked again (does a 404 cause a retry storm?)
 # observability for the GUI (ccsgui.py): per-tier request histogram + last requests, exposed via GET /__ccs/stats and --stats-json
 TIERS = [('<=64K', 2**16), ('<=256K', 2**18), ('<=1M', 2**20), ('<=4M', 2**22), ('<=8M', 2**23), ('<=16M', 2**24), ('>16M', None)]
@@ -78,6 +79,15 @@ def log(m):
     l = f"{time.strftime('%H:%M:%S')} {m}"
     with lock:
         print(l, flush=True); open(LOG, 'a', encoding='utf-8').write(l + '\n')
+
+def note_unlisted(path):
+    """Remember one live-served chunk that no chunk list knows (one line per path, in unlisted.txt beside the log)."""
+    with lock:
+        if path in UNLISTED: return
+        UNLISTED.add(path)
+        try:
+            with open(os.path.join(os.path.dirname(LOG), 'unlisted.txt'), 'a', encoding='utf-8') as f: f.write(path + '\n')
+        except OSError: pass
 
 def load_index():
     for fn in cdnxpak.find_all(ROOT):
@@ -205,6 +215,7 @@ class H(BaseHTTPRequestHandler):
             if r.status in (200, 206): st['ok'] += 1
             else: st['miss'] += 1
         if m: rec(path, int(m.group(2), 16), RAW.get(int(m.group(2), 16)), 'upstream', r.status, len(body), ms=self.ms())
+        if m and r.status == 200 and self.command == 'GET' and not probe and int(m.group(2), 16) not in RAW: note_unlisted(path)
         lg(f"{self.command} {path} -> {r.status} {len(body)}B {note} range={self.headers.get('Range','-')} total={st['bytes']/2**30:.3f}GiB")
 
 class S6(ThreadingHTTPServer):

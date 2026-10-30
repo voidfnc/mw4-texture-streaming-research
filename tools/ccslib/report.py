@@ -231,7 +231,10 @@ def build(seg, catalogue=None, mirror_ids=None, baseline=None, post=None, cfg=No
     rep['over_4mib'] = dict(ids=len(big), top=[dict(id=f'{i:016x}', raw_mib=round(raw / 2**20, 2), requests=by_id[i]) for raw, i in big[:20]])
     rep['unknown_ids'] = len(unknown)
     # mirror gaps: requested ids not stored in the mirror
-    if mirror_ids is not None: rep['mirror_gaps'] = dict(ids=sum(1 for i in uids if i in mirror_ids), missing=[f'{i:016x}' for i in sorted(uids) if i not in mirror_ids][:50], missing_count=sum(1 for i in uids if i not in mirror_ids))
+    if mirror_ids is not None:
+        miss = sorted(i for i in uids if i not in mirror_ids); unl = [i for i in miss if i not in cat]
+        rep['mirror_gaps'] = dict(ids=sum(1 for i in uids if i in mirror_ids), missing=[f'{i:016x}' for i in miss][:50], missing_count=len(miss),
+                                  listed_missing_count=len(miss) - len(unl), unlisted=[f'{i:016x}' for i in unl][:50], unlisted_count=len(unl))
     # engine cache: re-request rate + growth
     b = _ids(baseline); p = _ids(post)
     if b is not None and uids:
@@ -278,7 +281,9 @@ def to_markdown(rep, prev=None):
     if rep.get('timeline'):
         L += ['', '## Timeline (per minute)', '', '| min | requests | MiB | ids >4 MiB |', '|---:|---:|---:|---:|'] + [f"| {x['minute']} | {x['requests']} | {x['mib']} | {x['big']} |" for x in rep['timeline']]
     if 'mirror_gaps' in rep:
-        g = rep['mirror_gaps']; L += ['', f"## Mirror coverage", '', f"requested ids missing from the mirror: **{g['missing_count']}**" + (f" (first: {', '.join(g['missing'][:8])})" if g['missing_count'] else ' (mirror covers everything the game asked for)')]
+        g = rep['mirror_gaps']; lm = g.get('listed_missing_count', g['missing_count']); un = g.get('unlisted_count', 0)
+        L += ['', '## Mirror coverage', '', 'every requested id is in the mirror' if not g['missing_count'] else f'requested ids in your chunk lists but not stored in the mirror: **{lm}** (Texture pack -> Download fetches them)']
+        if un: L += [f"requested ids that are not in any chunk list on this PC: **{un}** (first: {', '.join(g.get('unlisted', [])[:8])}) - they were served live from the CDN, which is normal after a game update; Verify + repair cannot change them"]
     if 'cache' in rep:
         c = rep['cache']; L += ['', '## Engine cache (xpak_cache)', '']
         for k, v in c.items(): L.append(f"- {k}: {v}")
