@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.7-beta
 **Corrects earlier advice for a PC with no network card: a virtual adapter with only an address does not make Windows report a connection.**
 
 - **Fix: the Doctor and the guide no longer say that a virtual adapter is enough.** Measured on a PC with no network card: Windows reports level 1 ("none") both with no adapter and with a loopback adapter that has only an address, and the game asks for nothing at level 1.
