@@ -89,14 +89,22 @@ The Home screen shows a short card with the likely cause and a button. The usual
 The game only asks for textures while Windows reports some network connection. It does not matter that the pieces are on your own drive: with no adapter at all (no cable, no Wi-Fi, no network card) the game never asks, and the textures stay as they are in the base game.
 *Check my PC* shows this as **Windows network status**. The tool itself needs no internet once your offline copy is complete.
 
-What is needed is a network adapter that Windows sees as connected, not a real connection. A virtual one is enough:
+What is needed is a network adapter that Windows sees as connected, not a real connection. Windows reports "no network" while an adapter has only an address: it also needs a route toward the internet (a default gateway) before it reports a connection. A virtual adapter with an address and a gateway is the thing to try:
 
 1. Open *Device Manager*, click any entry in the list, then *Action, Add legacy hardware*, *Next*, choose *Install the hardware that I manually select from a list*.
 2. Pick *Network adapters*, then the manufacturer *Microsoft* and the adapter *Microsoft KM-TEST Loopback Adapter*, and finish the wizard.
-3. In *Network Connections*, open the properties of the new adapter, then *Internet Protocol Version 4*, and give it a fixed address such as `192.168.250.1` with mask `255.255.255.0` and no gateway.
-4. Open *Check my PC* again: *Windows network status* should now be OK. Restart the game after that; the game reads the status when it starts and when it changes.
+3. In *Network Connections*, open the properties of the new adapter, then *Internet Protocol Version 4*, and give it a fixed address such as `192.168.250.1` with mask `255.255.255.0` and a default gateway on the same subnet such as `192.168.250.254` (nothing has to answer at that address). An address alone is not enough: Windows still reports no network then.
+4. Wait about 30 seconds (Windows checks the connection in the background) and open *Check my PC* again: *Windows network status* should now be OK. Restart the game after that; the game reads the status when it starts and when it changes.
 
-This changes network settings on your PC, so it is left to you and nothing in this tool does it for you. It has not been tested on a PC that has no network card at all, and it may not be enough on its own: the game has other conditions before it asks for textures that this tool cannot see. Two things help to find out which one applies:
+This changes network settings on your PC, so it is left to you and nothing in this tool does it for you. The gateway step has not been confirmed on a PC that has no network card at all, so treat it as the next thing to try, not as a promise. To see what Windows reports while you change a setting, this reads the same value the game reads and changes nothing (stop it with Ctrl+C); level 1 means none, 2 local only, 3 internet:
+
+```
+$sig = '[StructLayout(LayoutKind.Sequential)] public struct Hint { public int Level; public int Cost; public byte A; public byte O; public byte R; } [DllImport("iphlpapi.dll")] public static extern uint GetNetworkConnectivityHint(out Hint h);'
+Add-Type -Namespace Ccs -Name Net -MemberDefinition $sig
+while ($true) { $h = New-Object Ccs.Net+Hint; [Ccs.Net]::GetNetworkConnectivityHint([ref]$h) | Out-Null; "{0} level={1} cost={2} ipv4={3}" -f (Get-Date -Format T), $h.Level, $h.Cost, ((Get-NetConnectionProfile | ForEach-Object { $_.IPv4Connectivity }) -join ','); Start-Sleep 3 }
+```
+
+The game may have other conditions before it asks for textures that this tool cannot see. Two things help to find out which one applies:
 
 - If the *Windows network status* row still shows its warning after the steps above, check in *Network Connections* that the new adapter shows as *Enabled* and not as *Network cable unplugged*.
 - If the row is OK and the game still asks for nothing, export the support bundle (Advanced mode, Doctor) and attach it to an issue: `state/network.txt` shows what Windows reports (the connectivity level, the adapters and their state, no addresses), and `state/cache.txt` shows what the game's own cache holds.

@@ -179,10 +179,27 @@ def check_network():
     lv = network_level()
     if lv is None: return _c('Windows network status', 'info', 'not available on this version of Windows')
     if lv == NETWORK_LEVEL_NONE:
-        return _c('Windows network status', 'warn', 'Windows reports no network connection at all (no network adapter that is switched on). The game checks this and then does not ask for any textures, '
-                                                    'not even from your offline copy. Give Windows a network adapter that is connected (a virtual one is enough, see "A PC with no network card" in the Getting started guide), then restart the game')
+        return _c('Windows network status', 'warn', 'Windows reports no network connection (level 1, "none"). The game checks this and then does not ask for any textures, not even from your offline copy. '
+                                                    'A virtual adapter that only has an address was measured to leave Windows at "none": Windows also needs a route toward the internet (a default gateway) before it reports a connection. '
+                                                    'See "A PC with no network card" in the Getting started guide, then restart the game')
     if lv == 2: return _c('Windows network status', 'ok', 'Windows reports a network connection without internet; the game still asks for textures, and your offline copy answers them')
     return _c('Windows network status', 'ok', 'Windows reports a network connection')
+
+
+def _count_json(script):
+    """A number from a PowerShell snippet, or None."""
+    v = _powershell_json(script)
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def check_network_detail():
+    """Only when Windows reports no connection: which piece of a virtual setup is missing (no adapter up, an adapter but no default route, or both present and Windows still catching up)."""
+    if network_level() != NETWORK_LEVEL_NONE: return None
+    up = _count_json("@(Get-NetAdapter | Where-Object Status -eq 'Up').Count"); routes = _count_json("@(Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue).Count")
+    if up is None or routes is None: return None
+    if not up: return _c('Windows network detail', 'info', 'No network adapter is switched on.')
+    if not routes: return _c('Windows network detail', 'info', 'An adapter is up, but Windows has no default route; that is what is still missing.')
+    return _c('Windows network detail', 'info', 'An adapter and a default route exist; Windows checks the connection in the background, so wait about 30 seconds after a change and check again.')
 
 
 def _cache_gib():
@@ -251,7 +268,7 @@ def run_all(cfg):
     res += check_hosts(); res.append(check_port(cfg)); res += check_proxy(cfg); res.append(check_mirror(cfg))
     pk = check_pack(cfg); res += pk
     res.append(check_upstream(bool(cfg['proxy'].get('offline')), any(r['name'] == 'Texture pack' and r['level'] == 'ok' for r in pk))); res.append(check_network()); res.append(check_disk(cfg))
-    res += [r for r in (check_guard(cfg), check_cache()) if r]
+    res += [r for r in (check_network_detail(), check_guard(cfg), check_cache()) if r]
     res.append(check_game()); res.append(check_game_setup())
     try:
         import tkinter; res.append(_c('Python', 'ok', f'{sys.version.split()[0]}, tkinter {tkinter.TkVersion}'))
