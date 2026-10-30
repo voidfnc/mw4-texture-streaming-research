@@ -590,9 +590,19 @@ class DoctorSessionTests(unittest.TestCase):
         for lv, level in ((1, 'warn'), (0, 'ok'), (2, 'ok'), (3, 'ok'), (4, 'ok'), (5, 'ok')):
             with mock.patch.object(doctor, 'network_level', return_value=lv): r = doctor.check_network()
             self.assertEqual((r['name'], r['level']), ('Windows network status', level), lv)
-        with mock.patch.object(doctor, 'network_level', return_value=1): self.assertIn('no network connection at all', doctor.check_network()['detail'])
+        with mock.patch.object(doctor, 'network_level', return_value=1): self.assertIn('no network connection (level 1', doctor.check_network()['detail'])
         with mock.patch.object(doctor, 'network_level', return_value=None): self.assertEqual(doctor.check_network()['level'], 'info')      # Windows without the call: the game is not blocked either
         lv = doctor.network_level(); self.assertTrue(lv is None or lv in range(0, 6))                                                         # the real call never raises
+
+    def test_the_network_detail_names_the_piece_a_virtual_setup_is_missing(self):
+        from unittest import mock
+        def detail(level, up, routes):
+            counts = {"Get-NetAdapter": up, "Get-NetRoute": routes}
+            with mock.patch.object(doctor, 'network_level', return_value=level), mock.patch.object(doctor, '_powershell_json', side_effect=lambda s: next(v for k, v in counts.items() if k in s)): return doctor.check_network_detail()
+        self.assertIsNone(detail(3, 1, 1)); self.assertIsNone(detail(2, 1, 0))                                                  # only a reported "none" needs explaining
+        self.assertIn('No network adapter is switched on', detail(1, 0, 0)['detail'])
+        self.assertIn('no default route', detail(1, 1, 0)['detail']); self.assertIn('wait about 30 seconds', detail(1, 1, 1)['detail'])
+        self.assertEqual(detail(1, 1, 0)['level'], 'info'); self.assertIsNone(detail(1, dict(error='x'), 1), 'no guess when PowerShell cannot tell')
 
     def test_an_unreachable_edge_is_only_a_warning_when_the_internet_is_still_needed(self):
         from unittest import mock

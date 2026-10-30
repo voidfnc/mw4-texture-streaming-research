@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+**Corrects earlier advice for a PC with no network card: a virtual adapter with only an address does not make Windows report a connection.**
+
+- **Fix: the Doctor and the guide no longer say that a virtual adapter is enough.** Measured on a PC with no network card: Windows reports level 1 ("none") both with no adapter and with a loopback adapter that has only an address, and the game asks for nothing at level 1.
+  Windows needs a route toward the internet (a default gateway) before it reports a connection. The *Windows network status* row now says so, and the guide's steps include a gateway on the same subnet. That step is not yet confirmed on a PC without any real adapter.
+- **New: a "Windows network detail" row** when Windows reports no connection: no adapter switched on, an adapter but no default route, or both present and Windows still catching up (it checks in the background; wait about 30 seconds).
+- **New: a read-only PowerShell snippet in the guide** that prints the level Windows reports every few seconds, so a setting can be tried and the result seen.
+
 ## 0.4.6-beta
 **After a game update the next download picks up the new chunks, the report stops calling live-served chunks "missing", and the Doctor can repair a hosts file that Windows cannot read.**
 

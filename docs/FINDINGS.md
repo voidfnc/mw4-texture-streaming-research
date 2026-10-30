@@ -119,7 +119,9 @@ looked up by name at startup, and kept up to date through `NotifyNetworkConnecti
 any chunk. Levels 0 (unknown), 2 (local only), 3 (internet), 4 (limited) and 5 (hidden) all pass.
 
 What follows from that: a PC with no network adapter switched on makes the game ask for nothing, whether or not the chunks are on the local drive, and no other setting in this document changes it. A virtual adapter
-(Microsoft's KM-TEST Loopback Adapter) with a fixed address should give "local only", which passes; I have not tried it on a PC without any real adapter. The Doctor reads the same value with the same call.
+(Microsoft's KM-TEST Loopback Adapter) with only a fixed address does not help: measured with the same call, Windows still reports level 1 with such an adapter in place. Windows' connectivity indicator
+moves to "local" only once the network has a route toward the internet and its probe has run, so a default gateway on the adapter is the next thing to try ("local only" passes); that is not confirmed on a PC without any real adapter.
+The Doctor reads the same value with the same call.
 
 That level is not the only condition. The function that decides whether a download may start also logs why it did not (the reasons it names are `dvar`, `throttling_restriction`, `gamerprofile` and `unknown`), and a
 network-health check feeds a throttle level in the range 0 to 5 (0 means no downloads); a player-profile setting is another switch. I did not trace the last two to the end, so I cannot say which of them matters
