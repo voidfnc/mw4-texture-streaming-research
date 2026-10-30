@@ -6,7 +6,7 @@
 The same level drives the mirror download cap and the proxy serve cap (config.effective), so what is served never exceeds what was mirrored.
 The chunk lists (*_cdn.xpak) come from the user's own game install; nothing is bundled.
 """
-import os, shutil, sqlite3, sys, time
+import json, os, shutil, sqlite3, sys, time
 from . import mirrordb, paths
 
 sys.path.insert(0, paths.TOOLS)
@@ -75,6 +75,20 @@ def fingerprint(root=None, pkgs=ORDER):
             p = cdnxpak.resolve(root, f)
             if p: st = os.stat(p); out[f] = f'{st.st_size}:{int(st.st_mtime)}'
     return out
+
+
+def lists_changed(mirror_dir=None, root=None):
+    """True when the game's chunk lists differ from the ones the mirror index was last loaded from (a game update), False when equal, None when there is no index or no record."""
+    db = os.path.join(mirror_dir or paths.MIRROR, 'index.sqlite')
+    if not os.path.exists(db): return None
+    try:
+        c = mirrordb.connect_read(db, timeout=10)
+        try: r = c.execute("select value from meta where key='lists'").fetchone()
+        finally: c.close()
+    except Exception: return None
+    if not r: return None
+    try: return json.loads(r[0]) != fingerprint(root)
+    except (ValueError, OSError): return None
 
 
 def catalogue(mask, root=None):

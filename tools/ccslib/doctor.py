@@ -18,15 +18,24 @@ def check_hosts():
     elif s == 'PARTIAL': out.append(_c('Hosts override', 'fail', 'managed block is missing the ::1 or 127.0.0.1 line', ('hosts_apply', None)))
     elif s == 'MIXED': out.append(_c('Hosts override', 'warn', 'managed block plus duplicate hand-added lines (Apply cleans this up)'))
     else: out.append(_c('Hosts override', 'ok', 'managed block present (::1 + 127.0.0.1)'))
-    r = hosts.resolve_check()
-    out.append(_c('Resolver', 'ok' if r['ok'] else ('fail' if s in ('OK', 'FOREIGN', 'MIXED') else 'warn'),
+    r = hosts.resolve_check(); applied = s in ('OK', 'FOREIGN', 'MIXED'); acl = None; why = None
+    if not r['ok'] and applied:
+        try: why = hosts.diagnose(st['path']); acl = hosts.acl_facts(st['path']) if os.name == 'nt' else None
+        except Exception: pass
+    no_read = bool(acl) and acl.get('dns_client_can_read') is False
+    known = bool(why) or no_read              # a cause we can name is a failure; an unexplained mismatch is a warning, because the game may not use the same lookup as this check
+    out.append(_c('Resolver', 'ok' if r['ok'] else ('fail' if applied and known else 'warn'),
                   f"v4={r['v4']} v6={r['v6']}" + ('' if r['ok'] else ' (expected 127.0.0.1 / ::1; try Flush DNS)'),
-                  ('flush_dns', None) if not r['ok'] and s in ('OK', 'FOREIGN', 'MIXED') else None))
-    if not r['ok'] and s in ('OK', 'FOREIGN', 'MIXED'):
-        why = hosts.diagnose(st['path'])
+                  ('flush_dns', None) if not r['ok'] and applied else None))
+    if no_read:
+        out.append(_c('Hosts file permissions', 'fail', 'the hosts file is not readable by the Windows DNS Client service (no read right for Everyone, Users, Authenticated Users or Network Service), so Windows ignores it. '
+                      'Repair sets the permissions back to the folder default and keeps a copy of the old ones', ('hosts_acl', None)))
+    elif acl and not r['ok']: out.append(_c('Hosts file permissions', 'ok', 'the DNS Client service can read the hosts file'))
+    if not r['ok'] and applied:
         out.append(_c('Resolver diagnosis', 'info', 'the hosts file is saved as UTF-16, which Windows does not read; Apply writes it as plain UTF-8 and keeps a backup' if why and 'UTF-16' in why else
                       'the block is in the hosts file but Windows still answers from DNS, so something outside the file is overriding it: security software with hosts-file protection, a VPN or DNS tool that answers name lookups itself, '
-                      'or a group policy. Flushing the DNS cache does not help then; pause that software for a minute and check again'))
+                      'or a group policy. Flushing the DNS cache does not help then; pause that software for a minute and check again. The game may still use the hosts file: start it, and the log says if no texture request arrives'
+                      if not no_read else 'Windows is not reading the hosts file at all (see the permissions row)'))
     return out
 
 
@@ -97,6 +106,7 @@ def check_pack(cfg):
         pl = pack.plan(pk['scope'], pk.get('packages'), pk['level'], line_mbps=0); t = pl['total']
         base = f"scope {pk['scope']} / {lab}: {t['stored']:,} of {t['chunks']:,} chunks stored"
         if pl['missing']: out.append(_c('Texture pack lists', 'warn', 'chunk lists missing on this install: ' + ', '.join(pl['missing'])))
+        if pack.lists_changed(): out.append(_c('Chunk lists', 'info', "the game's chunk lists changed since the mirror was last loaded (a game update); Texture pack -> Download adds the new chunks and keeps the ones you have"))
         if not t['pending']: out.append(_c('Texture pack', 'ok', base + ' - complete'))
         else:
             off = bool(e['proxy'].get('offline')); lvl = 'warn' if off else 'info'

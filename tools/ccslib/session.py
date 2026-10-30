@@ -104,6 +104,8 @@ def run_fix(cfg, fix, say=print):
         ok, res = hosts_cmd('apply', say); return ok, res.get('error') or f"hosts state {res.get('state')}"
     if act == 'flush_dns':
         ok, res = hosts_cmd('flush', say); return ok, res.get('error') or ('flushed' if res.get('flushed') else 'flush reported failure')
+    if act == 'hosts_acl':
+        ok, res = hosts_cmd('repair-acl', say); return ok, res.get('error') or 'hosts file permissions repaired, DNS flushed'
     if act in ('start_proxy', 'restart_proxy'):
         if act == 'restart_proxy': procs.stop('proxy')
         proxyctl.start_proxy(cfg); return _wait_proxy_ready(port, say)

@@ -136,9 +136,55 @@ class HostsTests(unittest.TestCase):
             self.assertNotIn(b'\0', raw); self.assertTrue(raw.decode('utf-8').startswith(WIN_HOSTS)); self.assertEqual(hosts.status()['state'], 'OK'); self.assertIsNone(hosts.diagnose())
 
     def test_the_resolver_report_holds_no_file_content(self):
-        rep = hosts.resolver_report(); self.assertEqual(set(rep), {'hosts_file', 'file_in_use_is_default', 'data_base_path', 'dns_client_service_running', 'resolver', 'diagnosis'})
-        put(WIN_HOSTS); f = hosts.file_facts(); self.assertEqual((f['encoding'], f['nul_bytes'], f['lines']), ('ascii or utf-8', 0, WIN_HOSTS.count('\n')))
-        self.assertNotIn('Docker', json.dumps(hosts.resolver_report()))
+        from unittest import mock
+        with mock.patch.object(hosts, '_ps_json', return_value=[]):
+            rep = hosts.resolver_report(); self.assertEqual(set(rep), {'hosts_file', 'file_in_use_is_default', 'data_base_path', 'dns_client_service_running', 'resolver', 'diagnosis', 'permissions', 'windows'})
+            put(WIN_HOSTS); f = hosts.file_facts(); self.assertEqual((f['encoding'], f['nul_bytes'], f['lines']), ('ascii or utf-8', 0, WIN_HOSTS.count('\n')))
+            self.assertNotIn('Docker', json.dumps(hosts.resolver_report()))
+
+    def test_permissions_decide_whether_the_dns_client_can_read_the_hosts_file(self):
+        ent = lambda sid, typ, rights: dict(sid=sid, type=typ, rights=rights)
+        ok = [ent('S-1-5-18', 'Allow', 'FullControl'), ent('S-1-5-32-544', 'Allow', 'FullControl'), ent('S-1-5-32-545', 'Allow', 'ReadAndExecute, Synchronize')]
+        self.assertTrue(hosts.acl_can_read(ok))
+        self.assertFalse(hosts.acl_can_read(ok[:2]), 'System and Administrators alone: the DNS Client service runs as Network Service')
+        self.assertTrue(hosts.acl_can_read(ok[:2] + [ent('S-1-5-20', 'Allow', 'Read, Synchronize')]))
+        self.assertFalse(hosts.acl_can_read(ok + [ent('S-1-1-0', 'Deny', 'Read')]), 'a deny wins')
+        self.assertFalse(hosts.acl_can_read(ok[:2] + [ent('S-1-5-32-545', 'Allow', 'ReadAttributes, Synchronize')]), 'reading the attributes is not reading the file')
+        self.assertTrue(hosts.acl_can_read([ent('S-1-1-0', 'Allow', '-1610612736')]), 'generic read + execute as a number')
+        self.assertFalse(hosts.acl_can_read([]))
+
+    def test_acl_facts_name_groups_only_and_say_what_the_dns_client_can_do(self):
+        seen = []
+        def ps(script):
+            seen.append(script)
+            return dict(protected=False, entries=[dict(sid='S-1-5-18', type='Allow', rights='FullControl', inherited=True), dict(sid='S-1-5-21-1-2-3-1001', type='Allow', rights='FullControl', inherited=False)])
+        f = hosts.acl_facts(r"C:\it's\hosts", ps=ps)
+        self.assertIs(f['dns_client_can_read'], False); self.assertEqual([e['who'] for e in f['entries']], ['SYSTEM', 'another account'])
+        self.assertIn("C:\\it''s\\hosts", seen[0]); self.assertNotIn('S-1-5-21', json.dumps(f))
+        self.assertIsNone(hosts.acl_facts(ps=lambda s: dict(error='x')))
+        one = hosts.acl_facts(ps=lambda s: dict(protected=True, entries=dict(sid='S-1-1-0', type='Allow', rights='Read', inherited=False)))
+        self.assertTrue(one['dns_client_can_read'] and one['inheritance_blocked'])
+
+    def test_repair_permissions_saves_the_old_ones_first_and_stops_when_it_cannot(self):
+        from unittest import mock
+        calls = []
+        def fake(argv, **kw):
+            calls.append(argv); return subprocess.CompletedProcess(argv, 0, '', '')
+        with mock.patch.object(hosts.subprocess, 'run', fake): r = hosts.repair_acl(os.path.join(TMP, 'hosts-x'))
+        self.assertEqual([c[2] for c in calls], ['/save', '/reset']); self.assertTrue(os.path.basename(r['saved']).startswith('hostsacl.'))
+        self.assertEqual(hosts.list_backups(), [b for b in hosts.list_backups() if not os.path.basename(b).startswith('hostsacl.')], 'the saved permissions are not offered as a hosts backup')
+        calls.clear()
+        with mock.patch.object(hosts.subprocess, 'run', lambda argv, **kw: (calls.append(argv), subprocess.CompletedProcess(argv, 5, '', 'denied'))[1]):
+            with self.assertRaises(hosts.HostsError) as cm: hosts.repair_acl(os.path.join(TMP, 'hosts-x'))
+        self.assertEqual(len(calls), 1); self.assertIn('nothing was changed', str(cm.exception))
+
+    def test_resolver_extra_lists_only_vpn_dns_and_security_service_names(self):
+        def ps(script):
+            if 'Get-Service' in script: return [dict(Name='NordVPN', Status=4), dict(Name='Spooler', Status=4), dict(Name='WarpJITSvc', Status=1), dict(Name='OpenVPNService', Status=1)]
+            return []
+        x = hosts.resolver_extra(ps=ps)
+        self.assertEqual(x['vpn_dns_security_services'], ['NordVPN: 4', 'OpenVPNService: 1']); self.assertEqual(set(x), {'dns_client_cache', 'dotnet_lookup', 'namespace_providers', 'nrpt_policies', 'vpn_dns_security_services'})
+        self.assertEqual(hosts.resolver_extra(ps=lambda s: dict(error='no powershell'))['vpn_dns_security_services'], dict(error='no powershell'))
 
     def test_windows_own_hosts_folder_is_used_when_a_pc_points_to_another(self):
         from unittest import mock
@@ -153,9 +199,14 @@ class HostsTests(unittest.TestCase):
         from unittest import mock
         put(WIN_HOSTS); hosts.apply(flush=False)
         bad = dict(v4=['23.1.1.1'], v6=['ERR x'], ok=False)
-        with mock.patch.object(hosts, 'resolve_check', return_value=bad): res = doctor.check_hosts()
-        names = [r['name'] for r in res]; self.assertIn('Resolver diagnosis', names); self.assertEqual(res[names.index('Resolver')]['level'], 'fail')
-        self.assertIn('something outside the file', res[names.index('Resolver diagnosis')]['detail'])
+        readable = dict(dns_client_can_read=True, entries=[])
+        with mock.patch.object(hosts, 'resolve_check', return_value=bad), mock.patch.object(hosts, 'acl_facts', return_value=readable): res = doctor.check_hosts()
+        names = [r['name'] for r in res]; self.assertIn('Resolver diagnosis', names); self.assertEqual(res[names.index('Resolver')]['level'], 'warn', 'nothing named: the game may still use the file, so this does not stop the session')
+        self.assertIn('something outside the file', res[names.index('Resolver diagnosis')]['detail']); self.assertEqual(res[names.index('Hosts file permissions')]['level'], 'ok')
+        blocked = dict(dns_client_can_read=False, entries=[])
+        with mock.patch.object(hosts, 'resolve_check', return_value=bad), mock.patch.object(hosts, 'acl_facts', return_value=blocked): res = doctor.check_hosts()
+        names = [r['name'] for r in res]; self.assertEqual(res[names.index('Resolver')]['level'], 'fail'); self.assertEqual(res[names.index('Hosts file permissions')]['fix'], ('hosts_acl', None))
+        self.assertIn('not reading the hosts file at all', res[names.index('Resolver diagnosis')]['detail'])
         with mock.patch.object(hosts, 'resolve_check', return_value=dict(v4=['127.0.0.1'], v6=['::1'], ok=True)): self.assertNotIn('Resolver diagnosis', [r['name'] for r in doctor.check_hosts()])
 
     def test_backups_are_listed_newest_first_also_past_ten_in_one_second(self):
@@ -295,6 +346,16 @@ class ProxyTests(unittest.TestCase):
         while time.time() - t0 < 6 and not os.path.exists(st): time.sleep(0.2)
         self.assertEqual(json.load(open(st))['stat']['req'], 2)                                                  # --stats-json snapshot
         self.assertNotIn('/__ccs', open(log, encoding='utf-8').read())                                           # status polls are not logged as chunk traffic
+
+    def test_chunks_no_list_names_are_noted_once_for_the_mirror(self):
+        port, st, log = self.run_proxy(); note = os.path.join(os.path.dirname(log), 'unlisted.txt')
+        if os.path.exists(note): os.remove(note)          # an earlier test in this folder may have left one
+        mirror_hit = f'/pc/iw9_3/23/{self.cid & 0xff:02x}/{self.cid:016x}_{self.wire:08x}_1'; live = f'/pc/iw9_3/23/aa/{0xaa:016x}_00000020_1'
+        self.get(port, mirror_hit); self.assertFalse(os.path.exists(note), 'a chunk served from the mirror is not a gap')
+        self.get(port, live); self.get(port, live); self.get(port, live, 'HEAD')
+        self.assertEqual(open(note, encoding='utf-8').read().split(), [live])
+        c = http.client.HTTPConnection('127.0.0.1', port, timeout=10); c.request('GET', live, headers={'X-CCS-Probe': '1'}); c.getresponse().read(); c.close()
+        self.assertEqual(open(note, encoding='utf-8').read().split(), [live])
 
     def test_proxy_starts_and_fetches_from_the_cdn_when_there_is_no_mirror_yet(self):
         # a first-time user has no mirror: a missing folder and an empty one must both start fine (this used to crash on index.sqlite) and serve from the upstream
@@ -461,9 +522,11 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(r['over_4mib']['ids'], 1); self.assertEqual(r['over_4mib']['top'][0]['raw_mib'], 13.0)
         self.assertEqual(r['tiers']['<=1M']['requested'], 1); self.assertEqual(r['tiers']['<=4M']['requested'], 1); self.assertEqual(r['unknown_ids'], 1)
         self.assertEqual(r['mirror_gaps']['missing_count'], 2)              # C (upstream) and 0x999 are not in the mirror
+        self.assertEqual((r['mirror_gaps']['listed_missing_count'], r['mirror_gaps']['unlisted_count']), (1, 1))      # C is in a chunk list (Download fetches it); 0x999 is in none
         c = r['cache']; self.assertEqual(c['requested_already_in_cache'], 1); self.assertEqual(c['requested_pct_already_in_cache'], 25.0)
         self.assertEqual((c['new_unique_ids'], c['record_growth']), (2, 4))
         md = report.to_markdown(r); self.assertIn('>4 MiB ids requested: 1', md); self.assertIn('requested_pct_already_in_cache: 25.0', md)
+        self.assertIn('in your chunk lists but not stored in the mirror: **1**', md); self.assertIn('not in any chunk list on this PC: **1**', md); self.assertIn('Verify + repair cannot change them', md)
 
     def test_window_scale_timeline_and_baseline_t0(self):
         import datetime

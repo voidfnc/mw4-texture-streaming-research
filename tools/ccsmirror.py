@@ -8,6 +8,7 @@
   python tools/ccsmirror.py status [--json]
   python tools/ccsmirror.py verify [--n 200 | --all] [--fix] [--progress-json PATH]    # re-check stored objects (size + md5 vs ETag); --fix resets bad ones to pending
   python tools/ccsmirror.py prune  --above-tier MiB [--yes] [--json]                    # delete stored objects above a detail level (dry run without --yes)
+  python tools/ccsmirror.py fetch-requested [--file PATH]                               # queue chunks the game asked for that no chunk list names (new content); `run` stores them
   python tools/ccsmirror.py retry-failed                                                # failed (status 2) -> pending
   run extras: --progress-json PATH (live JSON for the GUI), --stop-file PATH (create it to pause cleanly; default mirror/STOP)
 
@@ -83,9 +84,16 @@ def load_lists(c, mask):
     meta_set(c, 'loaded', int(meta_get(c, 'loaded', 0)) | mask); meta_set(c, 'lists', json.dumps(pack.fingerprint(ROOT))); c.commit()
     return len(cat), len(served & set(cat)), ad
 
+def lists_changed(c):
+    """The game's chunk lists are not the ones the index was loaded from (a game update added or changed chunks)."""
+    try: return json.loads(meta_get(c, 'lists', 'null')) != pack.fingerprint(ROOT)
+    except (ValueError, OSError): return False
+
 def ensure_loaded(c, mask):
-    if mask & ~int(meta_get(c, 'loaded', 0)):
-        n, s, ad = load_lists(c, mask); log(f'lists loaded for scope mask {mask}: {n} ids, prio0(served)={s}, adopted existing={ad}')
+    changed = lists_changed(c)
+    if mask & ~int(meta_get(c, 'loaded', 0)) or changed:
+        if changed: mask |= int(meta_get(c, 'loaded', 0))          # a changed build: refresh every package loaded before, not only this run's
+        n, s, ad = load_lists(c, mask); log(f"lists loaded for scope mask {mask}: {n} ids, prio0(served)={s}, adopted existing={ad}" + ('; the game\'s chunk lists changed since the last load (game update), new chunks were added' if changed else ''))
 
 def args_scope(a):
     """-> (scope name or None, packages list/None, mask or None)"""
@@ -184,6 +192,29 @@ def read_body(r, lim):
         parts.append(b); lim.take(len(b))
     return b''.join(parts)
 
+UNLISTED_RE = re.compile(r'^/pc/iw9_3/23/[0-9a-f]{2}/([0-9a-f]{16})_([0-9a-f]{8})_([01])$')
+
+def unlisted_file(): return os.path.join(paths.WORK, 'unlisted.txt')
+
+def ingest_unlisted(c, path=None):
+    """Chunks the game asked for that no chunk list names (new content after a game update; the proxy served them live and noted them in unlisted.txt) become index rows,
+    so Download stores them like any other chunk. Rows already known are left alone. -> number of new rows."""
+    path = path or unlisted_file()
+    if not os.path.isfile(path): return 0
+    rows = []
+    for ln in open(path, encoding='utf-8', errors='replace').read().splitlines():
+        m = UNLISTED_RE.match(ln.strip())
+        if m: rows.append((signed(int(m.group(1), 16)), int(m.group(2), 16), 0, int(m.group(3)), 0, sum(v[0] for v in pack.PACKAGES.values())))
+    before = c.total_changes
+    c.executemany('insert or ignore into chunks(id, wire, raw, flag, prio, pkgs) values (?,?,?,?,?,?)', rows); c.commit()
+    n = c.total_changes - before
+    if n: log(f'{n} chunk(s) the game asked for that are in no chunk list were added to the download queue')
+    return n
+
+def cmd_fetch_requested(a):
+    c = db(); n = ingest_unlisted(c, getattr(a, 'file', None))
+    print(f'{n} new chunk(s) queued; run the download (Texture pack -> Download, or `run`) to store them' if n else 'nothing new: no chunk outside the lists was recorded since the last time')
+
 def cmd_run(a):
     if not version.bulk_acknowledged():
         if a.accept_notice: version.record_bulk_ack()
@@ -192,6 +223,7 @@ def cmd_run(a):
     c = db(); sc, pk, mask = args_scope(a); tier = args_tier(a)
     if mask: ensure_loaded(c, mask)
     elif int(meta_get(c, 'loaded', 0)) == 0 and c.execute('select count(*) from chunks').fetchone()[0] == 0: ensure_loaded(c, pack.scope_mask('sp'))
+    ingest_unlisted(c)
     where = 'status!=1 and raw<=?'; prm = [tier * 2**20]
     if mask: where += ' and (pkgs & ?) != 0'; prm.append(mask)
     rows = c.execute(f'select id, wire, raw, flag, prio from chunks where {where} order by prio, id', prm).fetchall()
@@ -452,6 +484,7 @@ if __name__ == '__main__':
     r.add_argument('--accept-notice', action='store_true', help='confirm the bulk-download notice (asked once per version; the GUI asks in a dialog)')
     r.add_argument('--link-wait-s', type=float, default=0, help='give up (state offline) when the upstream is unreachable this long; 0 = wait forever')
     v = sp.add_parser('verify'); v.add_argument('--n', type=int, default=200); v.add_argument('--all', action='store_true'); v.add_argument('--fix', action='store_true'); v.add_argument('--progress-json')
+    fr = sp.add_parser('fetch-requested'); fr.add_argument('--file', help='list of chunk paths (default: unlisted.txt in the data folder, written by the proxy)')
     pr = sp.add_parser('prune'); pr.add_argument('--above-tier', type=float, required=True, help='MiB raw: stored objects larger than this are deleted'); pr.add_argument('--yes', action='store_true'); pr.add_argument('--json', action='store_true')
     a = ap.parse_args(); os.makedirs(os.path.dirname(LOG), exist_ok=True)
-    {'init': cmd_init, 'plan': cmd_plan, 'run': cmd_run, 'status': cmd_status, 'verify': cmd_verify, 'retry-failed': cmd_retry_failed, 'prune': cmd_prune}[a.cmd](a)
+    {'init': cmd_init, 'plan': cmd_plan, 'run': cmd_run, 'status': cmd_status, 'verify': cmd_verify, 'retry-failed': cmd_retry_failed, 'fetch-requested': cmd_fetch_requested, 'prune': cmd_prune}[a.cmd](a)
