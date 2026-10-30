@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.6-beta
 **After a game update the next download picks up the new chunks, the report stops calling live-served chunks "missing", and the Doctor can repair a hosts file that Windows cannot read.**
 
 - **Fix: Download did not fetch the chunks a game update added.** The downloader read the game's chunk lists once and never looked again. After an update (a new season, for example) the Texture pack tab counted the new chunks as "not mirrored yet", but
