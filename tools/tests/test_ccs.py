@@ -857,6 +857,42 @@ class CacheCtlTests(unittest.TestCase):
         with self.assertRaises(ValueError): cachectl.restore('Windows')
 
 
+class DnsAndStartupTests(unittest.TestCase):
+    def test_the_port_row_says_a_young_proxy_is_still_starting_and_an_old_one_is_stuck(self):
+        import time
+        from ccslib import doctor
+        own = lambda age: dict(alive=True, pid=1, started=time.time() - age)
+        with mock.patch.object(doctor.procs, 'tail_lines', return_value=['10:00:00 START pid=1', '10:00:01 upstream 1.2.3.4']):
+            young = doctor._port_not_listening(80, own(10)); old = doctor._port_not_listening(80, own(200)); odd = doctor._port_not_listening(80, dict(alive=True, started=None))
+        self.assertEqual(young['level'], 'info'); self.assertIn('not listening yet', young['detail']); self.assertIsNone(young['fix'])
+        self.assertEqual(old['level'], 'fail'); self.assertEqual(old['fix'], ('restart_proxy', None)); self.assertIn('upstream 1.2.3.4', old['detail'])
+        self.assertEqual(odd['level'], 'fail')
+        cfg = dict(proxy=dict(port=80))
+        with mock.patch.object(doctor.procs, 'status', return_value=own(5)), mock.patch.object(doctor.procs, 'port_owner', return_value=[]):
+            self.assertEqual(doctor.check_port(cfg)['level'], 'info')
+        with mock.patch.object(doctor.procs, 'status', return_value=dict(alive=False, pid=None, started=None)), mock.patch.object(doctor.procs, 'port_owner', return_value=[]):
+            self.assertEqual((doctor.check_port(cfg)['level'], doctor.check_port(cfg)['detail']), ('ok', 'free'))
+
+    def test_the_host_names_behind_the_game_connections_are_listed(self):
+        from ccslib import doctor
+        with mock.patch.object(doctor, '_powershell_json', return_value=['B.akamai.net', 'a.example.com', 'bad name;x', 5]) as m:
+            self.assertEqual(doctor.dns_names(['sp26-cod']), ['a.example.com', 'b.akamai.net']); self.assertIn('sp26-cod', m.call_args[0][0])
+        with mock.patch.object(doctor, '_powershell_json', return_value='one.example.com'): self.assertEqual(doctor.dns_names(['cod']), ['one.example.com'])
+        with mock.patch.object(doctor, '_powershell_json', return_value=dict(error='x')): self.assertEqual(doctor.dns_names(['cod']), [])
+        with mock.patch.object(doctor, '_powershell_json') as m: self.assertEqual(doctor.dns_names([]), []); m.assert_not_called()
+
+    def test_netwatch_turns_the_dns_log_on_and_says_so(self):
+        import netwatch
+        self.assertIsNone(netwatch.ensure_dns_log(lambda c: 'True\n'))
+        state = dict(on=False); cmds = []
+        def run(c):
+            cmds.append(c)
+            if c.startswith('wevtutil'): state['on'] = True
+            return 'True' if state['on'] else 'False'
+        self.assertIn('turned it on', netwatch.ensure_dns_log(run)); self.assertTrue(any(c.startswith('wevtutil sl') and '/e:true' in c for c in cmds))
+        self.assertIn('could not be turned on', netwatch.ensure_dns_log(lambda c: 'False'))
+
+
 class BattlenetDiagnosticsTests(unittest.TestCase):
     def test_the_battlenet_layout_is_told_by_the_folder(self):
         from ccslib import doctor
