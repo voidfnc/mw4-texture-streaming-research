@@ -26,6 +26,7 @@ from ccslib import mirrordb, paths, upstream, version          # game folder / w
 ROOT = paths.GAME_ROOT
 LOG = os.path.join(paths.WORK, 'ccsproxy.log')
 HOST = 'cod-assets.cdn.callofduty.com'
+HOSTS = (HOST, 'cod-assets.cdn.blizzard.com')       # the names the game asks under (the Battle.net edition uses the second); the same objects answer under both
 PAT = re.compile(r'^/pc/iw9_3/23/([0-9a-f]{2})/([0-9a-f]{16})_([0-9a-f]{8})_([01])$')
 NOSTAT = collections.defaultdict(int)     # where a probe's counts go
 lock = threading.Lock(); stat = dict(req=0, ok=0, skip=0, miss=0, err=0, retry=0, cliabort=0, mirror=0, bytes=0, mbytes=0)
@@ -175,6 +176,8 @@ class H(BaseHTTPRequestHandler):
         # chunk objects: the URL carries the wire size, so a full (non-Range) body must match it exactly
         want = int(m.group(3), 16) if m and not self.headers.get('Range') and self.command == 'GET' else None
         hdr = upstream.headers({'Connection': 'close'})
+        asked = (self.headers.get('Host') or '').split(':')[0].strip().lower()
+        if asked in HOSTS: hdr['Host'] = asked           # a miss goes upstream under the name the game used
         if self.headers.get('Range'): hdr['Range'] = self.headers['Range']
         r = body = last = None
         for attempt in range(1, a.retries + 2):

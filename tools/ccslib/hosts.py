@@ -43,13 +43,19 @@ def _split(text):
     return text.replace('\r\n', '\n').split('\n')
 
 
-def _maps_host(line):
+def _line_map(line):
+    """A hosts line -> (address, [our names on it]), or None when it names none of them (or is a comment)."""
     s = line.strip()
     if not s or s.startswith('#'): return None
     m = _HOSTLINE.match(s)
     if not m: return None
-    names = [n.lower() for n in m.group(2).split()]
-    return m.group(1) if paths.HOST in names else None
+    names = [n.lower() for n in m.group(2).split() if n.lower() in paths.HOST_NAMES]
+    return (m.group(1), names) if names else None
+
+
+def _maps_host(line):
+    lm = _line_map(line)
+    return lm[0] if lm else None
 
 
 def parse(text):
@@ -70,14 +76,14 @@ def parse(text):
 
 def state_of(parsed):
     """ABSENT | OK | PARTIAL | FOREIGN (host mapped outside our block, no block) | MIXED (block + foreign lines)"""
-    ips = set()
+    mapped = set()
     if parsed['block'] is not None:
         for l in parsed['block']:
-            ip = _maps_host(l)
-            if ip: ips.add(ip)
+            lm = _line_map(l)
+            if lm: mapped |= {(n, lm[0]) for n in lm[1]}
     has_block = parsed['block'] is not None
     if has_block:
-        s = 'OK' if set(LOOPBACK) <= ips else 'PARTIAL'
+        s = 'OK' if {(n, ip) for n in paths.HOST_NAMES for ip in LOOPBACK} <= mapped else 'PARTIAL'      # a block from before the second name was added is PARTIAL: Apply completes it
         return 'MIXED' if parsed['foreign'] and s == 'OK' else s
     return 'FOREIGN' if parsed['foreign'] else 'ABSENT'
 
@@ -88,15 +94,15 @@ def status(path=None):
 
 
 def _without_host(line):
-    """A hand-added line that maps HOST (and maybe other names) -> the same line without HOST, or None when HOST was its only name."""
+    """A hand-added line that maps our names (and maybe other names) -> the same line without ours, or None when ours were its only names."""
     m = _HOSTLINE.match(line)
     if not m: return None
-    keep = [n for n in m.group(2).split() if n.lower() != paths.HOST]
+    keep = [n for n in m.group(2).split() if n.lower() not in paths.HOST_NAMES]
     return f"{m.group(1)} {' '.join(keep)}" + (f'  {m.group(3)}' if m.group(3) else '') if keep else None
 
 
 def _block_lines():
-    return [BEGIN] + [f'{ip} {paths.HOST}' for ip in LOOPBACK] + [END]
+    return [BEGIN] + [f'{ip} {name}' for name in paths.HOST_NAMES for ip in LOOPBACK] + [END]
 
 
 def compute(text, mode, force=False):
@@ -105,7 +111,7 @@ def compute(text, mode, force=False):
     nl = '\r\n' if '\r\n' in text or not text else '\n'
     bad = [f for f in p['foreign'] if f[1] not in LOOPBACK]
     if mode == 'apply' and bad and not force:
-        raise HostsError(f'{paths.HOST} is mapped to a non-loopback address outside our block (line {bad[0][0] + 1}: {bad[0][2].strip()}); refusing without force')
+        raise HostsError(f'the texture CDN name is mapped to a non-loopback address outside our block (line {bad[0][0] + 1}: {bad[0][2].strip()}); refusing without force')
     # drop our existing block and any hand-added loopback lines for HOST (adopted into the block on apply, removed on remove)
     drop = set(); rewrite = {}
     if p['span']: drop |= set(range(p['span'][0], p['span'][1] + 1))
@@ -338,10 +344,14 @@ def resolver_extra(ps=None):
 
 
 def resolve_check(timeout=3.0):
-    """What the system resolver returns for HOST per family. -> {'v4': [...], 'v6': [...], 'ok': bool}"""
-    res = {}
-    for key, fam in (('v4', socket.AF_INET), ('v6', socket.AF_INET6)):
-        try: res[key] = sorted({a[4][0] for a in socket.getaddrinfo(paths.HOST, 80, fam, socket.SOCK_STREAM)})
-        except Exception as e: res[key] = [f'ERR {e}']
-    res['ok'] = res['v4'] == ['127.0.0.1'] and res['v6'] == ['::1']
-    return res
+    """What the system resolver returns per family for HOST (v4, v6) and for each of our names (names). -> {'v4': [...], 'v6': [...], 'names': {name: {...}}, 'ok': bool}; ok needs every name to give 127.0.0.1 / ::1."""
+    names = {}
+    for name in paths.HOST_NAMES:
+        res = {}
+        for key, fam in (('v4', socket.AF_INET), ('v6', socket.AF_INET6)):
+            try: res[key] = sorted({a[4][0] for a in socket.getaddrinfo(name, 80, fam, socket.SOCK_STREAM)})
+            except Exception as e: res[key] = [f'ERR {e}']
+        res['ok'] = res['v4'] == ['127.0.0.1'] and res['v6'] == ['::1']
+        names[name] = res
+    first = names[paths.HOST]
+    return dict(v4=first['v4'], v6=first['v6'], names=names, ok=all(x['ok'] for x in names.values()))

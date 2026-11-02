@@ -92,6 +92,39 @@ class HostsTests(unittest.TestCase):
         self.assertIn('203.0.113.9', open(paths.hosts_path()).read())     # untouched
         hosts.apply(flush=False, force=True); self.assertNotIn('203.0.113.9', open(paths.hosts_path()).read())
 
+    def test_the_block_names_both_cdn_hosts(self):
+        put(WIN_HOSTS); hosts.apply(flush=False); t = open(paths.hosts_path()).read()
+        for name in paths.HOST_NAMES:
+            for ip in hosts.LOOPBACK: self.assertEqual(t.count(f'{ip} {name}\n'), 1, (ip, name))
+        self.assertEqual(paths.HOST_BLIZZARD, 'cod-assets.cdn.blizzard.com'); self.assertEqual(paths.HOST_NAMES[0], paths.HOST)
+        hosts.remove(flush=False); self.assertNotIn('blizzard', open(paths.hosts_path()).read())
+
+    def test_a_block_from_before_the_second_name_is_completed(self):
+        put(WIN_HOSTS + f'{hosts.BEGIN}\r\n::1 {paths.HOST}\r\n127.0.0.1 {paths.HOST}\r\n{hosts.END}\r\n')
+        self.assertEqual(hosts.status()['state'], 'PARTIAL'); r = doctor.check_hosts()[0]; self.assertEqual((r['level'], r['fix']), ('fail', ('hosts_apply', None)))
+        hosts.apply(flush=False); t = open(paths.hosts_path()).read()
+        self.assertEqual(hosts.status()['state'], 'OK'); self.assertEqual(t.count(hosts.BEGIN), 1); self.assertIn(f'127.0.0.1 {paths.HOST_BLIZZARD}', t); self.assertEqual(t.count(f'127.0.0.1 {paths.HOST}\n'), 1)
+
+    def test_hand_added_lines_for_the_second_name_are_adopted_and_a_foreign_address_is_refused(self):
+        put(WIN_HOSTS + f'127.0.0.1 {paths.HOST_BLIZZARD}\r\n::1 {paths.HOST_BLIZZARD}\r\n'); self.assertEqual(hosts.status()['state'], 'FOREIGN')
+        hosts.apply(flush=False); st = hosts.status(); t = open(paths.hosts_path()).read()
+        self.assertEqual((st['state'], st['foreign']), ('OK', [])); self.assertEqual(t.count(f'127.0.0.1 {paths.HOST_BLIZZARD}\n'), 1)
+        put(WIN_HOSTS + f'0.0.0.0 {paths.HOST_BLIZZARD}\r\n')
+        with self.assertRaises(hosts.HostsError): hosts.apply(flush=False)
+        self.assertIn('0.0.0.0', open(paths.hosts_path()).read())
+
+    def test_the_resolver_check_needs_every_name_to_point_at_this_pc(self):
+        from unittest import mock
+        bad = dict(on=False)
+        def gai(name, port, fam, typ):
+            ip = '127.0.0.1' if fam == socket.AF_INET else '::1'
+            if bad['on'] and name == paths.HOST_BLIZZARD: ip = '23.1.1.1' if fam == socket.AF_INET else '2600::1'
+            return [(fam, typ, 0, '', (ip, port))]
+        with mock.patch.object(hosts.socket, 'getaddrinfo', gai):
+            r = hosts.resolve_check(); self.assertTrue(r['ok']); self.assertEqual(set(r['names']), set(paths.HOST_NAMES)); self.assertEqual((r['v4'], r['v6']), (['127.0.0.1'], ['::1']))
+            bad['on'] = True; r = hosts.resolve_check()
+        self.assertFalse(r['ok']); self.assertTrue(r['names'][paths.HOST]['ok']); self.assertFalse(r['names'][paths.HOST_BLIZZARD]['ok']); self.assertEqual(r['v4'], ['127.0.0.1'])
+
     def test_partial_block_detected(self):
         put(WIN_HOSTS + f'{hosts.BEGIN}\r\n::1 {paths.HOST}\r\n{hosts.END}\r\n')
         self.assertEqual(hosts.status()['state'], 'PARTIAL')
@@ -295,11 +328,13 @@ def free_port():
 
 class FakeUp(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
+    seen_hosts = []
     def log_message(self, *a): pass
     def do_HEAD(self):
         want = int(self.path.rsplit('_', 2)[1], 16)
         self.send_response(200); self.send_header('Content-Length', str(want)); self.send_header('ETag', '"abc"'); self.end_headers()
     def do_GET(self):
+        FakeUp.seen_hosts.append(self.headers.get('Host'))
         want = int(self.path.rsplit('_', 2)[1], 16); body = b'u' * want
         self.send_response(200); self.send_header('Content-Length', str(len(body))); self.send_header('ETag', '"abc"'); self.end_headers(); self.wfile.write(body)
 
@@ -347,6 +382,15 @@ class ProxyTests(unittest.TestCase):
         while time.time() - t0 < 6 and not os.path.exists(st): time.sleep(0.2)
         self.assertEqual(json.load(open(st))['stat']['req'], 2)                                                  # --stats-json snapshot
         self.assertNotIn('/__ccs', open(log, encoding='utf-8').read())                                           # status polls are not logged as chunk traffic
+
+    def test_a_miss_goes_upstream_under_the_name_the_game_used(self):
+        port, st, log = self.run_proxy()
+        def ask(host):
+            FakeUp.seen_hosts.clear(); c = http.client.HTTPConnection('127.0.0.1', port, timeout=10)
+            c.request('GET', f'/pc/iw9_3/23/aa/{0xaa:016x}_00000020_1', headers={'Host': host}); r = c.getresponse(); b = r.read(); c.close(); return r.status, len(b), list(FakeUp.seen_hosts)
+        self.assertEqual(ask('cod-assets.cdn.blizzard.com:80'), (200, 32, ['cod-assets.cdn.blizzard.com']))
+        self.assertEqual(ask('cod-assets.cdn.callofduty.com'), (200, 32, ['cod-assets.cdn.callofduty.com']))
+        self.assertEqual(ask('other.example')[2], [paths.HOST], 'an unknown name is not forwarded')
 
     def test_chunks_no_list_names_are_noted_once_for_the_mirror(self):
         port, st, log = self.run_proxy(); note = os.path.join(os.path.dirname(log), 'unlisted.txt')
@@ -875,11 +919,33 @@ class DnsAndStartupTests(unittest.TestCase):
 
     def test_the_host_names_behind_the_game_connections_are_listed(self):
         from ccslib import doctor
-        with mock.patch.object(doctor, '_powershell_json', return_value=['B.akamai.net', 'a.example.com', 'bad name;x', 5]) as m:
-            self.assertEqual(doctor.dns_names(['sp26-cod']), ['a.example.com', 'b.akamai.net']); self.assertIn('sp26-cod', m.call_args[0][0])
-        with mock.patch.object(doctor, '_powershell_json', return_value='one.example.com'): self.assertEqual(doctor.dns_names(['cod']), ['one.example.com'])
-        with mock.patch.object(doctor, '_powershell_json', return_value=dict(error='x')): self.assertEqual(doctor.dns_names(['cod']), [])
-        with mock.patch.object(doctor, '_powershell_json') as m: self.assertEqual(doctor.dns_names([]), []); m.assert_not_called()
+        rows = [dict(p='sp26-cod', r='2600:1407:3c00:1b15::17d2:f410', rp=80, s='Established'), dict(p='sp26-cod', r='0.0.0.0', rp=0, s='Listen'), dict(p='sp26-cod', r='::', rp=0, s='Bound'),
+                dict(p='sp26-cod', r='127.0.0.1', rp=1, s='Established'), dict(p='sp26-cod', r='192.168.1.5', rp=445, s='Established'), dict(p='sp26-cod', r='::ffff:93.184.216.34', rp=443, s='CloseWait')]
+        cache = [dict(n='user-att-1.a231.dscv.akamai.net', t=28, d='2600:1407:3c00:1b15::17d2:f410'), dict(n='a231.dscv.akamai.net', t=5, d='user-att-1.a231.dscv.akamai.net'),
+                 dict(n='cod-assets.cdn.blizzard.com.edgesuite.net', t=5, d='a231.dscv.akamai.net'), dict(n='cod-assets.cdn.blizzard.com', t=5, d='cod-assets.cdn.blizzard.com.edgesuite.net'),
+                 dict(n='api.example.com', t=1, d='93.184.216.34'),
+                 dict(n='tracker.adobestats.io', t=1, d='0.0.0.0'), dict(n='listening.example', t=1, d='::'), dict(n='mypc', t=1, d='192.168.1.5'), dict(n='router.lan', t=1, d='192.168.1.5'),
+                 dict(n='elsewhere.example', t=1, d='198.51.100.9'), dict(n='singlelabel', t=1, d='93.184.216.34'), dict(n='bad name;x.example', t=1, d='93.184.216.34')]
+        with mock.patch.object(doctor, '_powershell_json', return_value=cache) as m:
+            names = doctor.dns_names(rows)
+        self.assertEqual(names, ['a231.dscv.akamai.net', 'api.example.com', 'cod-assets.cdn.blizzard.com', 'cod-assets.cdn.blizzard.com.edgesuite.net', 'user-att-1.a231.dscv.akamai.net'])
+        m.assert_called_once()
+        with mock.patch.object(doctor, '_powershell_json', return_value=[dict(n=f'h{i}.example', t=1, d='93.184.216.34') for i in range(100)]): self.assertEqual(len(doctor.dns_names(rows)), 40)
+        with mock.patch.object(doctor, '_powershell_json', return_value=dict(n='one.example', t=1, d='93.184.216.34')): self.assertEqual(doctor.dns_names(rows), ['one.example'])           # one entry comes back as an object
+        with mock.patch.object(doctor, '_powershell_json', return_value=dict(error='x')): self.assertEqual(doctor.dns_names(rows), [])
+        with mock.patch.object(doctor, '_powershell_json') as m:
+            for none in (None, [], dict(error='x'), [dict(p='x', r='0.0.0.0', rp=0, s='Listen'), dict(p='x', r='127.0.0.1', rp=1, s='Established'), dict(p='x', r='::1', rp=1, s='Established'), dict(p='x', r='10.0.0.2', rp=1, s='Established')]):
+                self.assertEqual(doctor.dns_names(none), [])
+            m.assert_not_called()                                                                                                                                                   # nothing public: the DNS cache is not even read
+
+    def test_the_netwatch_log_in_a_bundle_loses_the_pc_name_and_lan_addresses(self):
+        from ccslib import bundle
+        s = ('13:57:22 DNS pid=1 cod 3008 DNS query is completed for the name ElisPC, type 1, query options 7 with status 0 Results 192.168.68.56;\n'
+             '13:57:22 DNS pid=1 cod 3006 DNS query is called for the name gaming-sdk.com, type 28, query options 7\n'
+             'TCP pid=2 cod Established 172.64.146.157:443\nTCP pid=2 cod Established 10.0.0.5:445\nTCP pid=2 cod Established 172.16.4.1:80\nTCP pid=2 cod Established 172.32.1.1:80\n')
+        t = bundle.scrub_lan(s)
+        self.assertNotIn('ElisPC', t); self.assertNotIn('192.168', t); self.assertNotIn('10.0.0.5', t); self.assertNotIn('172.16.4.1', t)
+        self.assertIn('for the name <local-name>,', t); self.assertIn('gaming-sdk.com', t); self.assertIn('172.64.146.157', t); self.assertIn('172.32.1.1', t)       # public addresses and dotted names stay
 
     def test_netwatch_turns_the_dns_log_on_and_says_so(self):
         import netwatch

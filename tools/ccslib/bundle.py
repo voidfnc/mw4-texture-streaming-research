@@ -12,6 +12,15 @@ def scrub(text):
     return re.sub(r'(?i)(?<![A-Za-z0-9_])' + re.escape(name) + r'(?![A-Za-z0-9_])', '<user>', text) if len(name) >= 4 else text
 
 
+_LOCAL_NAME = re.compile(r'(for the name )([^\s,.]+)(,)')
+_LAN_ADDRESS = re.compile(r'(?<![\d.])(10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2})(?![\d.])')
+
+
+def scrub_lan(text):
+    """The netwatch log without what names this PC or its network: a lookup of a name without a dot (the PC's own name, a router) and addresses of the home network."""
+    return _LAN_ADDRESS.sub('<lan-address>', _LOCAL_NAME.sub(r'\1<local-name>\3', text))
+
+
 def _add(z, arc, path):
     """A file of ours into the zip as scrubbed text."""
     with open(path, encoding='utf-8', errors='replace') as f: z.writestr(arc, scrub(f.read()))
@@ -35,7 +44,7 @@ def make(cfg=None):
     with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
         for name, p in (('proxy.log', proxyctl.PROXY_LOG), ('diskguard.log', proxyctl.GUARD_LOG), ('ccsmirror.log', proxyctl.MIRROR_LOG), ('ccsgui.log', os.path.join(paths.WORK, 'ccsgui.log')),
                         ('netwatch.log', os.path.join(paths.WORK, 'netwatch.log'))):
-            if os.path.exists(p): z.writestr('logs/' + name, scrub(_tail(p)))
+            if os.path.exists(p): z.writestr('logs/' + name, scrub(scrub_lan(_tail(p)) if name == 'netwatch.log' else _tail(p)))
         for fn in (proxyctl.PROXY_STATS, proxyctl.GUARD_STATS, os.path.join(paths.RUN, 'session.json'), os.path.join(paths.WORK, 'gui_settings.json')):
             if os.path.exists(fn): _add(z, 'state/' + os.path.basename(fn), fn)
         try:

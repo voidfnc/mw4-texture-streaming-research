@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.10-beta
+**The Battle.net edition's texture host is covered, and a bundle privacy fix.**
+
+- **Fixed: the Battle.net edition now goes through the tool.** That edition asks for its textures under a second host name, `cod-assets.cdn.blizzard.com`, which the hosts override did not cover, so the game never reached the helper. The managed hosts block now maps both names to this PC, the Resolver check needs both to answer, and the helper forwards a miss upstream under the name the game used. The same chunks answer under both names. A block from an older version counts as incomplete: the next *Start session* completes it (one Windows permission prompt). It is not confirmed on a Battle.net install yet; the request count should rise while you play.
+- **Fixed: the support bundle's `connections.txt` could list unrelated host names** from the Windows DNS cache (0.4.9-beta). It now lists only the names behind the public addresses of the game's open connections. Update before you attach a bundle from 0.4.9-beta anywhere, and delete one you already shared.
+- **Changed: the bundle's `netwatch.log` no longer holds your PC's name or home-network addresses**: a lookup of a name without a dot becomes `<local-name>` and private addresses become `<lan-address>`.
+- The Doctor's *Game edition* row and the "managed block is incomplete" message say the above, in every language.
+
 ## 0.4.9-beta
 **Host names in the support bundle, and a clearer Port 80 row.**
 
