@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+**Diagnostics for the Battle.net edition, and a note for a low render resolution.**
+
+- **New: a "Game edition" Doctor row for the Battle.net layout** (a `_retail_` game folder). It says plainly that it is not confirmed that this edition asks for its textures through this tool, and netwatch (the read-only log of what the game connects to) is started with every session in this layout.
+- **Changed: the "nothing reached the tool" message** no longer says that is normal on menus when the game's cache is growing: it says the game gets its textures some other way, and what to attach.
+- **New: the support bundle has `connections.txt`**: where the game's programs are connected (grouped, addresses cut to their network) and what listens on the Battle.net background service's port. netwatch now also records connections to this PC.
+- **New: a "Screen resolution" Doctor row** when the game draws the scene at 1080 pixels or fewer: the largest (4K class) textures are asked for only by big, close surfaces, so far surfaces stay softer; a higher resolution or DLSS "Native Resolution" shows more detail.
+- The new text is translated into every language.
+
 ## 0.4.7-beta
 **Corrects earlier advice for a PC with no network card: a virtual adapter with only an address does not make Windows report a connection.**
 
