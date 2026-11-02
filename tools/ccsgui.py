@@ -737,7 +737,7 @@ class App(tk.Tk):
                     resolve_ok=bool(rs.get('ok')), hosts_state=s.get('hosts', '?'), requests=int(ps['stat']['req']) if ps and ps.get('stat') else 0,
                     pack_total=tot.get('chunks'), pack_stored=tot.get('stored'), mirror_alive=bool((s.get('mproc') or {}).get('alive')),
                     pack_run_done=((s.get('mprog') or {}).get('ok', 0) + (s.get('mprog') or {}).get('fail', 0)), pack_run_total=(s.get('mprog') or {}).get('queued'),
-                    last_stat=self._guide_peak, game_secs=(now - self.game_start) if s.get('game') and self.game_start else 0,
+                    last_stat=self._guide_peak, game_secs=(now - self.game_start) if s.get('game') and self.game_start else 0, cache_growth_mib=self._cache_growth_mib() if s.get('game') else 0,
                     stat=dict(ps['stat']) if ps and ps.get('stat') else None, secs=((ps.get('now') or 0) - (ps.get('started') or 0)) if ps else 0,
                     mibps=self.series[-1][4] if self.series else None, spark=[p[4] for p in list(self.series)[-60:]])
 
@@ -1147,14 +1147,14 @@ class App(tk.Tk):
             if gs: self.light('guard', 'fail' if gs.get('hit') else 'ok', f"{gs['cache_gib']:.1f}/{gs['limit_gib']:.0f} GiB")
             else: self.light('guard', 'ok' if gp.get('alive') else 'off', 'running' if gp.get('alive') else 'stopped')
             g = s.get('game') or []; self.light('game', 'warn' if g else 'off', 'RUNNING' if g else 'closed')
-            if g and not self._game_prev: self.game_start = time.time() - 5; self.say(f"game detected: {', '.join(g)}")            # launch detected (poll granularity ~3 s)
+            if g and not self._game_prev: self.game_start = time.time() - 5; self._game_cache0 = (s.get('gstat') or {}).get('cache_gib'); self.say(f"game detected: {', '.join(g)}")            # launch detected (poll granularity ~3 s)
             if self._game_prev and not g:
                 win = self._game_ended()
                 # no live proxy needed: the report reads the proxy log, so it also works when the session was stopped while the game was still shutting down
                 self.say('game exited - generating the session report' + (' for this launch' if win else '')); self.bg('report', self._make_report, -1, win, True)
             if g and not self._game_prev: self._noreq_warned = False; self._game_req0 = ps['stat']['req'] if ps else 0
             if g and ps and not getattr(self, '_noreq_warned', True) and time.time() - self.game_start > 300 and ps['stat']['req'] - getattr(self, '_game_req0', 0) <= 0:
-                self._noreq_warned = True; threading.Thread(target=self._warn_no_traffic, daemon=True).start()
+                self._noreq_warned = True; threading.Thread(target=self._warn_no_traffic, args=(self._cache_growth_mib(),), daemon=True).start()
             self._game_prev = bool(g)
             fr = s.get('free');
             if fr is not None: self.light('disk', 'fail' if fr < 20 else 'warn' if fr < 60 else 'ok', f'{fr:.0f} GiB free')
@@ -1164,13 +1164,19 @@ class App(tk.Tk):
         self._home_tick_safe()
         self.after(1000, self._refresh)
 
-    def _warn_no_traffic(self):
+    def _cache_growth_mib(self):
+        """How much the game's cache has grown since the game was detected (the disk guard's own reading), 0 where unknown."""
+        now = ((self.snap or {}).get('gstat') or {}).get('cache_gib'); c0 = getattr(self, '_game_cache0', None)
+        return max(0.0, (now - c0) * 1024) if now is not None and c0 is not None else 0.0
+
+    def _warn_no_traffic(self, grew=0.0):
         """The game has run 5 minutes and not one texture request reached the proxy: say why that can happen (menus are quiet; a hosts entry Windows ignores is the other reason)."""
         try: r = hosts.resolve_check()
         except Exception: r = None
-        if r and r['ok']: msg = i18n.t('No texture request has reached the tool in the 5 minutes since the game started. That is normal on menus; the name lookup is correct, so textures will be requested once a map loads.')
+        if grew >= 50: msg = i18n.t("No texture request has reached the tool in the 5 minutes since the game started, but the game's texture cache grew by {0} MB. It gets its textures some other way than through this tool (a Battle.net install can do that). Save a support bundle (Settings) after a few minutes in a mission and attach it to a bug report.", int(grew))
+        elif r and r['ok']: msg = i18n.t('No texture request has reached the tool in the 5 minutes since the game started. That is normal on menus; the name lookup is correct, so textures will be requested once a map loads.')
         else: msg = i18n.t('No texture request has reached the tool in the 5 minutes since the game started, and Windows is not sending the texture server name to this PC ({0}). Run Check my PC, then Settings -> Save a support bundle.', hosts.diagnose() or i18n.t('something outside the hosts file overrides it: a VPN, DNS or security program'))
-        self.q.put(('ask', lambda: self.say(msg, 'OK' if r and r['ok'] else 'WARN')))
+        self.q.put(('ask', lambda: self.say(msg, 'OK' if r and r['ok'] and grew < 50 else 'WARN')))
 
     def _refresh_counters(self, ps, s):
         if not ps:

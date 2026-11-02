@@ -1,5 +1,5 @@
 """doctor.py - preflight checks. Each check -> dict(name, level 'ok'|'warn'|'fail'|'info', detail). Never raises, never writes."""
-import http.client, json, os, random, shutil, sqlite3, subprocess, sys
+import http.client, json, os, random, re, shutil, sqlite3, subprocess, sys
 from . import config, hosts, mirrordb, pack, paths, procs, proxyctl, upstream
 
 
@@ -202,6 +202,83 @@ def check_network_detail():
     return _c('Windows network detail', 'info', 'An adapter and a default route exist; Windows checks the connection in the background, so wait about 30 seconds after a change and check again.')
 
 
+def battlenet_layout(root=None):
+    """True for a Battle.net install: the game folder is a `_retail_` folder, or a `.build.info` file sits in it or next to it."""
+    r = os.path.normpath(root or paths.GAME_ROOT or '')
+    if not r or r == '.': return False
+    if os.path.basename(r).lower() == '_retail_': return True
+    return any(os.path.isfile(os.path.join(d, '.build.info')) for d in (r, os.path.dirname(r)))
+
+
+def check_layout():
+    """Said only for the Battle.net layout: this tool was built around another edition, so that the game asks for its textures through it is not confirmed."""
+    if not battlenet_layout(): return None
+    return _c('Game edition', 'info', 'Battle.net layout (a _retail_ folder). It is not confirmed that this edition asks for its textures through this tool. '
+                                      'While a session runs, the tool records what the game connects to (netwatch). If the request count stays at zero while you play, '
+                                      'save a support bundle (Settings) and attach it to a bug report')
+
+
+def render_height(conf):
+    """The height in pixels the scene is drawn at, from the player config (Resolution like Auto:1920x1080 and ResolutionMultiplier), or None when it cannot be told."""
+    m = re.search(r'(\d{3,5})\s*x\s*(\d{3,5})', str((conf or {}).get('Resolution@0', '')))
+    if not m: return None
+    try: pct = float((conf or {}).get('ResolutionMultiplier@0', 100))
+    except (TypeError, ValueError): pct = 100.0
+    return int(m.group(2)) * pct / 100.0 if pct > 0 else None
+
+
+def check_resolution():
+    """A scene drawn at 1080 pixels or fewer rarely asks for the largest (4K class) textures: say that this is why far surfaces stay soft, so it is not mistaken for a fault."""
+    try:
+        from . import report
+        h = render_height(report.player_config())
+    except Exception: return None
+    if h is None or h > 1100: return None
+    return _c('Screen resolution', 'info', f'the game draws the scene at about {h:.0f} pixels high. It asks for the largest textures (the 4K class) only for big, close surfaces, and it picks them by the size it draws, '
+                                           'so far surfaces stay softer than in a 4K video. A higher resolution or render scale, and DLSS "Native Resolution" instead of an upscaling mode, show more detail')
+
+
+def mask_address(a):
+    """An address for a support bundle: loopback as it is, anything else cut to its network (a.b.c.0/24 or the first three groups of an IPv6 address)."""
+    a = str(a or '').strip().split('%')[0]
+    if a in ('127.0.0.1', '::1'): return a
+    if ':' in a: return ':'.join(a.split(':')[:3]) + '::/48'
+    p = a.split('.')
+    return '.'.join(p[:3]) + '.0/24' if len(p) == 4 and all(x.isdigit() for x in p) else '?'
+
+
+def summarize_connections(rows):
+    """[{p: process, r: remote address, rp: remote port, s: state}] -> a count per (process, masked address, port, state), most frequent first."""
+    cnt = {}
+    for x in rows or []:
+        if not isinstance(x, dict): continue
+        k = (str(x.get('p', '?')), mask_address(x.get('r')), x.get('rp'), str(x.get('s', '')))
+        cnt[k] = cnt.get(k, 0) + 1
+    return [dict(process=p, remote=r, port=rp, state=s, count=n) for (p, r, rp, s), n in sorted(cnt.items(), key=lambda kv: (-kv[1], kv[0][0], kv[0][1]))]
+
+
+def _plain_names(exes):
+    out = []
+    for e in exes or ():
+        n = e[:-4] if str(e).lower().endswith('.exe') else str(e)
+        if n and re.fullmatch(r'[A-Za-z0-9_.-]+', n) and n not in out: out.append(n)
+    return out
+
+
+def connection_report():
+    """For the support bundle: where the game's programs are connected right now (grouped, addresses cut to their network), and what is listening on the Battle.net background service's port
+    17509 (process name only). It shows by which route the game gets its textures. Read-only; empty lists while the game is not running."""
+    names = _plain_names(paths.GAME_EXES)
+    game = []
+    if names:
+        game = _powershell_json("$ids=@(Get-Process -Name NAMES -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }); @(Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { $ids -contains $_.OwningProcess } | ForEach-Object { [pscustomobject]@{ p = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; r = $_.RemoteAddress; rp = $_.RemotePort; s = [string]$_.State } })".replace('NAMES', ','.join(names)))
+    if isinstance(game, dict) and 'error' not in game: game = [game]
+    listen = _powershell_json("@(Get-NetTCPConnection -State Listen -LocalPort 17509 -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ process = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; address = $_.LocalAddress } })")
+    if isinstance(listen, dict) and 'error' not in listen: listen = [listen]
+    return dict(game_connections=summarize_connections(game) if isinstance(game, list) else game, listening_on_17509=listen,
+                battlenet_processes=_powershell_json("@(Get-Process -Name Agent,Battle.net -ErrorAction SilentlyContinue | ForEach-Object { $_.ProcessName })"))
+
+
 def _cache_gib():
     cache = 0
     for dp, _, fn in os.walk(paths.XPAK_CACHE):
@@ -268,7 +345,7 @@ def run_all(cfg):
     res += check_hosts(); res.append(check_port(cfg)); res += check_proxy(cfg); res.append(check_mirror(cfg))
     pk = check_pack(cfg); res += pk
     res.append(check_upstream(bool(cfg['proxy'].get('offline')), any(r['name'] == 'Texture pack' and r['level'] == 'ok' for r in pk))); res.append(check_network()); res.append(check_disk(cfg))
-    res += [r for r in (check_network_detail(), check_guard(cfg), check_cache()) if r]
+    res += [r for r in (check_layout(), check_resolution(), check_network_detail(), check_guard(cfg), check_cache()) if r]
     res.append(check_game()); res.append(check_game_setup())
     try:
         import tkinter; res.append(_c('Python', 'ok', f'{sys.version.split()[0]}, tkinter {tkinter.TkVersion}'))

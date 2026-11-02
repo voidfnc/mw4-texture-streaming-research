@@ -368,6 +368,9 @@ def coach(state, f, last=''):
                     'Multiplayer and HQ support is experimental. The helper only sees a request when the game asks for a texture, which may happen only once a match or map loads, '
                     'and this version of the game may not use this route at all. Play a match and look again. If it stays at zero, turn on "Start netwatch" in Advanced mode (Proxy tab), play a match, '
                     'then export the support bundle from the Doctor and attach it to a bug report: it shows what the game connects to.', [('doctor', 'Open the Doctor')])
+        elif (f.get('cache_growth_mib') or 0) >= 50:
+            card('no_traffic', 'The game gets textures some other way', f"The game's texture cache grew by about {f['cache_growth_mib']:.0f} MB since it started, but no request reached the helper. So this game fetches textures by a route the hosts entry does not cover "
+                 '(a Battle.net install can do that). Nothing is wrong with your setup. After a few minutes in a mission, save a support bundle (Settings) and attach it to a bug report: it lists what the game connects to.', [('doctor', 'Open the Doctor')])
         else: card('no_traffic', 'The game is running but nothing reached the helper', 'Most often the game was started before the session. Close it and launch it again. '
                    'Otherwise a VPN, "secure DNS" or security software may be bypassing the hosts file, or the PC has no network connection at all (the game asks for nothing then). The Doctor tests exactly that.', [('doctor', 'Open the Doctor')])
     if f.get('free_gib') is not None and f['free_gib'] < 5 and (live or f.get('game_running')):

@@ -4,6 +4,7 @@
 Everything runs against temp files/ports; the real hosts file and game folders are never touched.
 """
 import json, os, shutil, socket, sqlite3, subprocess, sys, tempfile, threading, time, unittest, zipfile, http.client
+from unittest import mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 TOOLS = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -854,6 +855,54 @@ class CacheCtlTests(unittest.TestCase):
     def test_restore_rejects_non_backup_names(self):
         with self.assertRaises(ValueError): cachectl.restore('xpak_cache')
         with self.assertRaises(ValueError): cachectl.restore('Windows')
+
+
+class BattlenetDiagnosticsTests(unittest.TestCase):
+    def test_the_battlenet_layout_is_told_by_the_folder(self):
+        from ccslib import doctor
+        d = tempfile.mkdtemp(prefix='bnet_', dir=TMP)
+        retail = os.path.join(d, 'Call of Duty', '_retail_'); os.makedirs(retail)
+        self.assertTrue(doctor.battlenet_layout(retail)); self.assertTrue(doctor.battlenet_layout(retail.upper()))
+        plain = os.path.join(d, 'Games', 'MW4'); os.makedirs(plain)
+        self.assertFalse(doctor.battlenet_layout(plain)); open(os.path.join(plain, '.build.info'), 'w').close(); self.assertTrue(doctor.battlenet_layout(plain))
+        with mock.patch.object(doctor.paths, 'GAME_ROOT', retail): self.assertEqual(doctor.check_layout()['level'], 'info'); self.assertIn('not confirmed', doctor.check_layout()['detail'])
+        with mock.patch.object(doctor.paths, 'GAME_ROOT', os.path.join(d, 'Games')): self.assertIsNone(doctor.check_layout())
+
+    def test_the_render_height_follows_the_resolution_and_the_scale(self):
+        from ccslib import doctor
+        rh = doctor.render_height
+        self.assertEqual(rh({'Resolution@0': 'Auto:1920x1080', 'ResolutionMultiplier@0': '100'}), 1080); self.assertEqual(rh({'Resolution@0': 'Auto:2560x1440', 'ResolutionMultiplier@0': '50'}), 720)
+        self.assertEqual(rh({'Resolution@0': '3840x2160'}), 2160); self.assertIsNone(rh({'Resolution@0': 'Auto'})); self.assertIsNone(rh({})); self.assertIsNone(rh({'Resolution@0': '1920x1080', 'ResolutionMultiplier@0': '0'}))
+        self.assertEqual(rh({'Resolution@0': '1920x1080', 'ResolutionMultiplier@0': 'x'}), 1080)
+        for conf, row in (({'Resolution@0': 'Auto:1920x1080', 'ResolutionMultiplier@0': '100'}, True), ({'Resolution@0': 'Auto:2560x1440', 'ResolutionMultiplier@0': '100'}, False), ({}, False)):
+            with mock.patch('ccslib.report.player_config', return_value=conf):
+                r = doctor.check_resolution(); self.assertEqual(r is not None, row)
+                if r: self.assertEqual(r['level'], 'info'); self.assertIn('1080', r['detail'])
+
+    def test_connections_are_grouped_and_cut_to_their_network(self):
+        from ccslib import doctor
+        self.assertEqual(doctor.mask_address('127.0.0.1'), '127.0.0.1'); self.assertEqual(doctor.mask_address('23.210.244.32'), '23.210.244.0/24'); self.assertEqual(doctor.mask_address('::1'), '::1')
+        self.assertEqual(doctor.mask_address('2a02:26f0:1234:5678::1'), '2a02:26f0:1234::/48'); self.assertEqual(doctor.mask_address('garbage'), '?'); self.assertEqual(doctor.mask_address(None), '?')
+        rows = [dict(p='sp26-cod', r='23.210.244.32', rp=443, s='Established'), dict(p='sp26-cod', r='23.210.244.99', rp=443, s='Established'), dict(p='sp26-cod', r='127.0.0.1', rp=17509, s='Established'), 'junk']
+        s = doctor.summarize_connections(rows); self.assertEqual(s[0], dict(process='sp26-cod', remote='23.210.244.0/24', port=443, state='Established', count=2)); self.assertEqual(len(s), 2)
+        self.assertNotIn('23.210.244.32', json.dumps(s)); self.assertEqual(doctor.summarize_connections(None), [])
+        self.assertEqual(doctor._plain_names(['sp26-cod.exe', "a'; calc; '", 'cod.exe', 'cod.exe']), ['sp26-cod', 'cod'])
+
+    def test_the_no_traffic_card_says_when_the_game_gets_textures_another_way(self):
+        from ccslib import guide
+        base = dict(configured=True, folder_exists=True, proxy_ready=True, proxy_alive=True, hosts_ok=True, resolve_ok=True, game_running=True, requests=0, game_secs=300, game_names=['sp26-cod.exe'])
+        card = lambda **kw: guide.coach(guide.new_state(), dict(base, **kw), '')
+        plain = card(); grew = card(cache_growth_mib=210)
+        self.assertEqual([c['id'] for c in plain], ['no_traffic']); self.assertEqual([c['id'] for c in grew], ['no_traffic'])
+        self.assertEqual(plain[0]['title'], 'The game is running but nothing reached the helper'); self.assertEqual(grew[0]['title'], 'The game gets textures some other way'); self.assertIn('210 MB', grew[0]['text'])
+        self.assertEqual(card(cache_growth_mib=10)[0]['title'], plain[0]['title'], 'a few MB of cache are not a route')
+
+    def test_netwatch_keeps_the_loopback_connections(self):
+        import netwatch
+        seen = []
+        def run(cmd): seen.append(cmd); return ''
+        netwatch.poll_once({'7': 'sp26-cod'}, set(), run)
+        tcp = [c for c in seen if 'Get-NetTCPConnection' in c][0]; self.assertNotIn('127', tcp)
 
 
 if __name__ == '__main__':

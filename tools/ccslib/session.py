@@ -79,8 +79,11 @@ def start(cfg, say=print):
     if eff['guard']['enabled']:
         if procs.status('guard')['alive']: say('diskguard: already running')
         else: proxyctl.start_guard(cfg); say(f"diskguard: started (limit {eff['guard']['limit_gib']:g} GiB, action {eff['guard']['action']}, cache {paths.XPAK_CACHE})")
-    if eff['watchers'].get('netwatch') and not procs.status('netwatch')['alive']:
-        procs.start('netwatch', launch.argv_for('netwatch', 7200), os.path.join(paths.RUN, 'netwatch.out')); say('netwatch: started')
+    asked = bool(eff['watchers'].get('netwatch'))
+    if (asked or doctor.battlenet_layout()) and not procs.status('netwatch')['alive']:        # the Battle.net layout: what the game connects to is the open question, so it is always recorded
+        procs.start('netwatch', launch.argv_for('netwatch', 7200), os.path.join(paths.RUN, 'netwatch.out'))
+        if asked: say('netwatch: started')
+        else: say('netwatch: started for the Battle.net layout (records what the game connects to)')
     json.dump(dict(started=time.time(), profile=cfg.get('profile'), argv=proxyctl.proxy_argv(cfg)), open(SESSION_FILE(), 'w', encoding='utf-8'))
     res = doctor.run_all(cfg); say(doctor.format_results(res))
     bad = [r for r in res if r['level'] == 'fail']

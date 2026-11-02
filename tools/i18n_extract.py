@@ -14,7 +14,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LANG = os.path.join(HERE, 'ccslib', 'lang')
 FILES = ['ccsgui.py'] + [os.path.join('ccslib', f) for f in ('home.py', 'homeui.py', 'guide.py', 'ui.py', 'doctor.py', 'gamefix.py', 'pack.py', 'upstream.py', 'uninstall.py', 'shortcut.py',
                                                               'session.py', 'cachectl.py', 'selfcheck.py', 'logtail.py')]
-SKIP_CALLS = {'say', 'print', 'debug', 'info', 'warning', 'error', 'write', 'log', 'startswith', 'endswith', 'get', 'pop', 'setdefault', 'index', 'find', 'count', 'split', 'rsplit', 'strip', 'lstrip',
+SKIP_CALLS = {'say', '_powershell_json', 'print', 'debug', 'info', 'warning', 'error', 'write', 'log', 'startswith', 'endswith', 'get', 'pop', 'setdefault', 'index', 'find', 'count', 'split', 'rsplit', 'strip', 'lstrip',
               'rstrip', 'join', 'replace', 'encode', 'decode', 'open', 'exists', 'isfile', 'isdir', 'getenv', 'compile', 'match', 'search', 'sub', 'findall', 'fullmatch', 'tag_configure',
               'bind', 'protocol', 'style', 'run', 'Popen', 'check_output', 'call', 'tag_add', 'tag_config', 'getattr', 'hasattr', 'setattr', 'register', 'query', 'resource', 'iconbitmap',
               'wm_attributes', 'attributes', 'format_map', 'dumps', 'loads', 'load', 'dump', 'ArgumentParser', 'add_argument', 'add_parser', 'Variable', 'StringVar', 'IntVar', 'BooleanVar'}

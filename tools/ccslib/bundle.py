@@ -54,6 +54,8 @@ def make(cfg=None):
         except Exception as e: z.writestr('state/game_setup.json', f'error: {e}')
         try: z.writestr('state/network.txt', scrub(json.dumps(doctor.network_report(), indent=1, default=str)))
         except Exception as e: z.writestr('state/network.txt', f'error: {e}')
+        try: z.writestr('state/connections.txt', scrub(json.dumps(doctor.connection_report(), indent=1, default=str)))        # by which route the game gets its textures (addresses cut to their network)
+        except Exception as e: z.writestr('state/connections.txt', f'error: {e}')
         try:        # the game's own cache: per-shard sizes and record counts (no file names of the user's, no content)
             from . import cachectl
             z.writestr('state/cache.txt', scrub(json.dumps(cachectl.summary(), indent=1, default=str)))

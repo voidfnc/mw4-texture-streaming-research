@@ -48,7 +48,7 @@ def poll_once(procs, seen, run=ps):
         m = re.match(r'\s*(\d+)\s+(.*)', l)
         if m and m.group(2).strip() and ('dns', l) not in seen: seen.add(('dns', l)); out.append(f"DNS pid={m.group(1)} {procs.get(m.group(1), '?')} {m.group(2).strip()}")
     for p, name in procs.items():
-        s = run(f"Get-NetTCPConnection -OwningProcess {p} -ErrorAction SilentlyContinue | ? {{ $_.RemoteAddress -notmatch '^(0\\.0|127\\.|::|172\\.21\\.176)' }} | % {{ \"$($_.State) $($_.RemoteAddress):$($_.RemotePort)\" }}")
+        s = run(f"Get-NetTCPConnection -OwningProcess {p} -ErrorAction SilentlyContinue | ? {{ $_.RemoteAddress -notmatch '^(0\\.0|::$|172\\.21\\.176)' }} | % {{ \"$($_.State) $($_.RemoteAddress):$($_.RemotePort)\" }}")
         for l in s.splitlines():
             if l.strip() and ('tcp', p, l) not in seen: seen.add(('tcp', p, l)); out.append(f"TCP pid={p} {name} " + l.strip())
     return out
