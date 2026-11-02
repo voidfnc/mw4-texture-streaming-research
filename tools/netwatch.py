@@ -54,6 +54,17 @@ def poll_once(procs, seen, run=ps):
     return out
 
 
+DNS_LOG = 'Microsoft-Windows-DNS-Client/Operational'
+
+
+def ensure_dns_log(run=ps):
+    """The DNS lookups the game makes are only recorded while this Windows event log is on, and it is off by default. Turn it on (needs administrator rights) and say so. -> a line for the log, or None when it was on already."""
+    on = lambda: run(f"(Get-WinEvent -ListLog '{DNS_LOG}' -ErrorAction SilentlyContinue).IsEnabled").strip().lower() == 'true'
+    if on(): return None
+    run(f"wevtutil sl {DNS_LOG} /e:true")
+    return f'DNS log: {DNS_LOG} was off; netwatch turned it on (it stays on; "wevtutil sl {DNS_LOG} /e:false" turns it off)' if on() else f'DNS log: {DNS_LOG} is off and could not be turned on (needs administrator rights): the host names the game looks up are not recorded'
+
+
 def log(m):
     l = f"{time.strftime('%H:%M:%S')} {m}"; print(l, flush=True); open(LOG, 'a', encoding='utf-8').write(l + '\n')
 
@@ -62,6 +73,8 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     os.makedirs(paths.WORK, exist_ok=True)
     seen = set(); t0 = time.time(); span = int(argv[0]) if argv else 1200; said = set()
+    note = ensure_dns_log()
+    if note: log(note)
     while time.time() - t0 < span:
         procs = running()
         if not procs:

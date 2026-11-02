@@ -1,5 +1,5 @@
 """doctor.py - preflight checks. Each check -> dict(name, level 'ok'|'warn'|'fail'|'info', detail). Never raises, never writes."""
-import http.client, json, os, random, re, shutil, sqlite3, subprocess, sys
+import http.client, json, os, random, re, shutil, sqlite3, subprocess, sys, time
 from . import config, hosts, mirrordb, pack, paths, procs, proxyctl, upstream
 
 
@@ -39,9 +39,23 @@ def check_hosts():
     return out
 
 
+STARTUP_SECS = 90          # the session waits this long for the proxy (session._wait_proxy_ready)
+
+
+def _port_not_listening(port, own):
+    """The proxy process runs but nothing listens yet. It looks up the upstream address and loads its chunk lists before it binds, so just after a start that is normal; later it is not (the last log lines say why)."""
+    try: age = max(0.0, time.time() - float(own.get('started') or 0))
+    except (TypeError, ValueError): age = STARTUP_SECS + 1
+    if age < STARTUP_SECS:
+        return _c(f'Port {port}', 'info', f'the proxy was started {age:.0f} s ago and is not listening yet: it loads its chunk lists first, which can take up to a minute. Run the check again in a moment')
+    last = ' | '.join(l.strip()[:160] for l in procs.tail_lines(proxyctl.PROXY_LOG, 3) if l.strip())
+    return _c(f'Port {port}', 'fail', f'the proxy has run for {age:.0f} s but is not listening. Last lines of its log: {last or "(empty)"}. Restart the proxy; if it happens again, save a support bundle (Settings) and attach it', ('restart_proxy', None))
+
+
 def check_port(cfg):
     port = cfg['proxy']['port']; own = procs.status('proxy'); owners = procs.port_owner(port)
-    if not owners: return _c(f'Port {port}', 'ok' if not own['alive'] else 'fail', 'free' if not own['alive'] else 'proxy process alive but not listening')
+    if not owners and own['alive']: return _port_not_listening(port, own)
+    if not owners: return _c(f'Port {port}', 'ok', 'free')
     if own['alive'] and all(o['pid'] == own['pid'] for o in owners): return _c(f'Port {port}', 'ok', f"owned by our proxy (pid {own['pid']})")
     prot = [o for o in owners if procs.is_protected(o)]
     if prot:                                                       # Windows itself (System, pid 4): it cannot be ended; usually a Windows web service registered the port
@@ -265,6 +279,15 @@ def _plain_names(exes):
     return out
 
 
+def dns_names(names):
+    """Host names (from the Windows DNS cache) whose address a game program is connected to right now: the names behind the addresses in connection_report. Host names only; [] when nothing matches."""
+    if not names: return []
+    v = _powershell_json("$ids=@(Get-Process -Name NAMES -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }); $ips=@(Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { $ids -contains $_.OwningProcess } | ForEach-Object { $_.RemoteAddress }); "
+                         "@(Get-DnsClientCache -ErrorAction SilentlyContinue | Where-Object { $ips -contains $_.Data } | ForEach-Object { $_.Entry } | Sort-Object -Unique)".replace('NAMES', ','.join(names)))
+    if isinstance(v, str): v = [v]
+    return sorted({x.strip().lower() for x in v if isinstance(x, str) and re.fullmatch(r'[A-Za-z0-9._-]{1,255}', x.strip())}) if isinstance(v, list) else []
+
+
 def connection_report():
     """For the support bundle: where the game's programs are connected right now (grouped, addresses cut to their network), and what is listening on the Battle.net background service's port
     17509 (process name only). It shows by which route the game gets its textures. Read-only; empty lists while the game is not running."""
@@ -275,7 +298,7 @@ def connection_report():
     if isinstance(game, dict) and 'error' not in game: game = [game]
     listen = _powershell_json("@(Get-NetTCPConnection -State Listen -LocalPort 17509 -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ process = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; address = $_.LocalAddress } })")
     if isinstance(listen, dict) and 'error' not in listen: listen = [listen]
-    return dict(game_connections=summarize_connections(game) if isinstance(game, list) else game, listening_on_17509=listen,
+    return dict(game_connections=summarize_connections(game) if isinstance(game, list) else game, listening_on_17509=listen, dns_names=dns_names(names),
                 battlenet_processes=_powershell_json("@(Get-Process -Name Agent,Battle.net -ErrorAction SilentlyContinue | ForEach-Object { $_.ProcessName })"))
 
 
