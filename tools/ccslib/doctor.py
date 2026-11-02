@@ -15,7 +15,7 @@ def check_hosts():
     if s == 'ABSENT' and not os.path.exists(st['path']): out.append(_c('Hosts override', 'fail', 'not present, and the hosts file itself does not exist on this PC (some tweak tools delete it) - Apply creates it; the game resolves the CDN host IPv6-only and never connects without it', ('hosts_apply', None)))
     elif s == 'ABSENT': out.append(_c('Hosts override', 'fail', 'not present - the game resolves the CDN host IPv6-only and never connects (Hosts tab -> Apply)', ('hosts_apply', None)))
     elif s == 'FOREIGN': out.append(_c('Hosts override', 'warn', 'present as hand-added lines outside the managed block (works; Apply adopts them into the block)'))
-    elif s == 'PARTIAL': out.append(_c('Hosts override', 'fail', 'managed block is missing the ::1 or 127.0.0.1 line', ('hosts_apply', None)))
+    elif s == 'PARTIAL': out.append(_c('Hosts override', 'fail', 'managed block is incomplete: a ::1 or 127.0.0.1 line, or the second CDN name the Battle.net edition uses, is missing (Apply completes it)', ('hosts_apply', None)))
     elif s == 'MIXED': out.append(_c('Hosts override', 'warn', 'managed block plus duplicate hand-added lines (Apply cleans this up)'))
     else: out.append(_c('Hosts override', 'ok', 'managed block present (::1 + 127.0.0.1)'))
     r = hosts.resolve_check(); applied = s in ('OK', 'FOREIGN', 'MIXED'); acl = None; why = None
@@ -25,7 +25,7 @@ def check_hosts():
     no_read = bool(acl) and acl.get('dns_client_can_read') is False
     known = bool(why) or no_read              # a cause we can name is a failure; an unexplained mismatch is a warning, because the game may not use the same lookup as this check
     out.append(_c('Resolver', 'ok' if r['ok'] else ('fail' if applied and known else 'warn'),
-                  f"v4={r['v4']} v6={r['v6']}" + ('' if r['ok'] else ' (expected 127.0.0.1 / ::1; try Flush DNS)'),
+                  f"v4={r['v4']} v6={r['v6']}" + ('' if r['ok'] else ' (expected 127.0.0.1 / ::1; try Flush DNS)') + ''.join(' | ' + n + ' v4=' + str(x['v4']) + ' v6=' + str(x['v6']) for n, x in r.get('names', {}).items() if n != paths.HOST and not x['ok']),
                   ('flush_dns', None) if not r['ok'] and applied else None))
     if no_read:
         out.append(_c('Hosts file permissions', 'fail', 'the hosts file is not readable by the Windows DNS Client service (no read right for Everyone, Users, Authenticated Users or Network Service), so Windows ignores it. '
@@ -227,9 +227,9 @@ def battlenet_layout(root=None):
 def check_layout():
     """Said only for the Battle.net layout: this tool was built around another edition, so that the game asks for its textures through it is not confirmed."""
     if not battlenet_layout(): return None
-    return _c('Game edition', 'info', 'Battle.net layout (a _retail_ folder). It is not confirmed that this edition asks for its textures through this tool. '
-                                      'While a session runs, the tool records what the game connects to (netwatch). If the request count stays at zero while you play, '
-                                      'save a support bundle (Settings) and attach it to a bug report')
+    return _c('Game edition', 'info', 'Battle.net layout (a _retail_ folder). This edition asks for its textures under a second host name (cod-assets.cdn.blizzard.com), which the hosts override covers too. '
+                                      'It is not confirmed yet that the requests then reach this tool: the request count should rise while you play. '
+                                      'If it stays at zero, save a support bundle (Settings) and attach it to a bug report')
 
 
 def render_height(conf):
@@ -279,13 +279,34 @@ def _plain_names(exes):
     return out
 
 
-def dns_names(names):
-    """Host names (from the Windows DNS cache) whose address a game program is connected to right now: the names behind the addresses in connection_report. Host names only; [] when nothing matches."""
-    if not names: return []
-    v = _powershell_json("$ids=@(Get-Process -Name NAMES -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }); $ips=@(Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { $ids -contains $_.OwningProcess } | ForEach-Object { $_.RemoteAddress }); "
-                         "@(Get-DnsClientCache -ErrorAction SilentlyContinue | Where-Object { $ips -contains $_.Data } | ForEach-Object { $_.Entry } | Sort-Object -Unique)".replace('NAMES', ','.join(names)))
-    if isinstance(v, str): v = [v]
-    return sorted({x.strip().lower() for x in v if isinstance(x, str) and re.fullmatch(r'[A-Za-z0-9._-]{1,255}', x.strip())}) if isinstance(v, list) else []
+_NO_PEER = frozenset('Listen Bound'.split())       # socket states that have no remote address
+
+
+def dns_names(game_rows):
+    """Host names behind the addresses a game program is connected to right now, from the Windows DNS cache: the name the game looked up (through its aliases) and the name its address belongs to.
+    Only the public addresses of open connections count (not listening or bound sockets, not loopback or LAN addresses), and a name is listed only when it has a dot. At most 40; [] when nothing matches."""
+    import ipaddress
+
+    def addr(s):
+        try: a = ipaddress.ip_address(str(s or '').strip().split('%')[0])
+        except ValueError: return None
+        return getattr(a, 'ipv4_mapped', None) or a
+    ips = {a for a in (addr(x.get('r')) for x in game_rows or [] if isinstance(x, dict) and str(x.get('s', '')) not in _NO_PEER) if a is not None and a.is_global}
+    if not ips: return []
+    v = _powershell_json("@(Get-DnsClientCache -ErrorAction SilentlyContinue | Where-Object { $_.Type -in 1,5,28 } | ForEach-Object { [pscustomobject]@{ n = $_.Entry; t = [int]$_.Type; d = [string]$_.Data } })")
+    if isinstance(v, dict) and 'error' not in v: v = [v]
+    if not isinstance(v, list): return []
+    hit = set(); alias = {}
+    for e in v:
+        if not isinstance(e, dict): continue
+        n = str(e.get('n') or '').strip().lower().rstrip('.'); d = str(e.get('d') or '').strip().lower().rstrip('.')
+        if e.get('t') == 5: alias.setdefault(d, set()).add(n)
+        elif addr(d) in ips: hit.add(n)
+    todo = list(hit)
+    while todo:
+        for n in alias.get(todo.pop(), ()):
+            if n not in hit: hit.add(n); todo.append(n)
+    return sorted(n for n in hit if '.' in n and re.fullmatch(r'[a-z0-9._-]{3,255}', n))[:40]
 
 
 def connection_report():
@@ -298,7 +319,7 @@ def connection_report():
     if isinstance(game, dict) and 'error' not in game: game = [game]
     listen = _powershell_json("@(Get-NetTCPConnection -State Listen -LocalPort 17509 -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ process = (Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName; address = $_.LocalAddress } })")
     if isinstance(listen, dict) and 'error' not in listen: listen = [listen]
-    return dict(game_connections=summarize_connections(game) if isinstance(game, list) else game, listening_on_17509=listen, dns_names=dns_names(names),
+    return dict(game_connections=summarize_connections(game) if isinstance(game, list) else game, listening_on_17509=listen, dns_names=dns_names(game) if isinstance(game, list) else [],
                 battlenet_processes=_powershell_json("@(Get-Process -Name Agent,Battle.net -ErrorAction SilentlyContinue | ForEach-Object { $_.ProcessName })"))
 
 
