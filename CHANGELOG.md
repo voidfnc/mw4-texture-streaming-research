@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.8-beta
 **Diagnostics for the Battle.net edition, and a note for a low render resolution.**
 
 - **New: a "Game edition" Doctor row for the Battle.net layout** (a `_retail_` game folder). It says plainly that it is not confirmed that this edition asks for its textures through this tool, and netwatch (the read-only log of what the game connects to) is started with every session in this layout.
