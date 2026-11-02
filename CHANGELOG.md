@@ -1,6 +1,7 @@
 # Changelog
 
-## Unreleased
+## 0.4.9-beta
+**Host names in the support bundle, and a clearer Port 80 row.**
 
 - **New: the support bundle's `connections.txt` lists host names**: the names (from the Windows DNS cache) behind the addresses the game's programs are connected to. Host names only.
 - **Changed: netwatch turns on the Windows DNS-Client log** (`Microsoft-Windows-DNS-Client/Operational`) when it is off, because the game's lookups are only recorded while it is on, and says so in its log. It stays on; `wevtutil sl Microsoft-Windows-DNS-Client/Operational /e:false` turns it off.
