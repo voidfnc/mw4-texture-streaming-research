@@ -868,6 +868,7 @@
 "only for the ETA": "только для оценки времени",
 "only the built-in fallback edge {0} was found (no system or DNS answer); it may be far from you and slow. Remove the hosts override once, let the tool look the name up, and it will remember the nearest edge": "найден только встроенный запасной edge {0} (нет ответа системы или DNS); он может быть далеко от вас и медленным. Один раз уберите подмену hosts, дайте программе найти имя, и она запомнит ближайший edge",
 "only {0} GiB free on this drive (about {1} GiB needed)": "на этом диске свободно только {0} GiB (нужно около {1} GiB)",
+"our proxy (pid {0}) answers on it (Windows' own port list shows nothing for it on this PC, which is harmless)": "наш прокси (PID {0}) отвечает на нём (список портов Windows ничего не показывает для него на этом ПК, это безвредно)",
 "owned by our proxy (pid {0})": "занят нашим прокси (pid {0})",
 "permission denied (run as administrator): {0}": "отказано в доступе (запустите от имени администратора): {0}",
 "permission was declined, nothing was stopped": "в разрешении отказано, ничего не остановлено",

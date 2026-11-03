@@ -868,6 +868,7 @@
 "only for the ETA": "예상 시간용으로만",
 "only the built-in fallback edge {0} was found (no system or DNS answer); it may be far from you and slow. Remove the hosts override once, let the tool look the name up, and it will remember the nearest edge": "기본 내장 엣지 {0}만 찾았어요(시스템이나 DNS 응답 없음). 멀리 있어 느릴 수 있어요. hosts 재정의를 한 번 제거해 도구가 이름을 조회하게 하면 가장 가까운 엣지를 기억해요",
 "only {0} GiB free on this drive (about {1} GiB needed)": "이 드라이브에 {0} GiB만 남았어요(약 {1} GiB 필요)",
+"our proxy (pid {0}) answers on it (Windows' own port list shows nothing for it on this PC, which is harmless)": "이 도구의 프록시(PID {0})가 응답하고 있습니다(이 PC에서는 Windows 포트 목록에 표시되지 않지만 문제없습니다)",
 "owned by our proxy (pid {0})": "우리 프록시가 소유함(pid {0})",
 "permission denied (run as administrator): {0}": "권한이 거부되었어요(관리자 권한으로 실행): {0}",
 "permission was declined, nothing was stopped": "권한이 거부되어 아무것도 중지되지 않았습니다",

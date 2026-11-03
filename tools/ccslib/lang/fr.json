@@ -868,6 +868,7 @@
 "only for the ETA": "seulement pour la durée estimée",
 "only the built-in fallback edge {0} was found (no system or DNS answer); it may be far from you and slow. Remove the hosts override once, let the tool look the name up, and it will remember the nearest edge": "seul le serveur edge de secours intégré {0} a été trouvé (aucune réponse du système ou du DNS) ; il peut être loin de vous et lent. Retirez une fois la redirection hosts, laissez l'outil chercher le nom, et il retiendra le serveur edge le plus proche",
 "only {0} GiB free on this drive (about {1} GiB needed)": "seulement {0} GiB libres sur ce disque (environ {1} GiB nécessaires)",
+"our proxy (pid {0}) answers on it (Windows' own port list shows nothing for it on this PC, which is harmless)": "notre proxy (PID {0}) y répond (la liste des ports de Windows n’affiche rien pour lui sur ce PC, c’est sans conséquence)",
 "owned by our proxy (pid {0})": "occupé par notre proxy (pid {0})",
 "permission denied (run as administrator): {0}": "autorisation refusée (exécutez en administrateur) : {0}",
 "permission was declined, nothing was stopped": "l’autorisation a été refusée, rien n’a été arrêté",

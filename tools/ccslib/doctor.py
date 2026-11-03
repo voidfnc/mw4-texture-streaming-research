@@ -54,7 +54,9 @@ def _port_not_listening(port, own):
 
 def check_port(cfg):
     port = cfg['proxy']['port']; own = procs.status('proxy'); owners = procs.port_owner(port)
-    if not owners and own['alive']: return _port_not_listening(port, own)
+    if not owners and own['alive']:
+        if proxyctl.answers_as(port, own['pid']): return _c(f'Port {port}', 'ok', f"our proxy (pid {own['pid']}) answers on it (Windows' own port list shows nothing for it on this PC, which is harmless)")
+        return _port_not_listening(port, own)
     if not owners: return _c(f'Port {port}', 'ok', 'free')
     if own['alive'] and all(o['pid'] == own['pid'] for o in owners): return _c(f'Port {port}', 'ok', f"owned by our proxy (pid {own['pid']})")
     prot = [o for o in owners if procs.is_protected(o)]

@@ -868,6 +868,7 @@
 "only for the ETA": "ETAの計算にのみ使用",
 "only the built-in fallback edge {0} was found (no system or DNS answer); it may be far from you and slow. Remove the hosts override once, let the tool look the name up, and it will remember the nearest edge": "組み込みの予備エッジ {0} しか見つかりませんでした(システムやDNSの応答なし)。遠くて遅い可能性があります。hostsの上書きを一度削除してツールに名前を調べさせると、最寄りのエッジが記憶されます",
 "only {0} GiB free on this drive (about {1} GiB needed)": "このドライブの空きは {0} GiB だけです(約 {1} GiB 必要)",
+"our proxy (pid {0}) answers on it (Windows' own port list shows nothing for it on this PC, which is harmless)": "本ツールのプロキシ (PID {0}) がこのポートで応答しています (このPCではWindowsのポート一覧に表示されませんが、問題ありません)",
 "owned by our proxy (pid {0})": "このツールのプロキシが使用中(pid {0})",
 "permission denied (run as administrator): {0}": "アクセスが拒否されました(管理者として実行してください): {0}",
 "permission was declined, nothing was stopped": "許可が拒否されたため、何も停止していません",

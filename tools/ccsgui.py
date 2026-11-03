@@ -1138,7 +1138,8 @@ class App(tk.Tk):
             elif pp.get('alive'): self.light('proxy', 'fail', 'not answering')
             else: self.light('proxy', 'off', 'stopped')
             own = s.get('owners') or []; port = config.effective_proxy(self.cfg)['port']
-            if not own: self.light('port', 'off', f'{port} free')
+            if not own and pp.get('alive') and ps and ps.get('pid') == pp.get('pid'): self.light('port', 'ok', f'{port} ours')       # the proxy answers itself; the port list can come back empty
+            elif not own: self.light('port', 'off', f'{port} free')
             elif pp.get('alive') and all(o['pid'] == pp['pid'] for o in own): self.light('port', 'ok', f'{port} ours')
             else: self.light('port', 'fail', f"{port}: {own[0]['name']}")
             mi = ps.get('mirror_ids') if ps else None

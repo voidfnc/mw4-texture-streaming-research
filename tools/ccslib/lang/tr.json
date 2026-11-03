@@ -868,6 +868,7 @@
 "only for the ETA": "yalnızca tahmini süre için",
 "only the built-in fallback edge {0} was found (no system or DNS answer); it may be far from you and slow. Remove the hosts override once, let the tool look the name up, and it will remember the nearest edge": "yalnızca yerleşik yedek edge {0} bulundu (sistem veya DNS yanıtı yok); size uzak ve yavaş olabilir. Hosts geçersiz kılmasını bir kez kaldırın, aracın adı aramasına izin verin; en yakın edge'i hatırlayacaktır",
 "only {0} GiB free on this drive (about {1} GiB needed)": "bu sürücüde yalnızca {0} GiB boş (yaklaşık {1} GiB gerekli)",
+"our proxy (pid {0}) answers on it (Windows' own port list shows nothing for it on this PC, which is harmless)": "bizim proxy’miz (PID {0}) bu bağlantı noktasında yanıt veriyor (Windows’un bağlantı noktası listesi bu bilgisayarda bunu göstermiyor, zararsızdır)",
 "owned by our proxy (pid {0})": "proxy'miz tarafından kullanılıyor (pid {0})",
 "permission denied (run as administrator): {0}": "izin reddedildi (yönetici olarak çalıştırın): {0}",
 "permission was declined, nothing was stopped": "izin reddedildi, hiçbir şey durdurulmadı",

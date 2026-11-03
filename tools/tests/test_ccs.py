@@ -917,6 +917,19 @@ class DnsAndStartupTests(unittest.TestCase):
         with mock.patch.object(doctor.procs, 'status', return_value=dict(alive=False, pid=None, started=None)), mock.patch.object(doctor.procs, 'port_owner', return_value=[]):
             self.assertEqual((doctor.check_port(cfg)['level'], doctor.check_port(cfg)['detail']), ('ok', 'free'))
 
+    def test_the_port_row_trusts_the_proxy_when_the_port_list_shows_nothing(self):
+        # netstat can list nothing for a socket that is open (seen on one PC: the same proxy flipped between "ours" and "not listening" within seconds)
+        import time
+        from ccslib import doctor, proxyctl
+        old = dict(alive=True, pid=77, started=time.time() - 500); cfg = dict(proxy=dict(port=80))
+        with mock.patch.object(doctor.procs, 'status', return_value=old), mock.patch.object(doctor.procs, 'port_owner', return_value=[]), mock.patch.object(doctor.procs, 'tail_lines', return_value=[]):
+            with mock.patch.object(proxyctl, 'fetch_stats', return_value=dict(pid=77)): r = doctor.check_port(cfg)
+            self.assertEqual(r['level'], 'ok'); self.assertIn('pid 77', r['detail']); self.assertIsNone(r['fix'])
+            with mock.patch.object(proxyctl, 'fetch_stats', return_value=dict(pid=99)): self.assertEqual(doctor.check_port(cfg)['level'], 'fail')     # something else answers
+            with mock.patch.object(proxyctl, 'fetch_stats', return_value=None): self.assertEqual(doctor.check_port(cfg)['level'], 'fail')              # nothing answers
+        with mock.patch.object(proxyctl, 'fetch_stats', return_value=dict(pid=5)): self.assertTrue(proxyctl.answers_as(80, 5)); self.assertFalse(proxyctl.answers_as(80, 6))
+        with mock.patch.object(proxyctl, 'fetch_stats', return_value=None): self.assertFalse(proxyctl.answers_as(80, 5))
+
     def test_the_host_names_behind_the_game_connections_are_listed(self):
         from ccslib import doctor
         rows = [dict(p='sp26-cod', r='2600:1407:3c00:1b15::17d2:f410', rp=80, s='Established'), dict(p='sp26-cod', r='0.0.0.0', rp=0, s='Listen'), dict(p='sp26-cod', r='::', rp=0, s='Bound'),
