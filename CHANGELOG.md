@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.11-beta
+**The Port 80 row no longer reports a working proxy as "not listening".**
+
+- **Fixed: a false "Port 80 ... not listening" in the Doctor.** The row asked Windows (`netstat`) who listens on the port, and on some PCs that list comes back empty even while the proxy is serving. When the list shows nothing and the proxy process is alive, the Doctor now asks the proxy itself (its stats reply carries its process id) and reports the port as ours when it answers. It fails only when the proxy does not answer either.
+- **Fixed: the port light in the status row** showed "free" in the same situation; it now shows "ours" when the proxy answers.
+- The new Doctor text is translated into every language.
+
 ## 0.4.10-beta
 **The Battle.net edition's texture host is covered, and a bundle privacy fix.**
 

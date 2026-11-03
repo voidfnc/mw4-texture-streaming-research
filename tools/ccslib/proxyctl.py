@@ -44,6 +44,12 @@ def fetch_stats(port=80, timeout=0.6):
         return None
 
 
+def answers_as(port, pid):
+    """True if the process `pid` is what answers on the loopback port, asked directly (the stats reply carries the proxy's own pid). netstat on some PCs lists nothing for a socket that is open, so it cannot be the only witness."""
+    s = fetch_stats(port)
+    return bool(s) and s.get('pid') == pid
+
+
 def read_json(path):
     try: return json.load(open(path, encoding='utf-8'))
     except Exception: return None

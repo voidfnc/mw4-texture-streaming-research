@@ -868,6 +868,7 @@
 "only for the ETA": "仅用于预计时间",
 "only the built-in fallback edge {0} was found (no system or DNS answer); it may be far from you and slow. Remove the hosts override once, let the tool look the name up, and it will remember the nearest edge": "只找到内置的备用边缘节点 {0}（系统或 DNS 都没有给出答案）；它可能离您很远且较慢。请先移除一次 hosts 覆盖，让本工具查询该名称，之后它会记住最近的边缘节点",
 "only {0} GiB free on this drive (about {1} GiB needed)": "此磁盘只剩 {0} GiB（约需要 {1} GiB）",
+"our proxy (pid {0}) answers on it (Windows' own port list shows nothing for it on this PC, which is harmless)": "本工具的代理（PID {0}）在该端口上有响应（此电脑上 Windows 的端口列表不显示它，这是无害的）",
 "owned by our proxy (pid {0})": "由我们的代理占用（pid {0}）",
 "permission denied (run as administrator): {0}": "权限被拒绝（请以管理员身份运行）：{0}",
 "permission was declined, nothing was stopped": "权限被拒绝，没有停止任何内容",
