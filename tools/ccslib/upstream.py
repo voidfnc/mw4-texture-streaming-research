@@ -7,7 +7,7 @@ The game's host name is usually overridden to loopback while a session runs, so 
   4. a built-in Akamai address, only as a last resort (it may be far from you, so everything that uses it says so)
 `pick()` then downloads a couple of real chunks from each candidate and keeps the fastest one that answers correctly.
 """
-import email.utils, http.client, json, os, random, socket, struct, time
+import email.utils, http.client, ipaddress, json, os, random, socket, struct, time
 from . import paths
 from .version import USER_AGENT
 
@@ -123,12 +123,38 @@ def candidates(): return [ip for ip, _ in candidates_info()]
 def is_fallback(ip): return ip in FALLBACK_IPS
 
 
-def resolve(check=True):
-    """-> first usable edge IP (the proxy and Doctor use this; the mirror measures with pick()). With check=True each candidate is probed."""
+def is_public(ip):
+    """True for an address on the public internet (not private, loopback, link-local or shared/CGNAT space)."""
+    try: return ipaddress.ip_address(ip).is_global
+    except ValueError: return False
+
+
+def forget(ip=None):
+    """Drop the remembered edge `ip` (all of them when None) so that it is not tried first again. -> True if something was removed."""
+    try:
+        with open(_cache_path(), encoding='utf-8') as f: d = json.load(f)
+    except Exception: return False
+    keep = [] if ip is None else [i for i in d.get('ips', []) if i != ip]
+    if keep == d.get('ips', []): return False
+    if keep:
+        d['ips'] = keep
+        try:
+            with open(_cache_path(), 'w', encoding='utf-8') as f: json.dump(d, f)
+        except OSError: return False
+    else:
+        try: os.remove(_cache_path())
+        except OSError: return False
+    return True
+
+
+def resolve(check=True, timeout=3, port=80):
+    """-> first usable edge IP (the proxy and Doctor use this; the mirror measures with pick()). With check=True each candidate is probed, so a remembered address that no longer
+    answers (another network, a VPN) is skipped; when none answers, a public address is preferred over a private one."""
     c = candidates()
     if check:
         for ip in c:
-            if probe(ip): return ip
+            if probe(ip, port, timeout): return ip
+        return next((ip for ip in c if is_public(ip)), c[0])
     return c[0]
 
 

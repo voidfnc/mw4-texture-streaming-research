@@ -112,6 +112,8 @@ def run_fix(cfg, fix, say=print):
     if act in ('start_proxy', 'restart_proxy'):
         if act == 'restart_proxy': procs.stop('proxy')
         proxyctl.start_proxy(cfg); return _wait_proxy_ready(port, say)
+    if act == 'forget_edge':
+        from . import upstream; return True, ('saved edge address forgotten; the proxy takes a working one at its next start' if upstream.forget() else 'no saved edge address to forget')
     if act == 'game_fix':
         from . import gamefix; return gamefix.apply_elevating(say=say)
     if act == 'game_undo':

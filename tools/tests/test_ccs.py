@@ -331,6 +331,8 @@ class FakeUp(BaseHTTPRequestHandler):
     seen_hosts = []
     def log_message(self, *a): pass
     def do_HEAD(self):
+        if self.path.count('_') < 2:           # not a chunk path (the proxy's start-up probe asks for /): any status shows the edge answers
+            self.send_response(404); self.send_header('Content-Length', '0'); self.end_headers(); return
         want = int(self.path.rsplit('_', 2)[1], 16)
         self.send_response(200); self.send_header('Content-Length', str(want)); self.send_header('ETag', '"abc"'); self.end_headers()
     def do_GET(self):
@@ -352,10 +354,10 @@ class ProxyTests(unittest.TestCase):
         c.execute('insert into chunks(id,wire,raw,flag,prio,status,etag,cod_key) values (?,?,?,?,?,1,?,?)', (cid, wire, 1 << 20, 1, 0, 'deadbeef', 'a0b1c2d3e4f50617')); c.commit(); c.close()
         cls.cid = cid; cls.wire = wire
 
-    def run_proxy(self, *extra):
+    def run_proxy(self, *extra, env=None, pin=True):
         port = free_port(); st = os.path.join(TMP, f'stats_{port}.json'); log = os.path.join(TMP, f'px_{port}.log')
-        p = subprocess.Popen([sys.executable, os.path.join(TOOLS, 'ccsproxy.py'), '--port', str(port), '--upstream-ip', '127.0.0.1', '--upstream-port', str(self.up_port),
-                              '--log', log, '--stats-json', st, '--origin', self.mir] + list(extra), stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        p = subprocess.Popen([sys.executable, os.path.join(TOOLS, 'ccsproxy.py'), '--port', str(port)] + (['--upstream-ip', '127.0.0.1'] if pin else []) + ['--upstream-port', str(self.up_port),
+                              '--log', log, '--stats-json', st, '--origin', self.mir] + list(extra), stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, env=dict(os.environ, **(env or {})))
         self.addCleanup(p.kill)
         t0 = time.time()
         while time.time() - t0 < 90:                         # index load parses the real *_cdn.xpak lists
@@ -391,6 +393,23 @@ class ProxyTests(unittest.TestCase):
         self.assertEqual(ask('cod-assets.cdn.blizzard.com:80'), (200, 32, ['cod-assets.cdn.blizzard.com']))
         self.assertEqual(ask('cod-assets.cdn.callofduty.com'), (200, 32, ['cod-assets.cdn.callofduty.com']))
         self.assertEqual(ask('other.example')[2], [paths.HOST], 'an unknown name is not forwarded')
+
+    def test_a_dead_first_edge_is_skipped_when_the_proxy_starts(self):
+        # a remembered address from another network (private, black-holed) used to be taken without a check: every miss then waited for its timeouts
+        port, st, log = self.run_proxy(env={'CCS_EDGE_CANDIDATES': '10.255.255.1,127.0.0.1'}, pin=False)
+        s, b, _ = self.get(port, f'/pc/iw9_3/23/aa/{0xaa:016x}_00000020_1'); self.assertEqual((s, len(b)), (200, 32))
+        self.assertIn('upstream 127.0.0.1', open(log, encoding='utf-8').read())
+
+    def test_the_edge_is_swapped_after_a_failed_connection_but_never_a_pinned_one(self):
+        import ccsproxy
+        from types import SimpleNamespace as NS
+        calls = []
+        with mock.patch.object(ccsproxy.upstream, 'forget', side_effect=calls.append), mock.patch.object(ccsproxy.upstream, 'candidates', return_value=['10.10.34.36', '93.184.216.34']),              mock.patch.object(ccsproxy.upstream, 'probe', side_effect=lambda ip, port, timeout=3: ip == '93.184.216.34'), mock.patch.object(ccsproxy, 'log'):
+            a = NS(upstream_ip='10.10.34.36', upstream_port=80, pinned=False); ccsproxy.EDGE_TRIED = 0.0
+            ccsproxy.swap_edge(a, '10.10.34.36'); self.assertEqual((a.upstream_ip, calls), ('93.184.216.34', ['10.10.34.36']))
+            ccsproxy.swap_edge(a, '93.184.216.34'); self.assertEqual(a.upstream_ip, '93.184.216.34', 'at most one search every 10 s')
+            ccsproxy.EDGE_TRIED = 0.0; ccsproxy.swap_edge(a, '10.10.34.36'); self.assertEqual(a.upstream_ip, '93.184.216.34', 'a stale report about another edge changes nothing')
+            p = NS(upstream_ip='10.10.34.36', upstream_port=80, pinned=True); ccsproxy.EDGE_TRIED = 0.0; ccsproxy.swap_edge(p, '10.10.34.36'); self.assertEqual(p.upstream_ip, '10.10.34.36', 'the address the user typed stays')
 
     def test_chunks_no_list_names_are_noted_once_for_the_mirror(self):
         port, st, log = self.run_proxy(); note = os.path.join(os.path.dirname(log), 'unlisted.txt')
@@ -655,6 +674,22 @@ class DoctorSessionTests(unittest.TestCase):
             self.assertEqual(doctor.check_upstream()['level'], 'warn')
             self.assertEqual(doctor.check_upstream(complete=True)['level'], 'info'); self.assertIn('offline copy is complete', doctor.check_upstream(complete=True)['detail'])
             self.assertEqual(doctor.check_upstream(offline=True)['level'], 'info'); self.assertIn('only the offline copy', doctor.check_upstream(offline=True)['detail'])
+
+    def test_the_upstream_row_names_a_saved_edge_that_does_not_answer_and_offers_to_forget_it(self):
+        from unittest import mock
+        class Conn:
+            def __init__(self, ip, *a, **k): self.ip = ip
+            def request(self, *a, **k):
+                if self.ip == '10.10.34.36': raise OSError('timed out')
+            def getresponse(self): return mock.Mock(status=200, read=lambda: b'')
+            def close(self): pass
+        with mock.patch.object(doctor.upstream, 'candidates_info', return_value=[('10.10.34.36', 'cache'), ('93.184.216.34', 'dns:9.9.9.9')]), mock.patch.object(doctor.http.client, 'HTTPConnection', Conn):
+            r = doctor.check_upstream()
+            self.assertEqual((r['level'], r['fix']), ('warn', ('forget_edge', None))); self.assertIn('10.10.34.36', r['detail']); self.assertIn('93.184.216.34', r['detail'])
+        with mock.patch.object(doctor.upstream, 'candidates_info', return_value=[('93.184.216.34', 'dns:9.9.9.9')]), mock.patch.object(doctor.http.client, 'HTTPConnection', Conn):
+            self.assertEqual(doctor.check_upstream()['level'], 'ok')
+        with mock.patch.object(doctor.upstream, 'forget', return_value=True) as fg: ok, msg = session.run_fix(config.load(), ('forget_edge', None), lambda m: None)
+        self.assertTrue(ok); self.assertIn('forgotten', msg); fg.assert_called_once_with()
 
     def test_the_disk_guard_row_warns_before_a_big_cache_cuts_the_session_short(self):
         from unittest import mock
