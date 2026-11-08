@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.12-beta
+**A saved internet address that no longer answers can no longer stall the game.**
+
+- **Fixed: the proxy waited for a dead address.** For a piece that is not in your texture pack the proxy asks the internet, and it took the first address the tool had saved without testing it. If that address came from another network (a private address from a VPN or a router at work, for example) every such request waited about 20 seconds per try and four tries, up to 88 seconds, and then failed, and the game kept asking for it. The proxy now tests its candidate addresses when it starts and uses the first one that answers, gives up on an address that does not accept a connection within 8 seconds, switches to another working address by itself, and forgets the dead one. An address you typed under Upstream IP is never changed.
+- **New: the Doctor's *Upstream CDN* row names a saved address that does not answer** and has a *Forget saved edge* button.
+- **Changed: the same row no longer says the internet is not needed** when the offline copy is complete: it is needed for pieces outside the pack.
+- The new text is translated into every language.
+
 ## 0.4.11-beta
 **The Port 80 row no longer reports a working proxy as "not listening".**
 

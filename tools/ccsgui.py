@@ -1409,7 +1409,7 @@ class App(tk.Tk):
             tk.Label(self.doc_frame, text='●', fg=col[r['level']], bg=BG, font=('Segoe UI', 12)).grid(row=i, column=0, padx=(8, 4), pady=3, sticky='n')
             ttk.Label(self.doc_frame, text=r['name'], style='H.TLabel', width=20).grid(row=i, column=1, sticky='nw', pady=3)
             ttk.Label(self.doc_frame, text=r['detail'], wraplength=640, justify='left').grid(row=i, column=2, sticky='nw', pady=3, padx=6)
-            if r.get('fix'): ttk.Button(self.doc_frame, text='Fix: ' + {'hosts_apply': 'apply hosts (UAC)', 'flush_dns': 'flush DNS (UAC)', 'hosts_acl': 'repair hosts permissions (UAC)', 'start_proxy': 'start proxy', 'restart_proxy': 'restart proxy', 'kill_port_owner': 'stop port owner', 'stop_service': 'stop web service (UAC)', 'game_fix': 'set up the game', 'game_undo': 'undo the game setup'}[r['fix'][0]],
+            if r.get('fix'): ttk.Button(self.doc_frame, text='Fix: ' + {'hosts_apply': 'apply hosts (UAC)', 'flush_dns': 'flush DNS (UAC)', 'hosts_acl': 'repair hosts permissions (UAC)', 'start_proxy': 'start proxy', 'restart_proxy': 'restart proxy', 'kill_port_owner': 'stop port owner', 'stop_service': 'stop web service (UAC)', 'game_fix': 'set up the game', 'game_undo': 'undo the game setup', 'forget_edge': 'forget saved edge'}[r['fix'][0]],
                                            command=lambda fx=r['fix'], n=r['name']: self.do_fix(fx, n)).grid(row=i, column=3, padx=8, pady=2, sticky='ne')
         self.doc_frame.columnconfigure(2, weight=1)
 

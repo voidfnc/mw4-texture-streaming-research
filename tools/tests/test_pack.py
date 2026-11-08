@@ -287,6 +287,19 @@ class UpstreamUnitTests(unittest.TestCase):
         with open(upstream._cache_path(), 'w') as f: json.dump(d, f)
         self.assertEqual(upstream._cached(), [])
 
+    def test_a_remembered_edge_that_does_not_answer_is_skipped_and_can_be_forgotten(self):
+        from unittest import mock
+        from ccslib import upstream
+        self.assertTrue(upstream.is_public('93.184.216.34')); self.assertFalse(upstream.is_public('10.10.34.36')); self.assertFalse(upstream.is_public('100.64.0.5')); self.assertFalse(upstream.is_public('nonsense'))
+        cands = [('10.10.34.36', 'cache'), ('93.184.216.34', 'dns:9.9.9.9')]
+        with mock.patch.object(upstream, 'candidates_info', return_value=cands):
+            with mock.patch.object(upstream, 'probe', side_effect=lambda ip, port=80, timeout=8: ip != '10.10.34.36'): self.assertEqual(upstream.resolve(), '93.184.216.34')
+            with mock.patch.object(upstream, 'probe', return_value=False): self.assertEqual(upstream.resolve(), '93.184.216.34', 'nothing answers: a public address beats a private one')
+            self.assertEqual(upstream.resolve(check=False), '10.10.34.36')
+        upstream.remember(['10.10.34.36', '93.184.216.34'])
+        self.assertTrue(upstream.forget('10.10.34.36')); self.assertEqual(upstream._cached(), ['93.184.216.34']); self.assertFalse(upstream.forget('10.10.34.36'))
+        self.assertTrue(upstream.forget()); self.assertEqual(upstream._cached(), []); self.assertFalse(os.path.exists(upstream._cache_path())); self.assertFalse(upstream.forget())
+
     def test_dns_a_parses_cname_chain_ipv6_noise_and_compressed_names(self):
         from ccslib import upstream
         def name(n): return b''.join(bytes([len(p)]) + p.encode() for p in n.split('.')) + b'\x00'

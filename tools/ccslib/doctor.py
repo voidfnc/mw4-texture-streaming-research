@@ -141,14 +141,20 @@ def check_pack(cfg):
 def check_upstream(offline=False, complete=False):
     """offline = the profile never uses the internet; complete = the offline copy holds every piece asked for. Either way an unreachable edge is not a problem."""
     try:
-        ip, src = upstream.candidates_info()[0]; c = http.client.HTTPConnection(ip, 80, timeout=4); c.request('HEAD', '/', headers=upstream.headers()); r = c.getresponse(); r.read(); c.close()
-        if src == 'fallback':
-            return _c('Upstream CDN', 'warn', f'only the built-in fallback edge {ip} was found (no system or DNS answer); it may be far from you and slow. Remove the hosts override once, '
-                                              'let the tool look the name up, and it will remember the nearest edge')
-        return _c('Upstream CDN', 'ok', f'edge {ip} ({src}) answers (HTTP {r.status}); the mirror measures the candidates before it downloads')
+        dead = []
+        for ip, src in upstream.candidates_info():
+            try: c = http.client.HTTPConnection(ip, 80, timeout=4); c.request('HEAD', '/', headers=upstream.headers()); r = c.getresponse(); r.read(); c.close()
+            except Exception as e: dead.append((ip, src, e)); continue
+            if src == 'fallback':
+                return _c('Upstream CDN', 'warn', f'only the built-in fallback edge {ip} was found (no system or DNS answer); it may be far from you and slow. Remove the hosts override once, '
+                                                  'let the tool look the name up, and it will remember the nearest edge')
+            saved = [d for d in dead if d[1] in ('system', 'cache')]
+            if saved: return _c('Upstream CDN', 'warn', f"the saved edge {saved[0][0]} does not answer ({saved[0][2]}); the proxy uses {ip} ({src}) instead. Forget the saved address so that it is not tried first again", ('forget_edge', None))
+            return _c('Upstream CDN', 'ok', f'edge {ip} ({src}) answers (HTTP {r.status}); the mirror measures the candidates before it downloads')
+        raise OSError(dead[0][2] if dead else 'no edge address found')
     except Exception as e:
         if offline: return _c('Upstream CDN', 'info', f'edge not reachable ({e}); this profile uses only the offline copy, so the internet is not needed')
-        if complete: return _c('Upstream CDN', 'info', f'edge not reachable ({e}); the offline copy is complete, so the internet is not needed')
+        if complete: return _c('Upstream CDN', 'info', f'edge not reachable ({e}); the offline copy is complete, so the internet is needed only for pieces outside it')
         return _c('Upstream CDN', 'warn', f'edge not reachable ({e}); mirror-only operation still works')
 
 

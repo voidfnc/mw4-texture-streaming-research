@@ -28,6 +28,8 @@ LOG = os.path.join(paths.WORK, 'ccsproxy.log')
 HOST = 'cod-assets.cdn.callofduty.com'
 HOSTS = (HOST, 'cod-assets.cdn.blizzard.com')       # the names the game asks under (the Battle.net edition uses the second); the same objects answer under both
 PAT = re.compile(r'^/pc/iw9_3/23/([0-9a-f]{2})/([0-9a-f]{16})_([0-9a-f]{8})_([01])$')
+CONNECT_SECS = 8          # an edge that does not accept a connection in this time is treated as dead (the body read keeps its own, longer limit)
+EDGE_LOCK = threading.Lock(); EDGE_TRIED = 0.0
 NOSTAT = collections.defaultdict(int)     # where a probe's counts go
 lock = threading.Lock(); stat = dict(req=0, ok=0, skip=0, miss=0, err=0, retry=0, cliabort=0, mirror=0, bytes=0, mbytes=0)
 RAW = {}
@@ -89,6 +91,20 @@ def note_unlisted(path):
         try:
             with open(os.path.join(os.path.dirname(LOG), 'unlisted.txt'), 'a', encoding='utf-8') as f: f.write(path + '\n')
         except OSError: pass
+
+def swap_edge(a, bad):
+    """The upstream edge `bad` did not accept a connection: forget it, find another one that answers and use it from the next try on. One thread at a time, at most every 10 s,
+    and never when the user typed an upstream address (--upstream-ip is theirs to change)."""
+    global EDGE_TRIED
+    if getattr(a, 'pinned', False) or not EDGE_LOCK.acquire(blocking=False): return
+    try:
+        if a.upstream_ip != bad or time.time() - EDGE_TRIED < 10: return
+        EDGE_TRIED = time.time(); upstream.forget(bad)
+        for ip in upstream.candidates():
+            if ip != bad and upstream.probe(ip, a.upstream_port, timeout=3): a.upstream_ip = ip; log(f"UPSTREAM-SWITCH {bad} -> {ip} (the first did not accept a connection)"); return
+        log(f"UPSTREAM-SWITCH no other edge answered; staying on {bad}")
+    finally: EDGE_LOCK.release()
+
 
 def load_index():
     for fn in cdnxpak.find_all(ROOT):
@@ -181,8 +197,9 @@ class H(BaseHTTPRequestHandler):
         if self.headers.get('Range'): hdr['Range'] = self.headers['Range']
         r = body = last = None
         for attempt in range(1, a.retries + 2):
+            ip = a.upstream_ip; connected = False
             try:
-                c = http.client.HTTPConnection(a.upstream_ip, a.upstream_port, timeout=30)
+                c = http.client.HTTPConnection(ip, a.upstream_port, timeout=CONNECT_SECS); c.connect(); connected = True; c.sock.settimeout(30)
                 c.request(self.command, path, headers=hdr); r = c.getresponse(); body = r.read(); c.close()
                 if r.status >= 500 or (want is not None and r.status == 200 and len(body) != want):
                     raise IOError(f"bad upstream reply status={r.status} len={len(body)} want={want}")
@@ -191,6 +208,7 @@ class H(BaseHTTPRequestHandler):
                 last = e; r = None
                 with lock: st['retry'] += 1
                 lg(f"RETRY {attempt}/{a.retries + 1} {path}: {e}")
+                if not connected: swap_edge(a, ip)          # the edge did not even accept a connection: look for another one before the next try
                 time.sleep(min(0.25 * 2 ** (attempt - 1), 2.0))
         if r is None:
             with lock: st['err'] += 1
@@ -242,7 +260,8 @@ if __name__ == '__main__':
     if a.log: LOG = os.path.abspath(a.log)
     os.makedirs(os.path.dirname(LOG), exist_ok=True); ARGS = {k: v for k, v in vars(a).items()}
     log(f"START {time.strftime('%Y-%m-%d')} pid={os.getpid()} args={' '.join(sys.argv[1:])}")   # run boundary + date for ccsreport
-    if not a.upstream_ip: a.upstream_ip = upstream.resolve(check=False)      # public-resolver lookup (the hosts override points the name at us)
+    a.pinned = bool(a.upstream_ip)
+    if not a.upstream_ip: a.upstream_ip = upstream.resolve(check=not a.offline, port=a.upstream_port)       # an edge that answers: a remembered one that no longer does is skipped (the hosts override points the name at us)
     if a.origin: a.origin = os.path.abspath(a.origin); load_mirror(a.origin)
     load_index(); log(f"upstream {a.upstream_ip}  tier<={a.max_raw_mib}MiB  budget={a.budget_gib}GiB")
     for cls, addr in ((S6, ('::1', a.port)), (S4, ('127.0.0.1', a.port))):
