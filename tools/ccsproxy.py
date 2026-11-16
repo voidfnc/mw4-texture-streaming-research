@@ -28,10 +28,12 @@ LOG = os.path.join(paths.WORK, 'ccsproxy.log')
 HOST = 'cod-assets.cdn.callofduty.com'
 HOSTS = (HOST, 'cod-assets.cdn.blizzard.com')       # the names the game asks under (the Battle.net edition uses the second); the same objects answer under both
 PAT = re.compile(r'^/pc/iw9_3/23/([0-9a-f]{2})/([0-9a-f]{16})_([0-9a-f]{8})_([01])$')
+# small files under a 32-hex folder that are in no chunk list (Warzone asks for them, tens of KB each): kept beside the mirror in side/ once fetched, so offline play has them
+SIDE = re.compile(r'^/pc/iw9_3/23/tr/([0-9a-f]{32})/([0-9a-f]{16})_([0-9a-f]{8})_([01])$')
 CONNECT_SECS = 8          # an edge that does not accept a connection in this time is treated as dead (the body read keeps its own, longer limit)
 EDGE_LOCK = threading.Lock(); EDGE_TRIED = 0.0
 NOSTAT = collections.defaultdict(int)     # where a probe's counts go
-lock = threading.Lock(); stat = dict(req=0, ok=0, skip=0, miss=0, err=0, retry=0, cliabort=0, mirror=0, bytes=0, mbytes=0)
+lock = threading.Lock(); stat = dict(req=0, ok=0, skip=0, miss=0, err=0, retry=0, cliabort=0, mirror=0, side=0, other=0, bytes=0, mbytes=0)   # side = small files served from side/; other = replies from the internet that are not chunks
 RAW = {}
 UNLISTED = set()      # chunk paths the game asked for that are in no chunk list on this PC (new content): served from the CDN and noted for `ccsmirror fetch-requested`
 SKIPS = collections.Counter()      # tier-withheld ids -> how often the engine asked again (does a 404 cause a retry storm?)
@@ -106,6 +108,37 @@ def swap_edge(a, bad):
     finally: EDGE_LOCK.release()
 
 
+def side_path(origin, sm):
+    """Where a SIDE file is kept: <mirror>/side/tr/<folder>/<name>; its reply headers (ETag, x-amz-meta-*) sit beside it in <name>.h.json."""
+    return os.path.join(origin, 'side', 'tr', sm.group(1), f'{sm.group(2)}_{sm.group(3)}_{sm.group(4)}')
+
+
+def side_load(origin, sm):
+    """-> (body, extra headers) of a stored SIDE file whose size matches the size in its name, else None."""
+    p = side_path(origin, sm)
+    try:
+        if os.path.getsize(p) != int(sm.group(3), 16): return None
+        with open(p, 'rb') as fh: body = fh.read()
+    except OSError: return None
+    try:
+        with open(p + '.h.json', encoding='utf-8') as fh: extra = [tuple(x) for x in json.load(fh)]
+    except (OSError, ValueError, TypeError): extra = []
+    return body, extra
+
+
+def side_store(origin, sm, body, extra):
+    """Keep a SIDE file fetched from the internet (whole and of the size in its name only). A folder this user cannot write to is not an error: -> False."""
+    if len(body) != int(sm.group(3), 16): return False
+    p = side_path(origin, sm)
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p + '.h.json.tmp', 'w', encoding='utf-8') as fh: json.dump([[k, v] for k, v in extra], fh)
+        os.replace(p + '.h.json.tmp', p + '.h.json')
+        with open(p + '.tmp', 'wb') as fh: fh.write(body)
+        os.replace(p + '.tmp', p); return True
+    except OSError: return False
+
+
 def load_index():
     for fn in cdnxpak.find_all(ROOT):
         for r in cdnxpak.parse(fn):
@@ -150,6 +183,20 @@ class H(BaseHTTPRequestHandler):
             if raw is not None and raw > a.max_raw_mib * 2**20:
                 with lock: st['skip'] += 1; SKIPS[cid] += 1
                 rec(path, cid, raw, 'skip', 404, 0, ms=self.ms()); lg(f"SKIP-TIER {self.command} {path} raw={raw/2**20:.1f}MiB"); return self.reply(404)
+        sm = None if m else SIDE.match(path)
+        if sm and a.origin and not self.headers.get('Range'):
+            got = side_load(a.origin, sm)
+            if got is not None:
+                body, extra = got
+                try:
+                    if self.command == 'HEAD': self.send_response(200); self.send_header('Content-Length', str(len(body))); [self.send_header(k, v) for k, v in extra]; self.end_headers()
+                    else: self.reply(200, body, 'application/octet-stream', extra)
+                except Exception as e:
+                    with lock: st['cliabort'] += 1
+                    self.close_connection = True
+                    return lg(f"CLIENT-ABORT {path}: {e}")
+                with lock: st['side'] += 1; st['ok'] += 1
+                return lg(f"{self.command} {path} -> 200 {len(body)}B SIDE")
         if m and a.origin:
             # offline origin: serve the verbatim CDN object (+ stored ETag / x-amz-meta-cod-key) from the local mirror, whole or as one byte range
             cid = int(m.group(2), 16); wire = int(m.group(3), 16)
@@ -182,13 +229,13 @@ class H(BaseHTTPRequestHandler):
                     if code in (200, 206): st['mirror'] += 1; st['ok'] += 1; st['mbytes'] += n if self.command == 'GET' else 0
                 rec(path, cid, RAW.get(cid), 'mirror', code, n, ms=self.ms())
                 return lg(f"{self.command} {path} -> {code} {n}B MIRROR")
-        if m:
-            if st['bytes'] > a.budget_gib * 2**30:
-                rec(path, cid, raw, 'budget', 503, 0, ms=self.ms()); lg(f"BUDGET exhausted {st['bytes']/2**30:.2f} GiB"); return self.reply(503)
-            if getattr(a, 'offline', False):      # mirror-only test mode: a mirror gap must show up as a 404, never as a silent upstream fetch
-                with lock: st['miss'] += 1
-                rec(path, cid, raw, 'offline-miss', 404, 0, ms=self.ms()); lg(f"MISS-OFFLINE {self.command} {path} raw={raw}"); return self.reply(404)
-            note = f"raw={raw}"
+        if m and st['bytes'] > a.budget_gib * 2**30:
+            rec(path, cid, raw, 'budget', 503, 0, ms=self.ms()); lg(f"BUDGET exhausted {st['bytes']/2**30:.2f} GiB"); return self.reply(503)
+        if getattr(a, 'offline', False):      # offline: nothing leaves this PC - a chunk missing from the mirror, a side file not kept yet or any other path is a 404, never a silent fetch
+            with lock: st['miss'] += 1
+            rec(path, cid if m else None, raw if m else None, 'offline-miss', 404, 0, ms=self.ms())
+            lg(f"MISS-OFFLINE {self.command} {path}" + (f" raw={raw}" if m else ' (not a chunk)')); return self.reply(404)
+        if m: note = f"raw={raw}"
         # chunk objects: the URL carries the wire size, so a full (non-Range) body must match it exactly
         want = int(m.group(3), 16) if m and not self.headers.get('Range') and self.command == 'GET' else None
         hdr = upstream.headers({'Connection': 'close'})
@@ -233,10 +280,11 @@ class H(BaseHTTPRequestHandler):
             return
         with lock:
             st['bytes'] += len(body) if self.command == 'GET' else 0
-            if r.status in (200, 206): st['ok'] += 1
+            if r.status in (200, 206): st['ok'] += 1; st['other'] += 0 if m else 1
             else: st['miss'] += 1
         if m: rec(path, int(m.group(2), 16), RAW.get(int(m.group(2), 16)), 'upstream', r.status, len(body), ms=self.ms())
         if m and r.status == 200 and self.command == 'GET' and not probe and int(m.group(2), 16) not in RAW: note_unlisted(path)
+        if sm and a.origin and r.status == 200 and self.command == 'GET' and not probe and side_store(a.origin, sm, body, extra): note = 'kept in side/'
         lg(f"{self.command} {path} -> {r.status} {len(body)}B {note} range={self.headers.get('Range','-')} total={st['bytes']/2**30:.3f}GiB")
 
 class S6(ThreadingHTTPServer):
@@ -252,7 +300,7 @@ if __name__ == '__main__':
     ap.add_argument('--upstream-port', type=int, default=80)
     ap.add_argument('--origin', help='mirror dir (e.g. mirror/): serve stored chunks from disk first, upstream only for misses')
     ap.add_argument('--upstream-ip')
-    ap.add_argument('--offline', action='store_true', help='mirror-only: chunks missing from --origin get 404 instead of an upstream fetch')
+    ap.add_argument('--offline', action='store_true', help='nothing goes to the internet: chunks missing from --origin, side files not kept yet and any other path get 404')
     ap.add_argument('--port', type=int, default=80, help='listen port on ::1 and 127.0.0.1 (80 for the game; other values for tests)')
     ap.add_argument('--log', help='log file (default tools/work/ccsproxy.log)')
     ap.add_argument('--stats-json', help='write a stats snapshot here every 2 s (atomic); also served at GET /__ccs/stats')

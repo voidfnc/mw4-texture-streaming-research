@@ -438,6 +438,26 @@ class ProxyTests(unittest.TestCase):
         d = json.loads(self.get(port, '/__ccs/stats')[1]); self.assertEqual(d['stat']['miss'], 1); self.assertEqual(d['stat']['bytes'], 0)
         self.assertIn('MISS-OFFLINE', open(log, encoding='utf-8').read())
 
+    def test_offline_mode_sends_nothing_to_the_internet_and_side_files_are_kept(self):
+        # Warzone asks for small files under /tr/<32 hex>/ that are in no chunk list: offline used to forward them to the CDN (and the Home screen then said "Offline copy and internet")
+        side = f'/pc/iw9_3/23/tr/{"3d" * 16}/{0xcb:016x}_00000030_0'; unseen = f'/pc/iw9_3/23/tr/{"3d" * 16}/{0xcc:016x}_00000030_0'
+        port, st, log = self.run_proxy()
+        FakeUp.seen_hosts.clear(); s, b, _ = self.get(port, side); self.assertEqual((s, len(b)), (200, 48))
+        d = json.loads(self.get(port, '/__ccs/stats')[1]); self.assertEqual((d['stat']['ok'], d['stat']['other'], d['stat']['mirror']), (1, 1, 0), 'online: fetched once and counted as internet, not as a chunk')
+        self.assertTrue(os.path.isfile(os.path.join(self.mir, 'side', 'tr', '3d' * 16, f'{0xcb:016x}_00000030_0')), 'kept beside the mirror')
+        port, st, log = self.run_proxy('--offline'); FakeUp.seen_hosts.clear()
+        s, b, r = self.get(port, side); self.assertEqual((s, b, r.getheader('ETag')), (200, b'u' * 48, '"abc"'), 'served from side/ with the headers it came with')
+        self.assertEqual(self.get(port, side, 'HEAD')[2].getheader('Content-Length'), '48')
+        self.assertEqual(self.get(port, unseen)[0], 404); self.assertEqual(self.get(port, '/pc/something/else.json')[0], 404)
+        self.assertEqual(FakeUp.seen_hosts, [], 'offline: not one request reached the internet')
+        d = json.loads(self.get(port, '/__ccs/stats')[1]); self.assertEqual((d['stat']['side'], d['stat']['other'], d['stat']['miss'], d['stat']['bytes']), (2, 0, 2, 0))
+        self.assertIn('(not a chunk)', open(log, encoding='utf-8').read())
+
+    def test_a_side_file_of_the_wrong_size_is_not_kept(self):
+        import ccsproxy; sm = ccsproxy.SIDE.match(f'/pc/iw9_3/23/tr/{"ab" * 16}/{0xcd:016x}_00000010_0')
+        root = os.path.join(TMP, 'side_root'); self.assertFalse(ccsproxy.side_store(root, sm, b'x' * 15, [])); self.assertIsNone(ccsproxy.side_load(root, sm))
+        self.assertTrue(ccsproxy.side_store(root, sm, b'x' * 16, [('ETag', '"e"')])); self.assertEqual(ccsproxy.side_load(root, sm), (b'x' * 16, [('ETag', '"e"')]))
+
     def test_a_byte_range_is_served_from_the_mirror_even_offline(self):
         port, st, log = self.run_proxy('--offline'); path = f'/pc/iw9_3/23/{self.cid & 0xff:02x}/{self.cid:016x}_{self.wire:08x}_1'
         def rget(rng):
@@ -1024,10 +1044,15 @@ class BattlenetDiagnosticsTests(unittest.TestCase):
         self.assertEqual(rh({'Resolution@0': 'Auto:1920x1080', 'ResolutionMultiplier@0': '100'}), 1080); self.assertEqual(rh({'Resolution@0': 'Auto:2560x1440', 'ResolutionMultiplier@0': '50'}), 720)
         self.assertEqual(rh({'Resolution@0': '3840x2160'}), 2160); self.assertIsNone(rh({'Resolution@0': 'Auto'})); self.assertIsNone(rh({})); self.assertIsNone(rh({'Resolution@0': '1920x1080', 'ResolutionMultiplier@0': '0'}))
         self.assertEqual(rh({'Resolution@0': '1920x1080', 'ResolutionMultiplier@0': 'x'}), 1080)
-        for conf, row in (({'Resolution@0': 'Auto:1920x1080', 'ResolutionMultiplier@0': '100'}, True), ({'Resolution@0': 'Auto:2560x1440', 'ResolutionMultiplier@0': '100'}, False), ({}, False)):
+        q = {'Resolution@0': 'Auto:2560x1440', 'ResolutionMultiplier@0': '100', 'AATechniquePreferredMP@0': 'DLSS'}              # issue #76/#74: DLSS draws smaller and scales up
+        for mode, h in (('Maximum Performance', 720), ('Performance', 720), ('Ultra Performance', 480), ('Quality', 960), ('Balanced', 835.2), ('Native Resolution', 1440), ('Something new', 1440)):
+            self.assertAlmostEqual(rh(dict(q, **{'DLSSPerfModeMP@0': mode})), h, places=1, msg=mode)
+        self.assertEqual(rh(dict(q, **{'DLSSPerfModeMP@0': 'Performance', 'AATechniquePreferredMP@0': 'SMAA T2X'})), 1440, 'the DLSS mode counts only while DLSS is the upscaler')
+        for conf, row in (({'Resolution@0': 'Auto:1920x1080', 'ResolutionMultiplier@0': '100'}, True), ({'Resolution@0': 'Auto:2560x1440', 'ResolutionMultiplier@0': '100'}, False), ({}, False),
+                          (dict(q, **{'DLSSPerfModeMP@0': 'Maximum Performance'}), True)):
             with mock.patch('ccslib.report.player_config', return_value=conf):
                 r = doctor.check_resolution(); self.assertEqual(r is not None, row)
-                if r: self.assertEqual(r['level'], 'info'); self.assertIn('1080', r['detail'])
+                if r: self.assertEqual(r['level'], 'info'); self.assertRegex(r['detail'], r'about (1080|720) pixels')
 
     def test_connections_are_grouped_and_cut_to_their_network(self):
         from ccslib import doctor

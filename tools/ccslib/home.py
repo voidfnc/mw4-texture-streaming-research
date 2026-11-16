@@ -54,9 +54,15 @@ def _plain(actions):
 def _cards(st, f):
     free = f.get('free_gib'); root = f.get('folder_root', '')
     return [dict(icon='folder', title='Game folder', value=short_path(root), action='find_folder', action_label='Change', tone='ok'),
-            dict(icon='wifi' if st['path'] != 'offline' else 'download', title='Textures load', value='While I play' if st['path'] != 'offline' else 'From my offline copy',
+            dict(icon='wifi' if st['path'] != 'offline' else 'download', title='Textures load', value=_load_text(st, f),
                  action='switch_path', action_label='Change', tone='info'),
             dict(icon='disk', title='Free space', value=(f'{free:,.0f} GiB on {_drive(root)}' if free is not None else '-'), action='', action_label='', tone='info')]
+
+
+def _load_text(st, f):
+    """How textures load, in words: "Only from my offline copy" when nothing may go to the internet (the player turned it on with "Use only this copy")."""
+    if f.get('offline_only'): return 'Only from my offline copy'
+    return 'While I play' if st['path'] != 'offline' else 'From my offline copy'
 
 
 def _preflight_alert(st, f):
@@ -76,7 +82,7 @@ def _preflight_alert(st, f):
 
 
 def _kpis(f):
-    st = f.get('stat') or {}; err, retry = int(st.get('err', 0)), int(st.get('retry', 0)); mir = int(st.get('mirror', 0)); up = max(0, int(st.get('ok', 0)) - mir)
+    st = f.get('stat') or {}; err, retry = int(st.get('err', 0)), int(st.get('retry', 0)); mir = int(st.get('mirror', 0)) + int(st.get('side', 0)); up = max(0, int(st.get('ok', 0)) - mir)   # side = small files kept on this PC
     src = 'Your offline copy' if mir and not up else 'Offline copy and internet' if mir else 'The internet'
     mib = f.get('mibps')
     return [dict(title='Speed', value=f'{mib:.1f}' if mib is not None else '-', unit='MB/s'), dict(title='Failed', value=str(err), unit=f'{retry} retried' if retry else ''), dict(title='Loaded from', value=src, unit='')]
@@ -96,7 +102,7 @@ def summary_text(s):
 def settings_rows(st, f, extra=None):
     """The Settings drawer: sections of rows (icon, label, value, action). extra = dict(motion=bool, pack=text for the offline copy)."""
     extra = extra or {}; path = st['path'] or 'quick'; gs = f.get('game_setup'); setup = {'needed': 'Needs a change', 'ok': 'Done', 'limited': 'Not possible on this drive'}.get(gs, 'Not needed')
-    return [dict(title='Textures', rows=[dict(icon='wifi' if path != 'offline' else 'download', label='How textures load', value='While I play' if path != 'offline' else 'From my offline copy', action='switch_path', tone=''),
+    return [dict(title='Textures', rows=[dict(icon='wifi' if path != 'offline' else 'download', label='How textures load', value=_load_text(st, f), action='switch_path', tone=''),
                                          dict(icon='download', label='Offline copy', value=extra.get('pack', 'Not downloaded'), action='open_download', tone='')]),
             dict(title='Game', rows=[dict(icon='folder', label='Game folder', value=short_path(f.get('folder_root', ''), 1), action='find_folder', tone=''),
                                      dict(icon='bolt', label='One-time game setup', value=setup, action='game_setup' if gs == 'needed' else '', tone='warn' if gs in ('needed', 'limited') else 'ok' if gs == 'ok' else '')]),

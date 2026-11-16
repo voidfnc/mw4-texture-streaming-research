@@ -246,12 +246,12 @@ class App(tk.Tk):
         field(1, 0, 'upstream_ip', 'Upstream IP (blank=auto)', 16)
         self.pv_origin = tk.BooleanVar(value=self.cfg['proxy']['origin']); self.pv_off = tk.BooleanVar(value=self.cfg['proxy']['offline'])
         ttk.Checkbutton(form, text='Serve from mirror first', variable=self.pv_origin).grid(row=1, column=2, columnspan=2, sticky='w', padx=12)
-        ttk.Checkbutton(form, text='Offline (mirror misses -> 404)', variable=self.pv_off).grid(row=1, column=4, columnspan=3, sticky='w')
+        ttk.Checkbutton(form, text='Offline: nothing goes to the internet (misses -> 404)', variable=self.pv_off).grid(row=1, column=4, columnspan=3, sticky='w')
         b = ttk.Frame(form); b.grid(row=2, column=0, columnspan=8, sticky='w', padx=10, pady=8)
         ttk.Button(b, text='Save + restart proxy', style='Accent.TButton', command=self.do_proxy_restart).pack(side='left', padx=4)
         ttk.Button(b, text='Start proxy only', command=lambda: self.bg('proxy start', self._proxy_only, True)).pack(side='left', padx=4)
         ttk.Button(b, text='Stop proxy only', command=lambda: self.bg('proxy stop', self._proxy_only, False)).pack(side='left', padx=4)
-        ttk.Label(form, text='Profile overrides mirror/offline at run time (Dashboard). Saved values here are the base.', style='Dim.TLabel').grid(row=3, column=0, columnspan=8, sticky='w', padx=12, pady=(0, 8))
+        ttk.Label(form, text='Offline is your own setting and stays until you untick it; only the Offline test and Capture profiles change it at run time.', style='Dim.TLabel').grid(row=3, column=0, columnspan=8, sticky='w', padx=12, pady=(0, 8))
         mid = ttk.Frame(f); mid.pack(fill='both', expand=True)
         left = ttk.LabelFrame(mid, text='Requested chunk size tier (decoded size)'); left.pack(side='left', fill='y', padx=(0, 10))
         self.hist = tk.Canvas(left, width=360, height=250, bg=PANEL, highlightthickness=0); self.hist.pack(padx=8, pady=8)
@@ -295,7 +295,7 @@ class App(tk.Tk):
         ttk.Button(bt, text='Download / resume', style='Accent.TButton', command=self.do_pack_start).pack(side='left', padx=(0, 4))
         ttk.Button(bt, text='Pause (finish in-flight)', command=self.do_mirror_pause).pack(side='left', padx=4)
         ttk.Button(bt, text='Refresh estimate', command=self.pack_refresh).pack(side='left', padx=4)
-        ttk.Button(bt, text='Play offline (profile)', command=self.do_pack_offline).pack(side='left', padx=(16, 4))
+        ttk.Button(bt, text='Play only from this copy', command=self.do_pack_offline).pack(side='left', padx=(16, 4))
         ttk.Button(bt2, text='Verify all', command=lambda: self.do_pack_verify(False)).pack(side='left', padx=(0, 4))
         ttk.Button(bt2, text='Verify + repair', command=lambda: self.do_pack_verify(True)).pack(side='left', padx=4)
         ttk.Button(bt2, text='Reclaim space above this level...', command=self.do_pack_prune).pack(side='left', padx=4)
@@ -403,9 +403,21 @@ class App(tk.Tk):
                 mirrorctl.oneshot(['prune', '--above-tier', str(mib), '--yes']); self.say(f"prune started: removing {d['chunks']:,} chunks ({d['gib']:.1f} GiB)", 'OK')
         threading.Thread(target=go, daemon=True).start()
 
+    def _set_offline_only(self, on):
+        """"Play only from my offline copy" on/off: a setting of its own that no profile or detail level changes (issue #77)."""
+        changed = bool(self.cfg['proxy'].get('offline')) != bool(on)
+        config.set_offline_only(self.cfg, on)
+        if config.offline_only(self.cfg) != bool(on):                     # a research profile (Offline test / Capture) says otherwise: the player's choice wins
+            self.cfg['profile'] = 'Default'; changed = True
+            if hasattr(self, 'profile'): self.profile.set('Default'); self._profile_changed()
+        config.save(self.cfg)
+        if hasattr(self, 'pv_off'): self.pv_off.set(bool(on)); self.pv_origin.set(self.cfg['proxy']['origin'])
+        return changed
+
     def do_pack_offline(self):
-        self.profile.set('Slow link - offline mirror'); self._profile_changed()
-        self.say('profile "Slow link - offline mirror" selected: restart the session (Stop, then Start) - the game is then served only from the mirror', 'OK')
+        self._set_offline_only(True)
+        if procs.status('proxy')['alive']: self.say('Only from my offline copy: on. Nothing goes to the internet - restart the session (Stop, then Start) to apply it to the running game', 'OK')
+        else: self.say('Only from my offline copy: on. Nothing goes to the internet', 'OK')
 
     # ---------------------------------------------------------------- Mirror tab
     def _tab_mirror(self, f):
@@ -731,8 +743,8 @@ class App(tk.Tk):
             ex = os.path.isdir(root); gs, gfs = gamefix.state_fs(root) if ex else ('na', ''); fc = (now, root, ex, guide.score_folder(root) if ex else 0, gs, gfs); self._gfc = fc
         tot = (getattr(self, '_pack_plan', None) or {}).get('total') or {}; rs = s.get('resolve') or {}
         if ps and ps.get('stat'):                                                    # what the proxy has done so far; kept after it stops, for the "what happened" text
-            c = ps['stat']; g = lambda k: c.get(k) or 0; self._guide_peak = dict(req=g('req'), mirror=g('mirror'), upok=g('ok') - g('mirror'), err=g('err'), skip=g('skip'), miss=g('miss'), secs=(ps.get('now') or 0) - (ps.get('started') or 0))
-        return dict(configured=paths.CONFIGURED, folder_root=root, folder_exists=fc[2], folder_score=fc[3], game_setup=fc[4], game_fs=fc[5], blocked_by=blocked, port=port, free_gib=s.get('free'),
+            c = ps['stat']; g = lambda k: c.get(k) or 0; self._guide_peak = dict(req=g('req'), mirror=g('mirror') + g('side'), upok=g('ok') - g('mirror') - g('side'), err=g('err'), skip=g('skip'), miss=g('miss'), secs=(ps.get('now') or 0) - (ps.get('started') or 0))
+        return dict(configured=paths.CONFIGURED, offline_only=config.offline_only(self.cfg), folder_root=root, folder_exists=fc[2], folder_score=fc[3], game_setup=fc[4], game_fs=fc[5], blocked_by=blocked, port=port, free_gib=s.get('free'),
                     game_running=bool(s.get('game')), game_names=list(s.get('game') or []), proxy_ready=bool(ps), proxy_alive=bool(pp.get('alive')), hosts_ok=s.get('hosts') in ('OK', 'FOREIGN', 'MIXED'),
                     resolve_ok=bool(rs.get('ok')), hosts_state=s.get('hosts', '?'), requests=int(ps['stat']['req']) if ps and ps.get('stat') else 0,
                     pack_total=tot.get('chunks'), pack_stored=tot.get('stored'), mirror_alive=bool((s.get('mproc') or {}).get('alive')),
@@ -835,9 +847,8 @@ class App(tk.Tk):
             st = self._guide_state()
             if a in ('choose_quick', 'choose_offline'):
                 st['path'] = a.split('_', 1)[1]; self._guide_save(st)
-                if a == 'choose_quick' and self.cfg.get('profile') == 'Slow link - offline mirror':      # "Use only this copy" had switched the proxy to offline: going back to streaming must undo that
-                    self.profile.set('Default'); self._profile_changed()
-                    self.say('profile "Default" selected (textures come from the internet again where the mirror has gaps): restart the session (Stop, then Start) to apply', 'OK')
+                if a == 'choose_quick' and self._set_offline_only(False):      # the player chose "While I play": textures may come from the internet again
+                    self.say('Only from my offline copy: off (textures come from the internet again where the copy has gaps): restart the session (Stop, then Start) to apply', 'OK')
             elif a == 'find_folder': self.guide_find_folder()
             elif a == 'confirm_anyway': st['confirmed_root'] = paths.GAME_ROOT; self._guide_save(st)
             elif a.startswith('skip:'): self._guide_save(guide.skip(st, a[5:]))
@@ -1271,9 +1282,8 @@ class App(tk.Tk):
     # ---------------------------------------------------------------- actions
     def _profile_changed(self, *_):
         p = self.profile.get(); self.cfg['profile'] = p; config.save(self.cfg)
-        d = {'Default': 'Mirror first, upstream CDN only for chunks missing from the mirror.', 'Offline test': 'Mirror only - any miss is a 404 (finds mirror gaps; no network use).', 'Capture': 'No mirror - every chunk comes from the CDN (new-content runs).',
-             'Standard HD (1440p class)': 'Detail level Standard: chunks above 4 MiB raw are withheld (404), the engine keeps the smaller mip. Mirror first.', 'Ultra (4K class)': 'Detail level Ultra: no size cap. Mirror first.',
-             'Slow link - offline mirror': 'Play only from the local mirror (offline): nothing is fetched from the internet; a mirror gap is a 404.'}
+        d = {'Default': 'Mirror first, upstream CDN only for chunks missing from the mirror (none at all while "Offline" is ticked on the Proxy tab).', 'Offline test': 'Mirror only - any miss is a 404 (finds mirror gaps; no network use).', 'Capture': 'No mirror - every chunk comes from the CDN (new-content runs).',
+             'Standard HD (1440p class)': 'Detail level Standard: chunks above 4 MiB raw are withheld (404), the engine keeps the smaller mip. Mirror first.', 'Ultra (4K class)': 'Detail level Ultra: no size cap. Mirror first.'}
         prof = config.all_profiles(self.cfg).get(p, {}); extra = ', '.join(f'{s}.{k}={v}' for s in config.SECTIONS for k, v in prof.get(s, {}).items()) if p not in config.BUILTIN_PROFILES else ''
         self.prof_desc.configure(text=d.get(p) or ('Saved profile: ' + extra))
         if hasattr(self, 'pk_level'): self._sync_caps(); self.pk_level.set(config.effective(self.cfg)['pack']['level']); self.pack_refresh()

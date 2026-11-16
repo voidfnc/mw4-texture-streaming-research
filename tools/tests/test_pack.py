@@ -415,8 +415,23 @@ class ConfigPackTests(unittest.TestCase):
     def test_builtin_level_profiles_and_snapshot(self):
         c = self.cfg(); c['profile'] = 'Standard HD (1440p class)'; self.assertEqual(config.effective(c)['proxy']['max_raw_mib'], 4.0)
         c['profile'] = 'Ultra (4K class)'; c['pack']['level'] = 'standard'; self.assertEqual(config.effective(c)['proxy']['max_raw_mib'], 4096.0)       # a profile level wins over the saved one
-        c['profile'] = 'Slow link - offline mirror'; e = config.effective(c); self.assertTrue(e['proxy']['offline'] and e['proxy']['origin']); self.assertEqual(e['pack']['level'], 'standard')
+        c['profile'] = 'Default'; config.set_offline_only(c, True); e = config.effective(c); self.assertTrue(e['proxy']['offline'] and e['proxy']['origin']); self.assertEqual(e['pack']['level'], 'standard')
         snap = config.snapshot_profile(c); self.assertEqual(snap['pack'], dict(level='standard'))                                                                # only the level is part of a saved profile
+        self.assertNotIn('offline', snap['proxy'], 'offline-only is not part of a saved profile')
+
+    def test_offline_only_survives_level_and_profile_changes(self):
+        # issue #77: "only from my offline copy" kept falling back to the internet when a profile or the detail level changed
+        c = self.cfg(); config.set_offline_only(c, True)
+        for prof in ('Default', 'Standard HD (1440p class)', 'Ultra (4K class)'):
+            c['profile'] = prof; self.assertTrue(config.offline_only(c), prof)
+        c['pack']['level'] = 'high'; self.assertTrue(config.offline_only(c))
+        c['profiles'] = {'mine': dict(proxy=dict(origin=True, offline=False), pack=dict(level='standard'))}; c['profile'] = 'mine'
+        self.assertTrue(config.offline_only(config.migrate(c)), 'a profile saved by an older version no longer turns offline off')
+
+    def test_the_old_offline_profile_becomes_the_setting(self):
+        c = self.cfg(); c['profile'] = config.OLD_OFFLINE_PROFILE; config.migrate(c)
+        self.assertEqual((c['profile'], c['proxy']['offline'], c['proxy']['origin']), ('Default', True, True))
+        self.assertNotIn(config.OLD_OFFLINE_PROFILE, config.all_profiles(c))
 
     def test_mirrorctl_pack_args(self):
         from ccslib import mirrorctl

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.13-beta
+**"Only from my offline copy" now really means nothing goes to the internet, and it stays on.**
+
+- **Fixed: offline play still went to the internet for some files** (#74, #78). Warzone also asks for small files (tens of KB each) that are not texture pieces and sit in no chunk list. The offline mode only blocked the texture pieces, so those went to the internet, and the Home screen then rightly said "Offline copy and internet". In offline mode the helper now answers every request from this PC or says "not here"; nothing is fetched from the internet.
+- **New: those small files are kept on this PC.** When one comes from the internet (offline mode off) the helper keeps a copy beside your offline copy, in `mirror\side\`, and serves it from there afterwards, also when you play offline. They are counted as files from this PC, not as internet traffic.
+- **Fixed: the offline choice switched itself back to the internet** (#77). It was stored as a profile ("Slow link - offline mirror"), so changing the detail level, picking another profile or a profile saved earlier quietly turned it off. It is now a setting of its own: *Use only this copy* turns it on, and it stays on, also after a restart of the program, until you choose *While I play* (or untick *Offline* on the Proxy page). Settings from an older version are moved over by themselves. Home and Settings say "Only from my offline copy" while it is on.
+- **Fixed: the Doctor's "Screen resolution" note missed DLSS** (#76). It counted the screen resolution and the render scale but not the DLSS mode, so 1440p with DLSS Performance (the game draws at about 720p and asks for smaller textures) got no note. The DLSS mode is now counted.
+- Not in this version yet: Warzone's own chunk lists (#75, #78) are still not offered for download. That comes in a later version.
+- The new text is translated into every language.
+
 ## 0.4.12-beta
 **A saved internet address that no longer answers can no longer stall the game.**
 

@@ -322,7 +322,7 @@ class FirstRunTests(unittest.TestCase):
         empty = os.path.join(TMP, 'nomirror'); os.makedirs(empty); cfg = copy.deepcopy(config.DEFAULTS)
         with mock.patch.object(paths, 'MIRROR', empty):
             r = doctor.check_mirror(cfg); self.assertEqual(r['level'], 'info'); self.assertIn('no mirror yet', r['detail'])
-            off = copy.deepcopy(config.DEFAULTS); off['profile'] = 'Slow link - offline mirror'; self.assertEqual(doctor.check_mirror(off)['level'], 'fail')        # an offline profile serves from the mirror only
+            off = copy.deepcopy(config.DEFAULTS); config.set_offline_only(off, True); self.assertEqual(doctor.check_mirror(off)['level'], 'fail')        # offline-only serves from the mirror only
             cap = copy.deepcopy(config.DEFAULTS); cap['profile'] = 'Capture'; cap['proxy']['origin'] = False; self.assertEqual(doctor.check_mirror(cap)['level'], 'info')
 
 
