@@ -25,14 +25,16 @@ DEFAULTS = dict(
     ui=dict(reduce_motion=False, language='auto'),   # language: 'auto' (follow Windows) or a code from i18n.CODES;         # look and feel: no animations when True (Windows' own animation switch is honoured too)
 )
 
+# "Play only from my offline copy" is the base setting proxy.offline, not a profile: profiles leave it alone (only the research profiles below set it on purpose),
+# so changing the detail level or picking another profile can no longer switch a player back to the internet (issue #77).
 BUILTIN_PROFILES = {
-    'Default': dict(proxy=dict(origin=True, offline=False)),                 # mirror first, upstream for misses
+    'Default': dict(proxy=dict(origin=True)),                                # mirror first; upstream for misses unless "offline only" is on
     'Offline test': dict(proxy=dict(origin=True, offline=True)),             # mirror only; any miss is a 404 so a mirror gap shows immediately
     'Capture': dict(proxy=dict(origin=False, offline=False)),                # no mirror: everything from the CDN (new-content runs)
     'Standard HD (1440p class)': dict(proxy=dict(origin=True), pack=dict(level='standard')),   # chunks > 4 MiB raw are withheld (404): the engine keeps the smaller mip
     'Ultra (4K class)': dict(proxy=dict(origin=True), pack=dict(level='ultra')),
-    'Slow link - offline mirror': dict(proxy=dict(origin=True, offline=True)),   # play only from the local mirror; nothing goes to the internet
 }
+OLD_OFFLINE_PROFILE = 'Slow link - offline mirror'                          # up to 0.4.12: offline-only was this profile; load() turns it into the setting
 PROFILES = BUILTIN_PROFILES                                                  # kept for older callers (names only)
 SECTIONS = ('proxy', 'guard', 'watchers', 'pack')
 
@@ -51,6 +53,28 @@ def load():
     cfg = copy.deepcopy(DEFAULTS)
     try: _merge(cfg, json.load(open(_path(), encoding='utf-8')))
     except Exception: pass
+    return migrate(cfg)
+
+
+def migrate(cfg):
+    """Settings from older versions: the "Slow link - offline mirror" profile becomes proxy.offline on + the Default profile, and a saved profile no longer carries
+    proxy.offline (a profile saved while online used to switch an offline player back to the internet)."""
+    if cfg.get('profile') == OLD_OFFLINE_PROFILE: cfg['proxy']['offline'] = True; cfg['proxy']['origin'] = True; cfg['profile'] = 'Default'
+    for prof in (cfg.get('profiles') or {}).values():
+        if isinstance(prof, dict) and isinstance(prof.get('proxy'), dict): prof['proxy'].pop('offline', None)
+    (cfg.get('profiles') or {}).pop(OLD_OFFLINE_PROFILE, None)
+    return cfg
+
+
+def offline_only(cfg):
+    """True when the session serves only from the offline copy (nothing goes to the internet)."""
+    return bool(effective_proxy(cfg).get('offline'))
+
+
+def set_offline_only(cfg, on):
+    """Turn "play only from my offline copy" on or off (base setting; the mirror is always used when it is on)."""
+    cfg['proxy']['offline'] = bool(on)
+    if on: cfg['proxy']['origin'] = True
     return cfg
 
 
@@ -79,4 +103,5 @@ def effective_proxy(cfg): return effective(cfg)['proxy']
 
 def snapshot_profile(cfg):
     """Current effective proxy/guard/watchers values as a profile dict (for 'Save as profile')."""
-    e = effective(cfg); out = {sec: dict(e[sec]) for sec in SECTIONS if sec != 'pack'}; out['pack'] = dict(level=e['pack']['level']); return out
+    e = effective(cfg); out = {sec: dict(e[sec]) for sec in SECTIONS if sec != 'pack'}; out['pack'] = dict(level=e['pack']['level'])
+    out['proxy'].pop('offline', None); return out                           # offline-only stays the player's own setting, whatever profile is picked later

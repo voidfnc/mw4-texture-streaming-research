@@ -240,13 +240,26 @@ def check_layout():
                                       'If it stays at zero, save a support bundle (Settings) and attach it to a bug report')
 
 
+# DLSS draws the scene smaller and scales it up: the share of the screen height each mode draws (longest name first, so "ultra performance" is not read as "performance")
+DLSS_SCALE = (('native', 1.0), ('dlaa', 1.0), ('ultra_quality', 0.77), ('maximum_quality', 0.77), ('ultra_performance', 1 / 3), ('maximum_performance', 0.5),
+              ('quality', 2 / 3), ('balanced', 0.58), ('performance', 0.5))                # matched against the mode name in lower case with spaces as _
+
+
+def upscale_factor(conf):
+    """The share of the output height DLSS draws at (1.0 when DLSS is not the upscaler or the mode is unknown)."""
+    conf = conf or {}; aa = str(conf.get('AATechniquePreferredMP@0') or conf.get('AATechniquePreferred@0') or '').lower()
+    if 'dlss' not in aa: return 1.0
+    mode = re.sub(r'\s+', '_', str(conf.get('DLSSPerfModeMP@0') or conf.get('DLSSPerfMode@0') or '').strip().lower())
+    return next((f for k, f in DLSS_SCALE if k in mode), 1.0)
+
+
 def render_height(conf):
-    """The height in pixels the scene is drawn at, from the player config (Resolution like Auto:1920x1080 and ResolutionMultiplier), or None when it cannot be told."""
+    """The height in pixels the scene is drawn at, from the player config (Resolution like Auto:1920x1080, ResolutionMultiplier and the DLSS mode), or None when it cannot be told."""
     m = re.search(r'(\d{3,5})\s*x\s*(\d{3,5})', str((conf or {}).get('Resolution@0', '')))
     if not m: return None
     try: pct = float((conf or {}).get('ResolutionMultiplier@0', 100))
     except (TypeError, ValueError): pct = 100.0
-    return int(m.group(2)) * pct / 100.0 if pct > 0 else None
+    return int(m.group(2)) * pct / 100.0 * upscale_factor(conf) if pct > 0 else None
 
 
 def check_resolution():
@@ -396,7 +409,7 @@ def run_all(cfg):
     paths.reload(); res = check_locations()
     res += check_hosts(); res.append(check_port(cfg)); res += check_proxy(cfg); res.append(check_mirror(cfg))
     pk = check_pack(cfg); res += pk
-    res.append(check_upstream(bool(cfg['proxy'].get('offline')), any(r['name'] == 'Texture pack' and r['level'] == 'ok' for r in pk))); res.append(check_network()); res.append(check_disk(cfg))
+    res.append(check_upstream(config.offline_only(cfg),any(r['name'] == 'Texture pack' and r['level'] == 'ok' for r in pk))); res.append(check_network()); res.append(check_disk(cfg))
     res += [r for r in (check_layout(), check_resolution(), check_network_detail(), check_guard(cfg), check_cache()) if r]
     res.append(check_game()); res.append(check_game_setup())
     try:

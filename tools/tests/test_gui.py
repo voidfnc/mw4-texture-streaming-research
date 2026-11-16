@@ -230,10 +230,16 @@ class GuiTests(unittest.TestCase):
         self.assertFalse(t.is_alive(), 'the worker is released'); self.assertEqual(res, [None])
         res.clear(); t = threading.Thread(target=lambda: res.append(self.app.ask_main(lambda: 42)), daemon=True); t.start(); self.pump(1.0); t.join(3); self.assertEqual(res, [42])
 
-    def test_going_back_to_streaming_undoes_the_offline_profile_but_leaves_other_profiles_alone(self):
-        self.app.do_pack_offline(); self.assertEqual(self.app.cfg['profile'], 'Slow link - offline mirror'); self.assertTrue(config.effective_proxy(self.app.cfg)['offline'])
-        self.app.guide_do('choose_quick'); self.assertEqual(self.app.cfg['profile'], 'Default'); self.assertFalse(config.effective_proxy(self.app.cfg)['offline'])
-        self.app.profile.set('Capture'); self.app._profile_changed(); self.app.guide_do('choose_quick'); self.assertEqual(self.app.cfg['profile'], 'Capture', 'a profile the user picked is not touched')
+    def test_offline_only_is_a_setting_that_stays_until_the_player_goes_back_to_streaming(self):
+        self.app.profile.set('Default'); self.app._profile_changed()
+        self.app.do_pack_offline(); self.assertTrue(config.offline_only(self.app.cfg)); self.assertTrue(self.app.pv_off.get())
+        self.app.pk_level.set('standard'); self.app._pack_level_changed(); self.assertTrue(config.offline_only(self.app.cfg), 'a detail level change keeps it (issue #77)')
+        self.app.profile.set('Ultra (4K class)'); self.app._profile_changed(); self.assertTrue(config.offline_only(self.app.cfg), 'so does another profile')
+        self.assertTrue(config.offline_only(config.load()), 'and a restart of the program')
+        self.app.guide_do('choose_quick'); self.assertFalse(config.offline_only(self.app.cfg)); self.assertFalse(self.app.pv_off.get())
+        self.app.profile.set('Capture'); self.app._profile_changed(); self.app.do_pack_offline()
+        self.assertEqual(self.app.cfg['profile'], 'Default', 'the player choice wins over a research profile'); self.assertTrue(config.offline_only(self.app.cfg))
+        self.app.guide_do('choose_quick')
 
     def test_a_tooltip_timer_does_not_fire_on_a_destroyed_widget(self):
         self.app.tk.eval('set ::bgerrs [list]; proc bgerror {m} {lappend ::bgerrs $m}')
