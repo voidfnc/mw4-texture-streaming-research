@@ -1,12 +1,13 @@
 """pack.py - the texture pack model shared by ccsmirror.py, the GUI, doctor and config: packages, scope, detail level, size estimate.
 
-  scope  = WHICH chunk lists are mirrored   'sp' (campaign: sp26 + boot, the default) | 'all' (every *_cdn.xpak) | 'custom' (explicit package list)
+  scope  = WHICH chunk lists are mirrored   'sp' (campaign: sp26 + boot, the default) | 'all' (every package but Warzone) | 'custom' (explicit package list)
+         Warzone (wz26, ~1 million pieces) is only in custom, or fetched piece by piece: the proxy notes what the game asked for and the copy lacked (requested.txt, played_missing).
   level  = HOW BIG a chunk may be (raw/decoded size = texture-detail cut-off, not a render resolution)
            standard <= 4 MiB (2048^2 BC7, "1440p class") | high <= 8 MiB | ultra = no cap ("4K class")
 The same level drives the mirror download cap and the proxy serve cap (config.effective), so what is served never exceeds what was mirrored.
 The chunk lists (*_cdn.xpak) come from the user's own game install; nothing is bundled.
 """
-import json, os, shutil, sqlite3, sys, time
+import json, os, re, shutil, sqlite3, sys, time
 from . import mirrordb, paths
 
 sys.path.insert(0, paths.TOOLS)
@@ -17,12 +18,17 @@ PACKAGES = {
     'sp':     (1,  'SP campaign (sp26)',   ('sp26/sp26_cdn.xpak', 'sp26/ww_sp26_cdn.xpak')),
     'boot':   (2,  'Boot / shared start',  ('sp26/boot_cdn.xpak', 'cod26/boot_cdn.xpak')),
     'common': (4,  'Common (common26)',    ('cod26/common26_cdn.xpak', 'cod26/ww_common26_cdn.xpak')),
-    'mp':     (8,  'Multiplayer (mp26)',   ('cod26/mp26_cdn.xpak',)),
+    'mp':     (8,  'Multiplayer (mp26)',   ('cod26/mp26_cdn.xpak', 'cod26/ww_mp26_cdn.xpak')),
     'dmz':    (16, 'DMZ (dmz26)',          ('cod26/dmz26_cdn.xpak',)),
     'hq':     (32, 'HQ (codhq)',           ('cod26/codhq_cdn.xpak',)),
+    'wz':     (64, 'Warzone (wz26, very large)', ('cod26/wz26_cdn.xpak', 'cod26/ww_wz26_cdn.xpak')),
 }
-ORDER = tuple(PACKAGES)                                                            # an id that is in several lists is attributed to the first one in this order
-SCOPES = {'sp': ('sp', 'boot'), 'all': ORDER}
+ORDER = tuple(PACKAGES)                                                            # an id that is in several lists is attributed to the first one in this order (Warzone last: what it shares is not fetched twice)
+SCOPES = {'sp': ('sp', 'boot'), 'all': ('sp', 'boot', 'common', 'mp', 'dmz', 'hq')}   # 'all' leaves Warzone out on purpose: hundreds of GB, ticked by choice or fetched piece by piece (Download what I played)
+PLAYED = 1 << 40                                                                   # mirror row bit: the game asked for this piece and the copy did not have it (Download what I played)
+QUIET_NEW = ('cod26/ww_mp26_cdn.xpak',)                                            # joined a package in 0.4.14: its first appearance in the fingerprint is not a game update
+SIDE_LISTS = ('wz26_tr',)                                                          # pieces served under tr/<32 hex>/ (not the normal address): kept as the game asks for them, not bulk-downloaded
+_LANG = re.compile(r'^(?!ww_)[a-z]{2,3}_')                                          # deu_common26, jp_mp26, sch_wz26 ...: lists of other game languages
 LEVELS = {'standard': 4.0, 'high': 8.0, 'ultra': 4096.0}                           # max raw MiB
 LEVEL_LABELS = {'standard': 'Standard HD (<= 4 MiB, 1440p class)', 'high': 'High (<= 8 MiB)', 'ultra': 'Ultra (no cap, 4K class)'}
 MiB = 2**20; GiB = 2**30
@@ -63,7 +69,7 @@ def list_files(pkg): return PACKAGES[pkg][2]
 def available(root=None):
     """-> {pkg: [existing list files]} for the game folder (a package with no files is unavailable on this install)."""
     root = root or paths.GAME_ROOT; out = {}
-    for k in ORDER: out[k] = [f for f in list_files(k) if cdnxpak.resolve(root, f)]
+    for k in ORDER: out[k] = [f for f in list_files(k) if cdnxpak.has_records(cdnxpak.resolve(root, f) or '')]       # an empty (0 KB) stub is not installed content
     return out
 
 
@@ -83,12 +89,35 @@ def lists_changed(mirror_dir=None, root=None):
     if not os.path.exists(db): return None
     try:
         c = mirrordb.connect_read(db, timeout=10)
-        try: r = c.execute("select value from meta where key='lists'").fetchone()
+        try: r = c.execute("select value from meta where key='lists'").fetchone(); ld = c.execute("select value from meta where key='loaded'").fetchone()
         finally: c.close()
     except Exception: return None
     if not r: return None
-    try: return json.loads(r[0]) != fingerprint(root)
-    except (ValueError, OSError): return None
+    try: return lists_differ(json.loads(r[0]), root, (int(ld[0]) or None) if ld else None)
+    except (ValueError, OSError, TypeError): return None
+
+
+def lists_differ(stored, root=None, loaded=None):
+    """A game update: a list the mirror was loaded from changed or vanished, or a list of a loaded package (bits in `loaded`; None = all) appeared.
+    A list of a package that was never loaded is not an update (choosing that package loads it), nor is one that joined a package in a tool update (QUIET_NEW)."""
+    if not isinstance(stored, dict): return True
+    now = fingerprint(root)
+    if any(now.get(k) != v for k, v in stored.items()): return True
+    files = {f for k in ORDER if loaded is None or loaded & bit(k) for f in list_files(k)}
+    return any(k not in stored and k in files and k not in QUIET_NEW for k in now)
+
+
+def list_kind(path):
+    """-> 'known' (a package of the downloader) | 'side' (wz26_tr) | 'language' | 'unknown', from the list's name."""
+    s = cdnxpak.stem(path).lower()
+    if any(cdnxpak.stem(f).lower() == s for k in ORDER for f in list_files(k)): return 'known'
+    if s in SIDE_LISTS: return 'side'
+    return 'language' if _LANG.match(s) else 'unknown'
+
+
+def package_of(path):
+    s = cdnxpak.stem(path).lower()
+    return next((k for k in ORDER for f in list_files(k) if cdnxpak.stem(f).lower() == s), None)
 
 
 def catalogue(mask, root=None):

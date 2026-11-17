@@ -18,11 +18,11 @@ IPv6 loopback lets the unmodified game reach this proxy; the proxy relays to the
 * stats line: req ok skip miss err retry cliabort bytes
 * logs every request to tools/work/ccsproxy.log; nothing is written to the game folders
 """
-import argparse, collections, glob, http.client, json, os, re, socket, sys, threading, time
+import argparse, array, bisect, collections, glob, http.client, json, os, re, socket, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cdnxpak
-from ccslib import mirrordb, paths, upstream, version          # game folder / work dir come from the GUI settings (tools/work/gui_settings.json), not from hard-coded paths
+from ccslib import mirrordb, paths, side, upstream, version         # game folder / work dir come from the GUI settings (tools/work/gui_settings.json), not from hard-coded paths
 ROOT = paths.GAME_ROOT
 LOG = os.path.join(paths.WORK, 'ccsproxy.log')
 HOST = 'cod-assets.cdn.callofduty.com'
@@ -36,6 +36,9 @@ NOSTAT = collections.defaultdict(int)     # where a probe's counts go
 lock = threading.Lock(); stat = dict(req=0, ok=0, skip=0, miss=0, err=0, retry=0, cliabort=0, mirror=0, side=0, other=0, bytes=0, mbytes=0)   # side = small files served from side/; other = replies from the internet that are not chunks
 RAW = {}
 UNLISTED = set()      # chunk paths the game asked for that are in no chunk list on this PC (new content): served from the CDN and noted for `ccsmirror fetch-requested`
+LISTS = []            # [(list name, sorted array of its ids)]: which list a piece is in (list_of)
+REQUESTED = set()     # paths already in requested.txt (pieces the copy could not give the game: Download what I played)
+def REQ_FILE(): return os.path.join(os.path.dirname(LOG), 'requested.txt')
 SKIPS = collections.Counter()      # tier-withheld ids -> how often the engine asked again (does a 404 cause a retry storm?)
 # observability for the GUI (ccsgui.py): per-tier request histogram + last requests, exposed via GET /__ccs/stats and --stats-json
 TIERS = [('<=64K', 2**16), ('<=256K', 2**18), ('<=1M', 2**20), ('<=4M', 2**22), ('<=8M', 2**23), ('<=16M', 2**24), ('>16M', None)]
@@ -44,12 +47,12 @@ def tier_of(raw):
     if raw is None: return 'unknown'
     for n, lim in TIERS:
         if lim is None or raw <= lim: return n
-def record(path, cid, raw, source, status, nbytes, ms=None):
+def record(path, cid, raw, source, status, nbytes, ms=None, lst=None):
     with lock:
         t = tier_of(raw)
         if ms is not None: SVC.append(ms)
         if t in HIST: HIST[t] += 1
-        RECENT.append(dict(t=round(time.time(), 2), id=f'{cid:016x}' if cid is not None else None, raw=raw, tier=t, src=source, status=status, bytes=nbytes, ms=None if ms is None else round(ms, 1)))
+        RECENT.append(dict(t=round(time.time(), 2), id=f'{cid:016x}' if cid is not None else None, raw=raw, tier=t, src=source, status=status, bytes=nbytes, ms=None if ms is None else round(ms, 1), list=lst))
 def svc_summary():
     v = sorted(SVC)
     return dict(n=len(v), avg=round(sum(v) / len(v), 2), p95=round(v[int(len(v) * .95)], 2), max=round(v[-1], 2)) if v else dict(n=0, avg=0, p95=0, max=0)
@@ -108,42 +111,45 @@ def swap_edge(a, bad):
     finally: EDGE_LOCK.release()
 
 
-def side_path(origin, sm):
-    """Where a SIDE file is kept: <mirror>/side/tr/<folder>/<name>; its reply headers (ETag, x-amz-meta-*) sit beside it in <name>.h.json."""
-    return os.path.join(origin, 'side', 'tr', sm.group(1), f'{sm.group(2)}_{sm.group(3)}_{sm.group(4)}')
-
-
-def side_load(origin, sm):
-    """-> (body, extra headers) of a stored SIDE file whose size matches the size in its name, else None."""
-    p = side_path(origin, sm)
-    try:
-        if os.path.getsize(p) != int(sm.group(3), 16): return None
-        with open(p, 'rb') as fh: body = fh.read()
-    except OSError: return None
-    try:
-        with open(p + '.h.json', encoding='utf-8') as fh: extra = [tuple(x) for x in json.load(fh)]
-    except (OSError, ValueError, TypeError): extra = []
-    return body, extra
-
-
-def side_store(origin, sm, body, extra):
-    """Keep a SIDE file fetched from the internet (whole and of the size in its name only). A folder this user cannot write to is not an error: -> False."""
-    if len(body) != int(sm.group(3), 16): return False
-    p = side_path(origin, sm)
-    try:
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        with open(p + '.h.json.tmp', 'w', encoding='utf-8') as fh: json.dump([[k, v] for k, v in extra], fh)
-        os.replace(p + '.h.json.tmp', p + '.h.json')
-        with open(p + '.tmp', 'wb') as fh: fh.write(body)
-        os.replace(p + '.tmp', p); return True
-    except OSError: return False
+def _side_name(sm): return f'{sm.group(2)}_{sm.group(3)}_{sm.group(4)}'
+def side_path(origin, sm): return side.path(origin, sm.group(1), _side_name(sm))                     # <mirror>/side/tr/<folder>/<name> (+ <name>.h.json), see ccslib/side.py
+def side_load(origin, sm): return side.load(origin, sm.group(1), _side_name(sm), int(sm.group(3), 16))
+def side_store(origin, sm, body, extra): return side.store(origin, sm.group(1), _side_name(sm), int(sm.group(3), 16), body, extra)
 
 
 def load_index():
+    """id -> raw size over every chunk list of the game folder, and per list a sorted id array (which list a requested piece is in: the session report and requested.txt name it)."""
+    LISTS.clear()
     for fn in cdnxpak.find_all(ROOT):
+        ids = array.array('Q')
         for r in cdnxpak.parse(fn):
-            RAW[r['id']] = r['raw']
-    log(f"index: {len(RAW)} chunk ids")
+            RAW[r['id']] = r['raw']; ids.append(r['id'])
+        if ids: LISTS.append((cdnxpak.stem(fn), array.array('Q', sorted(ids))))
+    log(f"index: {len(RAW)} chunk ids in {len(LISTS)} lists ({', '.join(n for n, _ in LISTS)})")
+
+
+def list_of(cid):
+    """The name of the first chunk list that has this id (wz26, sp26 ...), None when no list on this PC names it."""
+    for name, ids in LISTS:
+        k = bisect.bisect_left(ids, cid)
+        if k < len(ids) and ids[k] == cid: return name
+    return None
+
+
+def load_requested():
+    try:
+        with open(REQ_FILE(), encoding='utf-8', errors='replace') as f: REQUESTED.update(ln.split()[0] for ln in f if ln.strip())
+    except OSError: pass
+
+
+def note_requested(path, raw, lst):
+    """Remember one piece the game asked for that the offline copy could not give it (requested.txt: path raw list), once per path: Download what I played fetches them."""
+    with lock:
+        if path in REQUESTED or len(REQUESTED) > 2_000_000: return
+        REQUESTED.add(path)
+        try:
+            with open(REQ_FILE(), 'a', encoding='utf-8') as f: f.write(f"{path} {raw if raw is not None else '-'} {lst or '-'}\n")
+        except OSError: pass
 
 def parse_range(h, size):
     """One `bytes=a-b` / `bytes=a-` / `bytes=-n` range of an object of `size` bytes -> (first, last), both included. None = no usable header (send the whole object); 'bad' = it cannot be
@@ -231,11 +237,15 @@ class H(BaseHTTPRequestHandler):
                 return lg(f"{self.command} {path} -> {code} {n}B MIRROR")
         if m and st['bytes'] > a.budget_gib * 2**30:
             rec(path, cid, raw, 'budget', 503, 0, ms=self.ms()); lg(f"BUDGET exhausted {st['bytes']/2**30:.2f} GiB"); return self.reply(503)
+        pid_ = int(m.group(2), 16) if m else (int(sm.group(2), 16) if sm else None)       # the piece's id (chunk or side file): which list names it
+        lst = list_of(pid_) if pid_ is not None else None; lnote = f" list={lst or 'none'}" if pid_ is not None else ''
         if getattr(a, 'offline', False):      # offline: nothing leaves this PC - a chunk missing from the mirror, a side file not kept yet or any other path is a 404, never a silent fetch
             with lock: st['miss'] += 1
-            rec(path, cid if m else None, raw if m else None, 'offline-miss', 404, 0, ms=self.ms())
-            lg(f"MISS-OFFLINE {self.command} {path}" + (f" raw={raw}" if m else ' (not a chunk)')); return self.reply(404)
-        if m: note = f"raw={raw}"
+            rec(path, cid if m else None, raw if m else None, 'offline-miss', 404, 0, ms=self.ms(), lst=lst)
+            if pid_ is not None and self.command == 'GET' and not probe: note_requested(path, RAW.get(pid_), lst)
+            lg(f"MISS-OFFLINE {self.command} {path}" + (f" raw={raw}{lnote}" if m else (lnote + ' (side file)' if sm else ' (not a chunk)'))); return self.reply(404)
+        if m: note = f"raw={raw}{lnote}"
+        elif sm: note = lnote.strip()
         # chunk objects: the URL carries the wire size, so a full (non-Range) body must match it exactly
         want = int(m.group(3), 16) if m and not self.headers.get('Range') and self.command == 'GET' else None
         hdr = upstream.headers({'Connection': 'close'})
@@ -282,9 +292,10 @@ class H(BaseHTTPRequestHandler):
             st['bytes'] += len(body) if self.command == 'GET' else 0
             if r.status in (200, 206): st['ok'] += 1; st['other'] += 0 if m else 1
             else: st['miss'] += 1
-        if m: rec(path, int(m.group(2), 16), RAW.get(int(m.group(2), 16)), 'upstream', r.status, len(body), ms=self.ms())
+        if m: rec(path, int(m.group(2), 16), RAW.get(int(m.group(2), 16)), 'upstream', r.status, len(body), ms=self.ms(), lst=lst)
         if m and r.status == 200 and self.command == 'GET' and not probe and int(m.group(2), 16) not in RAW: note_unlisted(path)
-        if sm and a.origin and r.status == 200 and self.command == 'GET' and not probe and side_store(a.origin, sm, body, extra): note = 'kept in side/'
+        if pid_ is not None and r.status in (200, 206) and self.command == 'GET' and not probe: note_requested(path, RAW.get(pid_), lst)      # not from the copy: Download what I played can store it
+        if sm and a.origin and r.status == 200 and self.command == 'GET' and not probe and side_store(a.origin, sm, body, extra): note = (note + ' kept in side/').strip()
         lg(f"{self.command} {path} -> {r.status} {len(body)}B {note} range={self.headers.get('Range','-')} total={st['bytes']/2**30:.3f}GiB")
 
 class S6(ThreadingHTTPServer):
@@ -311,7 +322,7 @@ if __name__ == '__main__':
     a.pinned = bool(a.upstream_ip)
     if not a.upstream_ip: a.upstream_ip = upstream.resolve(check=not a.offline, port=a.upstream_port)       # an edge that answers: a remembered one that no longer does is skipped (the hosts override points the name at us)
     if a.origin: a.origin = os.path.abspath(a.origin); load_mirror(a.origin)
-    load_index(); log(f"upstream {a.upstream_ip}  tier<={a.max_raw_mib}MiB  budget={a.budget_gib}GiB")
+    load_index(); load_requested(); log(f"upstream {a.upstream_ip}  tier<={a.max_raw_mib}MiB  budget={a.budget_gib}GiB")
     for cls, addr in ((S6, ('::1', a.port)), (S4, ('127.0.0.1', a.port))):
         try: srv = cls(addr, H)
         except OSError as e: log(f"BIND-FAIL {addr}: {e}"); sys.exit(2)

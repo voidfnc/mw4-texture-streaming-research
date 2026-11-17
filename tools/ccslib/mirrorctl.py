@@ -9,11 +9,12 @@ OUTFILE = os.path.join(paths.RUN, 'mirror.out')
 def stopfile(): return os.path.join(paths.MIRROR, 'STOP')       # resolved at call time: the mirror folder is configurable
 
 
-def run_argv(workers=4, tier=4096, budget_gib=0, min_free_gib=40, max_rps=50, retries=4, scope=None, packages=None, limit_mbps=0, daily_gib=0, link_wait_s=0, line_mbps=0):
+def run_argv(workers=4, tier=4096, budget_gib=0, min_free_gib=40, max_rps=50, retries=4, scope=None, packages=None, limit_mbps=0, daily_gib=0, link_wait_s=0, line_mbps=0, played=False):
     a = launch.argv_for('ccsmirror') + ['run', '--workers', str(int(workers)), '--tier', str(tier), '--budget-gib', str(budget_gib), '--min-free-gib', str(min_free_gib),
          '--max-rps', str(max_rps), '--retries', str(int(retries)), '--progress-json', PROGRESS, '--stop-file', stopfile(), '--accept-notice']      # the GUI shows the notice before it starts a run
-    if scope: a += ['--scope', scope]
-    if scope == 'custom' and packages: a += ['--packages', packages if isinstance(packages, str) else ','.join(packages)]
+    if played: a += ['--played']                                   # Download what I played: the scope does not apply
+    elif scope: a += ['--scope', scope]
+    if scope == 'custom' and packages and not played: a += ['--packages', packages if isinstance(packages, str) else ','.join(packages)]
     if limit_mbps and float(limit_mbps) > 0: a += ['--limit-mbps', str(limit_mbps)]
     if daily_gib and float(daily_gib) > 0: a += ['--daily-gib', str(daily_gib)]
     if line_mbps and float(line_mbps) > 0: a += ['--line-mbps', str(line_mbps)]

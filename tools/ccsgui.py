@@ -14,7 +14,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ccslib import i18n, cachectl, config, doctor, gamefix, guide, home, homeui, hosts, launch, logtail, mirrorctl, mirrordb, pack, paths, procs, proxyctl, report, session, ui, version
+from ccslib import i18n, cachectl, config, doctor, gamefix, guide, home, homeui, hosts, launch, logtail, mirrorctl, mirrordb, pack, paths, played, procs, proxyctl, report, session, ui, version
 
 BG, PANEL, FG, DIM, ACC = ui.BG, ui.CARD, ui.TEXT, ui.DIM, ui.ACCENT                        # one palette for the whole window (ui.py)
 OK, WARN, BAD, OFF = ui.OK, ui.WARN, ui.BAD, ui.FAINT
@@ -270,7 +270,7 @@ class App(tk.Tk):
         self.pk_where = ttk.Label(f, text='', style='Dim.TLabel', wraplength=1000); self.pk_where.pack(anchor='w', pady=(0, 4)); self._wrap(self.pk_where, 1.0, 40); self._pack_where()
         row = ttk.Frame(f); row.pack(fill='x')
         a = ttk.LabelFrame(row, text='1. What to download (pack scope)'); a.pack(side='left', fill='both', expand=True, padx=(0, 8))
-        for val, lab in (('sp', 'SP campaign (default)'), ('all', 'Whole pack (all packages)'), ('custom', 'Custom packages')):
+        for val, lab in (('sp', 'SP campaign (default)'), ('all', 'Whole pack (every package but Warzone)'), ('custom', 'Custom packages')):
             ttk.Radiobutton(a, text=lab, value=val, variable=self.pk_scope, command=self._pack_scope_changed).pack(anchor='w', padx=10, pady=1)
         pf = ttk.Frame(a); pf.pack(anchor='w', padx=28, pady=(0, 4)); self.pk_cb = {}
         for k in pack.ORDER:
@@ -296,9 +296,11 @@ class App(tk.Tk):
         ttk.Button(bt, text='Pause (finish in-flight)', command=self.do_mirror_pause).pack(side='left', padx=4)
         ttk.Button(bt, text='Refresh estimate', command=self.pack_refresh).pack(side='left', padx=4)
         ttk.Button(bt, text='Play only from this copy', command=self.do_pack_offline).pack(side='left', padx=(16, 4))
+        ttk.Button(bt2, text='Download what I played', command=self.do_pack_played).pack(side='right', padx=4)
         ttk.Button(bt2, text='Verify all', command=lambda: self.do_pack_verify(False)).pack(side='left', padx=(0, 4))
         ttk.Button(bt2, text='Verify + repair', command=lambda: self.do_pack_verify(True)).pack(side='left', padx=4)
         ttk.Button(bt2, text='Reclaim space above this level...', command=self.do_pack_prune).pack(side='left', padx=4)
+        self.pk_played = ttk.Label(f, text='', style='Dim.TLabel', wraplength=1000); self.pk_played.pack(anchor='w', pady=(0, 2)); self._wrap(self.pk_played, 1.0, 40)
         pr = ttk.LabelFrame(f, text='Progress'); pr.pack(fill='x', pady=4); self.p_bar = ttk.Progressbar(pr, maximum=1000); self.p_bar.pack(fill='x', padx=10, pady=(8, 2))
         self.p_lbl = ttk.Label(pr, text='no run in progress', wraplength=1000); self.p_lbl.pack(anchor='w', padx=10, pady=(0, 8)); self._wrap(self.p_lbl, 1.0, 50)
         t = ttk.LabelFrame(f, text='By package for the chosen level (an id in several lists is counted once, under the first)'); t.pack(fill='both', expand=True)
@@ -348,6 +350,8 @@ class App(tk.Tk):
         def go():
             try: pl = pack.plan(scope, pkgs, level, line_mbps=line)
             except Exception as ex: pl = dict(error=str(ex))
+            try: pm = played.played_missing(level); pl['played'] = dict(n=pm['n'], gib=pm['gib'], by_list=pm['by_list'])
+            except Exception: pass
             self.q.put(('ask', lambda: self._show_pack(pl)))
         threading.Thread(target=go, daemon=True).start()
 
@@ -355,6 +359,9 @@ class App(tk.Tk):
         self._pack_err = pl.get('error')
         if 'error' in pl: self.pk_est.configure(text='cannot compute: ' + pl['error']); return
         self._pack_plan = pl; self.pk_est.configure(text=pack.describe(pl), foreground=(BAD if not pl['fits'] else FG))
+        pm = pl.get('played') or {}
+        self.pk_played.configure(text=f"Download what I played: {pm['n']:,} pieces your game asked for are not in the copy ({pm['gib'] * 1024:,.0f} MB, Warzone included)." if pm.get('n')
+                                 else 'Download what I played: nothing missing. After a session (online, or offline with misses) it stores just the pieces the game asked for and the copy did not have.')
         for lv, rb in self.pk_rb.items():
             b = pl['levels'][lv]; rb.configure(text=f"{pack.LEVEL_LABELS[lv]}  -  {b['gib']:.1f} GiB total, {b['pending_gib']:.1f} GiB to download")
         prof = config.all_profiles(self.cfg).get(self.cfg.get('profile'), {}); self.pk_lvnote.configure(text=f"profile '{self.cfg['profile']}' sets the level to {prof['pack']['level']}" if 'level' in prof.get('pack', {}) else '')
@@ -385,6 +392,20 @@ class App(tk.Tk):
         if not messagebox.askyesno('Download texture pack', f"Download {t['pending']:,} chunks ({t['pending_gib']:.1f} GiB) from the public texture CDN into\n{paths.MIRROR}\n\n"
                                    f"scope: {pl['scope']}   level: {pl['level']}\nfree space: {pl['free_gib']:.0f} GiB" + (f"\ncap: {lim:g} Mbps" if lim else '') + (f"\ndaily limit: {dq:g} GiB" if dq else '') + '\n\nThese files belong to the game publisher: keep them on this PC, for use with your own copy of the game, and do not share them.\nIt can be paused and resumed at any time. Start?', parent=self): return
         st = mirrorctl.start(**mirrorctl.pack_kwargs(self.cfg)); self.say(f"texture pack run started (pid {st['pid']}): scope={pl['scope']} level={pl['level']} {t['pending']:,} chunks / {t['pending_gib']:.1f} GiB", 'OK')
+
+    def do_pack_played(self):
+        """Download what I played (#75): only the pieces the game asked for that the copy lacked (any list, Warzone included), at the chosen detail level."""
+        if not paths.CONFIGURED: messagebox.showerror('Texture pack', 'Set the game folder in the Game tab first.', parent=self); return
+        if procs.status('mirror')['alive']: self.say('a mirror run is already active', 'WARN'); return
+        if not mirrordb.writable(paths.MIRROR): messagebox.showerror('Texture pack', f'You cannot write to the mirror folder:\n{paths.MIRROR}\n\nChoose a folder you can write to (Game tab, Mirror folder, then Save locations). A mirror that is already there is still used as it is.', parent=self); return
+        e = config.effective(self.cfg)['pack']; pm = played.played_missing(e['level'])
+        if not pm['n']: self.say('Download what I played: nothing missing (every piece the game asked for is in the copy, or above the detail level)', 'OK'); return
+        if not self._bulk_ack(): return
+        by = ', '.join(f'{k}: {v:,}' for k, v in sorted(pm['by_list'].items(), key=lambda x: -x[1])[:6])
+        if not messagebox.askyesno('Download what I played', f"Download {pm['n']:,} pieces ({pm['gib'] * 1024:,.0f} MB) that your game asked for and your offline copy did not have?\n\nBy list: {by}"
+                                   + '\n\nThese files belong to the game publisher: keep them on this PC, for use with your own copy of the game, and do not share them.\nIt can be paused and resumed at any time. Start?', parent=self): return
+        kw = mirrorctl.pack_kwargs(self.cfg); kw['played'] = True; st = mirrorctl.start(**kw)
+        self.say(f"download what I played started (pid {st['pid']}): {pm['n']:,} pieces, {pm['gib'] * 1024:,.0f} MB", 'OK')
 
     def do_pack_verify(self, repair):
         if procs.status('mirror')['alive']: self.say('pause the download first', 'WARN'); return
@@ -947,7 +968,7 @@ class App(tk.Tk):
 
     def _download_view(self):
         s = self.snap or {}; plan = dict(error=self._pack_err) if self._pack_err else self._pack_plan
-        return home.download_view(plan, s.get('mprog'), bool((s.get('mproc') or {}).get('alive')), s.get('vprog'), bool((s.get('vproc') or {}).get('alive')), scope=self.pk_scope.get(), level=self.pk_level.get(), busy=self.busy)
+        return home.download_view(plan, s.get('mprog'), bool((s.get('mproc') or {}).get('alive')), s.get('vprog'), bool((s.get('vproc') or {}).get('alive')), scope=self.pk_scope.get(), level=self.pk_level.get(), busy=self.busy, played=(plan or {}).get('played'))
 
     def _find_in_background(self):
         self._searching = True
@@ -989,6 +1010,7 @@ class App(tk.Tk):
             elif a == 'pack_start': self.do_pack_start()
             elif a == 'pack_pause': self.do_mirror_pause()
             elif a == 'pack_verify': self.do_pack_verify(False)
+            elif a == 'pack_played': self.do_pack_played()
             elif a == 'pack_offline': self.guide_do('choose_offline'); self.do_pack_offline()
             elif a.startswith('set_scope_'): self.pk_scope.set(a[10:]); self._pack_plan = None; self._pack_scope_changed()
             elif a.startswith('set_level_'): self.pk_level.set(a[10:]); self._pack_plan = None; self._pack_level_changed()

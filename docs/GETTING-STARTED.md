@@ -151,6 +151,20 @@ through the same route, what the game does when that route is answered from the 
 The disk guard only ends `sp26-cod.exe` by default. It never ends `cod.exe` during an online match unless you add that name yourself in the settings. Whether the publisher's anti-cheat accepts a changed
 hosts file is not something this project can promise; see the [disclaimer](../DISCLAIMER.md).
 
+## Warzone (experimental)
+
+Warzone gets its textures from the same server, in the same form, through the same helper. Its pieces are listed in `cod26\wz26_cdn.xpak` (about a million pieces, roughly five times
+everything else together), so they are **not** part of *Everything but Warzone* / *Whole pack*. Two ways to have them on this PC:
+
+- **Download what I played** (Home, offline copy page, or Advanced mode, Texture pack tab). The helper notes every piece the game asked for that your offline copy did not have, Warzone
+  included, and this button stores just those, at your detail level. Play a session (online, or offline and accept the misses), press it, and the next session of the same maps comes from
+  this PC. In one reported Warzone session that was about 100 MB, not hundreds of GB.
+- **The whole Warzone list**: Advanced mode, Texture pack tab, *Custom packages*, tick *Warzone*. The estimate shows the size first; it is likely hundreds of GB.
+
+Warzone also asks for small files under `/tr/` that are not in the usual place; the helper keeps them in `mirror\side\` the first time they come from the internet, and *Download what
+I played* fetches the ones the game asked for. *Check my PC* names every chunk list in your game folder (Warzone, its side files, other game languages, empty ones), and the support bundle has
+them with their sizes in `state/lists.txt`. Nothing about Warzone has been tested with a live session by the maintainer yet.
+
 ## Words used in this tool
 
 **Session**  

@@ -18,7 +18,7 @@ STEP_LABELS = ('Game found', 'Turn on', 'Play', 'Done')
 PACK_MIN_GIB = 54                                                   # the smallest offline copy (campaign only)
 ACTIONS = ('turn_on', 'turn_off', 'find_folder', 'use_found', 'confirm_anyway', 'choose_quick', 'choose_offline', 'pick_quick', 'pick_offline', 'game_setup', 'help',
            'open_check', 'open_report', 'abtest', 'done', 'apply_hosts', 'activity', 'open_advanced', 'open_settings', 'switch_path', 'what_setup', 'notice_ok', 'toggle_motion',
-           'open_download', 'back_home', 'pack_start', 'pack_pause', 'pack_verify', 'pack_offline', 'set_scope_sp', 'set_scope_all', 'set_level_standard', 'set_level_high', 'set_level_ultra', 'pick_language')
+           'open_download', 'back_home', 'pack_start', 'pack_pause', 'pack_verify', 'pack_offline', 'pack_played', 'set_scope_sp', 'set_scope_all', 'set_level_standard', 'set_level_high', 'set_level_ultra', 'pick_language')
 MAP = dict(start_session='turn_on', stop_session='turn_off', doctor='open_check', find_folder='find_folder', game_setup='game_setup', apply_hosts='apply_hosts',
            confirm_anyway='confirm_anyway', hosts_remove='turn_off')                               # guide.coach actions -> Home actions
 
@@ -145,12 +145,20 @@ def pack_text(plan, prog=None, alive=False):
     return f'{int(100 * S_ / T)}% downloaded' if T and S_ else 'Not downloaded'
 
 
-def download_view(plan, prog=None, alive=False, vprog=None, valive=False, scope='sp', level='ultra', busy=False, now=None):
+def download_view(plan, prog=None, alive=False, vprog=None, valive=False, scope='sp', level='ultra', busy=False, now=None, played=None):
     """The offline-copy page: how much of the texture pack is on this PC, a run in progress, and the two choices (how much, how detailed).
-    plan = pack.plan(...) or None (still being worked out), prog = the mirror run's progress, vprog = a file check's progress."""
+    plan = pack.plan(...) or None (still being worked out), prog = the mirror run's progress, vprog = a file check's progress,
+    played = dict(n, gib) of what the game asked for and the copy lacked (adds Download what I played when there is something)."""
+    v = _download_view(plan, prog, alive, vprog, valive, scope, level, busy, now)
+    if played and played.get('n') and v['mode'] in ('done', 'paused', 'idle', 'error') and v['editable']:
+        v['secondary'] = list(v['secondary']) + [('pack_played', f"Download what I played ({max(1, round(played['gib'] * 1024)):,} MB)")]
+    return v
+
+
+def _download_view(plan, prog, alive, vprog, valive, scope, level, busy, now):
     import time as _t
     now = now or _t.time(); v = dict(mode='loading', ring=dict(kind='prog', frac=0.0, icon=None, big='', small=''), headline='Working out the size...', sub='', bar=None, primary=None, secondary=[], alert=None,
-                                     scope=dict(value=scope if scope in ('sp', 'all') else '', options=[('sp', 'Campaign only'), ('all', 'Everything')], custom=scope == 'custom'),
+                                     scope=dict(value=scope if scope in ('sp', 'all') else '', options=[('sp', 'Campaign only'), ('all', 'Everything but Warzone')], custom=scope == 'custom'),
                                      level=dict(value=level, options=[('standard', 'Standard'), ('high', 'High'), ('ultra', 'Ultra')], note=''), editable=True, footer=('off', 'Offline copy'),
                                      links=[('back_home', 'Back to Home')])
     v['level']['note'] = {'standard': 'Standard leaves out the biggest textures (about the 1440p class): a smaller download.', 'high': 'High leaves out only the very biggest textures.',
