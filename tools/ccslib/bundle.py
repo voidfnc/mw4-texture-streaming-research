@@ -69,6 +69,14 @@ def make(cfg=None):
             from . import cachectl
             z.writestr('state/cache.txt', scrub(json.dumps(cachectl.summary(), indent=1, default=str)))
         except Exception as e: z.writestr('state/cache.txt', f'error: {e}')
+        try:        # every chunk list by name with its piece count and size per detail level (#75: which lists a Warzone install has, and how big they are)
+            from . import played
+            z.writestr('state/lists.txt', played.lists_text(played.lists_report()))
+        except Exception as e: z.writestr('state/lists.txt', f'error: {e}')
+        try:        # what the game asked for that the offline copy did not have, counted by list (no paths)
+            from . import played
+            pm = played.played_missing(config.effective(cfg)['pack']['level']); z.writestr('state/played_missing.json', json.dumps(dict(n=pm['n'], mib=round(pm['gib'] * 1024, 1), by_list=pm['by_list']), indent=1))
+        except Exception as e: z.writestr('state/played_missing.json', f'error: {e}')
         z.writestr('state/player_config.json', json.dumps(report.player_config(), indent=1))
         z.writestr('state/runs.txt', '\n'.join(f"#{s['idx']} {s.get('date')} {s['first']}-{s['last']} requests={s['nreq']}" for s in report.segments()))
         for fn in report.list_reports()[-3:]:

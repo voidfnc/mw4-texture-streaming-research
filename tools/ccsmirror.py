@@ -9,6 +9,7 @@
   python tools/ccsmirror.py verify [--n 200 | --all] [--fix] [--progress-json PATH]    # re-check stored objects (size + md5 vs ETag); --fix resets bad ones to pending
   python tools/ccsmirror.py prune  --above-tier MiB [--yes] [--json]                    # delete stored objects above a detail level (dry run without --yes)
   python tools/ccsmirror.py fetch-requested [--file PATH]                               # queue chunks the game asked for that no chunk list names (new content); `run` stores them
+  python tools/ccsmirror.py run --played [--level ..]                                   # Download what I played: only what the game asked for and the copy lacked (requested.txt), Warzone included
   python tools/ccsmirror.py retry-failed                                                # failed (status 2) -> pending
   run extras: --progress-json PATH (live JSON for the GUI), --stop-file PATH (create it to pause cleanly; default mirror/STOP)
 
@@ -26,7 +27,7 @@ Source:   public unauthenticated CDN host only; the hosts override is bypassed b
 """
 import argparse, collections, glob, hashlib, http.client, json, os, random, re, shutil, socket, sqlite3, subprocess, sys, threading, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ccslib import paths, pack, upstream, version      # locations come from the GUI settings (Game tab), not from hard-coded paths
+from ccslib import paths, pack, played, upstream, version      # locations come from the GUI settings (Game tab), not from hard-coded paths
 ROOT = paths.GAME_ROOT
 HOST = 'cod-assets.cdn.callofduty.com'
 MIR = paths.MIRROR; OBJ = os.path.join(MIR, 'objects'); DB = os.path.join(MIR, 'index.sqlite')
@@ -86,8 +87,8 @@ def load_lists(c, mask):
 
 def lists_changed(c):
     """The game's chunk lists are not the ones the index was loaded from (a game update added or changed chunks)."""
-    try: return json.loads(meta_get(c, 'lists', 'null')) != pack.fingerprint(ROOT)
-    except (ValueError, OSError): return False
+    try: return pack.lists_differ(json.loads(meta_get(c, 'lists', 'null')), ROOT, int(meta_get(c, 'loaded', 0)) or None)
+    except (ValueError, OSError, TypeError): return False
 
 def ensure_loaded(c, mask):
     changed = lists_changed(c)
@@ -211,6 +212,31 @@ def ingest_unlisted(c, path=None):
     if n: log(f'{n} chunk(s) the game asked for that are in no chunk list were added to the download queue')
     return n
 
+def ingest_requested(c, path=None, tier=4096):
+    """Download what I played: the pieces the proxy could not serve from the copy (requested.txt) become rows marked PLAYED (and first in line), whatever their list -
+    Warzone's included - so `run --played` stores exactly them. Pieces above the detail level are left out. -> (chunk rows marked, side files still missing)."""
+    pl = played.played_missing(pack.level_of_mib(tier) or tier, MIR, path)
+    rows = [r for r in pl['items'] if not r['side']]; sides = [r for r in pl['items'] if r['side']]
+    c.executemany('insert or ignore into chunks(id, wire, raw, flag, prio, pkgs) values (?,?,?,?,?,?)', [(signed(r['id']), r['wire'], r['raw'] or 0, r['flag'], 0, pack.PLAYED) for r in rows])
+    c.executemany('update chunks set pkgs = coalesce(pkgs, 0) | ?, prio = 0 where id = ? and status != 1', [(pack.PLAYED, signed(r['id'])) for r in rows]); c.commit()
+    if rows or sides: log(f"what you played: {len(rows)} piece(s) and {len(sides)} side file(s) the copy did not have ({pl['gib'] * 1024:.0f} MB; by list: {', '.join(f'{k} {v}' for k, v in sorted(pl['by_list'].items()))})")
+    return len(rows), sides
+
+def fetch_sides(sides, ip, port, stat):
+    """The small tr/ files Warzone asked for (not at the normal chunk address): fetched one by one and kept in side/, where the proxy serves them from. -> number stored."""
+    from ccslib import side
+    n = 0
+    for r in sides:
+        try:
+            conn = http.client.HTTPConnection(ip, port, timeout=60); conn.request('GET', r['path'], headers=upstream.headers()); resp = conn.getresponse(); body = resp.read(); conn.close()
+        except Exception as e: log(f"FAIL {r['path']}: {e}"); stat['fail'] += 1; continue
+        et = (resp.getheader('ETag') or '').strip('"').split(':')[0]
+        if resp.status != 200 or len(body) != r['wire'] or (et and '-' not in et and hashlib.md5(body).hexdigest() != et):
+            log(f"FAIL {r['path']}: status={resp.status} len={len(body)} want={r['wire']}"); stat['fail'] += 1; continue
+        if side.store(MIR, r['folder'], os.path.basename(r['path']), r['wire'], body, side.keep_headers(resp.getheaders())): n += 1; stat['ok'] += 1; stat['bytes'] += len(body)
+    if sides: log(f'side files: {n} of {len(sides)} stored in side/')
+    return n
+
 def cmd_fetch_requested(a):
     c = db(); n = ingest_unlisted(c, getattr(a, 'file', None))
     print(f'{n} new chunk(s) queued; run the download (Texture pack -> Download, or `run`) to store them' if n else 'nothing new: no chunk outside the lists was recorded since the last time')
@@ -220,12 +246,15 @@ def cmd_run(a):
         if a.accept_notice: version.record_bulk_ack()
         else:
             print(version.BULK_NOTICE + '\n\nRe-run with --accept-notice to confirm (asked once per version).'); sys.exit(3)
-    c = db(); sc, pk, mask = args_scope(a); tier = args_tier(a)
-    if mask: ensure_loaded(c, mask)
+    c = db(); sc, pk, mask = args_scope(a); tier = args_tier(a); sides = []
+    if a.played:                                              # Download what I played: only the pieces the game asked for that the copy lacked, whatever the scope
+        sc = 'played'; mask = None; _, sides = ingest_requested(c, tier=tier)
+    elif mask: ensure_loaded(c, mask)
     elif int(meta_get(c, 'loaded', 0)) == 0 and c.execute('select count(*) from chunks').fetchone()[0] == 0: ensure_loaded(c, pack.scope_mask('sp'))
-    ingest_unlisted(c)
+    if not a.played: ingest_unlisted(c)
     where = 'status!=1 and raw<=?'; prm = [tier * 2**20]
     if mask: where += ' and (pkgs & ?) != 0'; prm.append(mask)
+    if a.played: where += ' and (pkgs & ?) != 0'; prm.append(pack.PLAYED)
     rows = c.execute(f'select id, wire, raw, flag, prio from chunks where {where} order by prio, id', prm).fetchall()
     edge = dict(ip=a.upstream_ip, note='', checked=time.time())
     if not edge['ip']:
@@ -240,7 +269,8 @@ def cmd_run(a):
     q = list(reversed(rows)); stat = dict(ok=0, fail=0, bytes=0, retry=0, throttled=0); stop = threading.Event(); rate = Rate(a.max_rps)
     lim = Limiter(a.limit_mbps * 1e6 / 8, stop) if a.limit_mbps and a.limit_mbps > 0 else None
     quota = Quota(int(a.daily_gib * 2**30), c) if a.daily_gib and a.daily_gib > 0 else None
-    t0 = time.time(); dbl = threading.Lock(); total_q = len(q); linklock = threading.Lock(); link = dict(down_since=None); final = dict(state=None)
+    t0 = time.time(); dbl = threading.Lock(); total_q = len(q) + len(sides); linklock = threading.Lock(); link = dict(down_since=None); final = dict(state=None)
+    if sides: fetch_sides(sides, ip, a.upstream_port, stat)
     stopf = a.stop_file or os.path.join(MIR, 'STOP')
     try: os.remove(stopf)                                   # stale pause request from a previous run
     except OSError: pass
@@ -483,6 +513,7 @@ if __name__ == '__main__':
     r.add_argument('--daily-gib', type=float, default=0, help='pause after this many GiB per local day (0 = unlimited)')
     r.add_argument('--accept-notice', action='store_true', help='confirm the bulk-download notice (asked once per version; the GUI asks in a dialog)')
     r.add_argument('--link-wait-s', type=float, default=0, help='give up (state offline) when the upstream is unreachable this long; 0 = wait forever')
+    r.add_argument('--played', action='store_true', help='Download what I played: only the pieces the game asked for that the copy did not have (requested.txt, written by the proxy), any list incl. Warzone; --scope is ignored')
     v = sp.add_parser('verify'); v.add_argument('--n', type=int, default=200); v.add_argument('--all', action='store_true'); v.add_argument('--fix', action='store_true'); v.add_argument('--progress-json')
     fr = sp.add_parser('fetch-requested'); fr.add_argument('--file', help='list of chunk paths (default: unlisted.txt in the data folder, written by the proxy)')
     pr = sp.add_parser('prune'); pr.add_argument('--above-tier', type=float, required=True, help='MiB raw: stored objects larger than this are deleted'); pr.add_argument('--yes', action='store_true'); pr.add_argument('--json', action='store_true')

@@ -33,6 +33,20 @@ def find_all(root, subdirs=('cod26', 'sp26')):
 
 def is_stub(path): return path.lower().endswith(STUB)
 
+
+def has_records(path):
+    """False for a list that cannot hold a single record (0 KB stubs of languages that are not installed, a header without records)."""
+    try: return os.path.getsize(path) >= 0x8000 + 20
+    except OSError: return False
+
+
+def stem(path):
+    """'cod26/wz26_cdn_stub.xpak' -> 'wz26': the list's name without folder and suffix."""
+    n = os.path.basename(path)
+    for s in (STUB, FULL):
+        if n.lower().endswith(s): return n[:-len(s)]
+    return n
+
 def parse(fn):
     d = open(fn, 'rb').read(); recs = []; p = 0x8000
     while p + 20 <= len(d):

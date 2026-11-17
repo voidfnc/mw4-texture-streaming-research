@@ -401,6 +401,25 @@ def check_locations():
     if paths.CONFIGURED and os.path.isdir(paths.GAME_ROOT):
         lists = paths.chunk_lists(paths.GAME_ROOT); stubs = sum(1 for f in lists if f.lower().endswith('_cdn_stub.xpak'))
         if stubs: out = [_c(r['name'], r['level'], f'{len(lists)} chunk list files under cod26/ and sp26/ ({stubs} of them in the Xbox "_stub" form)', None) if r['name'] == 'CDN chunk lists' else r for r in out]
+        out += check_list_names(lists)
+    return out
+
+
+def check_list_names(lists):
+    """The lists the downloader does not take on its own, by name (#75): Warzone (only by choice), Warzone's side files, other game languages, lists it does not know, empty ones."""
+    cdnxpak = pack.cdnxpak
+    names = lambda ps: ', '.join(sorted({cdnxpak.stem(p) for p in ps}))
+    full = [p for p in lists if cdnxpak.has_records(p)]; empty = [p for p in lists if not cdnxpak.has_records(p)]
+    wz = [p for p in full if pack.package_of(p) == 'wz']; kind = lambda k: [p for p in full if pack.list_kind(p) == k]
+    out = []
+    if wz: out.append(_c('Warzone', 'info', 'Warzone lists found. They are not part of the whole pack because they are very large (likely hundreds of GB): tick Warzone under Custom packages, '
+                                             'or play a session and use Download what I played to store just what the game asked for.', None))
+    other = []
+    if kind('side'): other.append(f"Warzone side files: {names(kind('side'))} (kept as the game asks for them)")
+    if kind('unknown'): other.append(f"not known to the downloader: {names(kind('unknown'))} (Download what I played covers them)")
+    if kind('language'): other.append(f"{len(kind('language'))} lists of other game languages (not downloaded)")
+    if empty: other.append(f"{len(empty)} empty (not installed): {names(empty)}")
+    if other: out.append(_c('Other chunk lists', 'info', '; '.join(other), None))
     return out
 
 

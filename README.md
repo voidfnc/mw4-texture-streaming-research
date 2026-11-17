@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.4.13 · Windows · 12 languages · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
+Beta 0.4.14 · Windows · 12 languages · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E4E029CR36) [![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/rcNfF5AvMn)
 
@@ -77,7 +77,7 @@ make one small change in it (the game setup).
 
 ![The Settings panel](docs/images/settings.png)
 
-**The offline copy** has its own page: how much of the texture pack is on the PC, pause and resume, and two choices (campaign only or everything, and how detailed).
+**The offline copy** has its own page: how much of the texture pack is on the PC, pause and resume, and two choices (campaign only or everything but Warzone, and how detailed). *Download what I played* stores just the pieces your game asked for that the copy did not have, Warzone included.
 
 ![The offline copy page while a download runs](docs/images/offline-copy.png)
 
@@ -135,7 +135,7 @@ unmodified game start streaming. The whole story, with the captures that show it
   statistics, and a report for every game session (what the game asked for, how fast, how much was already in its cache).
 - **First start and help in plain words**: the Home screen finds your game folder, checks the PC and walks through the first run, with hover tips, cards that say what went wrong and what to press, and a before/after test.
   New here? See [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md).
-- **Offline copy**: choose what to download (campaign only or everything) and how large the pieces may be, pause and resume any time. Advanced mode's Texture pack tab has every option. See
+- **Offline copy**: choose what to download (campaign only or everything but Warzone) and how large the pieces may be, pause and resume any time. Warzone is very large (likely hundreds of GB), so it is a choice of its own under *Custom packages*; *Download what I played* fetches only what your sessions asked for. Advanced mode's Texture pack tab has every option. See
   [docs/TEXTURE-PACK.md](docs/TEXTURE-PACK.md).
 
 The proxy and mirror never touch the game process. Details of how the pieces fit together are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

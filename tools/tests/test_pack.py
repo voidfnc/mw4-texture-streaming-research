@@ -50,7 +50,7 @@ class PackModelTests(unittest.TestCase):
     def setUpClass(cls): cls.root = fake_game(os.path.join(TMP, 'game_model')); cls.mir = os.path.join(TMP, 'mir_model')
 
     def test_scope_and_level_helpers(self):
-        self.assertEqual(pack.scope_packages('sp'), ('sp', 'boot')); self.assertEqual(pack.scope_packages('all'), pack.ORDER)
+        self.assertEqual(pack.scope_packages('sp'), ('sp', 'boot')); self.assertEqual(pack.scope_packages('all'), tuple(k for k in pack.ORDER if k != 'wz'))
         self.assertEqual(pack.scope_packages('custom', 'mp,common,bogus'), ('common', 'mp')); self.assertEqual(pack.scope_mask('custom', ['hq']), pack.bit('hq'))
         self.assertEqual([pack.level_mib(x) for x in ('standard', 'high', 'ultra')], [4.0, 8.0, 4096.0]); self.assertEqual(pack.level_mib('16'), 16.0); self.assertEqual(pack.level_mib('nonsense'), 4096.0)
         self.assertEqual(pack.level_of_mib(8), 'high'); self.assertIsNone(pack.level_of_mib(6))

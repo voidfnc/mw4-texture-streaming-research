@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.14-beta
+**Warzone textures: download just what you played, or the whole Warzone list by choice.**
+
+- **New: *Download what I played*** (#75, #78). The helper now notes every piece the game asks for that your offline copy does not have (in `requested.txt` beside its log), from any list, Warzone included, and also Warzone's small `/tr/` files. The new button (on the offline copy page and in Advanced mode, Texture pack tab) shows how many pieces and MB that is and stores exactly those, at your detail level. One Warzone session in a reported support bundle needed about 100 MB, so this is the practical way to get Warzone's textures. Pressing it again fetches nothing new until you play more.
+- **New: Warzone is a package of its own.** `wz26_cdn.xpak` (about a million pieces) can be ticked under *Custom packages*, with its size shown first. It is **not** part of *Whole pack* / *Everything*, now called *Everything but Warzone*, so nobody who chose the whole pack finds hundreds of GB queued after updating. Pieces Warzone shares with the other lists are not downloaded twice.
+- **New: every chunk list is named.** *Check my PC* now has a *Warzone* row and an *Other chunk lists* row: Warzone's side-file list (`wz26_tr`), lists of other game languages (`deu_`, `fra_`, `jp_` ... on the Xbox app), lists the tool does not know, and empty (0 KB, not installed) ones. The support bundle has a new `state/lists.txt` with each list's piece count and size per detail level (names and numbers only), and `state/played_missing.json` with what your sessions asked for that the copy lacked, counted by list.
+- **New: the helper's log names the list of each piece** it could not serve from the copy (`list=wz26`, `list=wz26_tr`, `list=none`), side files included.
+- **Changed:** `ww_mp26_cdn.xpak` belongs to Multiplayer now. An empty (0 KB) list no longer makes its package look installed. Neither change, nor the new Warzone list, is reported as a game update.
+- Command line: `ccsmirror.py run --played [--level ...]` does what the button does.
+- Not in this version: Warzone has not been tested with a live session by the maintainer yet, and the bulk download does not include `wz26_tr` (its pieces are not at the usual address); *Download what I played* covers the ones you used.
+- The new text is translated into every language.
+
 ## 0.4.13-beta
 **"Only from my offline copy" now really means nothing goes to the internet, and it stays on.**
 
