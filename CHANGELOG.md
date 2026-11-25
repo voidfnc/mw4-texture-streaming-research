@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.15-beta
+**A download that stops for lack of space now says so, and what you play is kept in your offline copy.**
+
+- **Fixed: the download "paused" near the end for no visible reason** (#85). A download keeps part of the drive free for the game and stops when less is left. That limit was 40 GB, the estimate did not count it, and the window called the stop a pause. Now the estimate counts it and tells you before you start ("needs X, keeps Y free, Z is free: free up about N"), a run that hits the limit says *stopped, the drive is almost full*, and a run that is already under the limit does not start at all. The limit is 20 GB by default and is a setting of its own: *Keep free on the drive* on the Texture pack tab (Advanced mode).
+- **New: Keep what I play** (#75). When you have an offline copy and a piece has to come from the internet while you play, the helper now writes it into the copy at once, so the next time it comes from this PC. Nothing is asked twice and the game does not wait for it. It checks the size and checksum first, stops storing while the drive is under the *Keep free* limit, and does nothing in "Only from my offline copy" mode (nothing is fetched there). Untick *Keep what I play* on the Proxy page to turn it off.
+- **New: Home asks when a session ends.** If the game asked for pieces your offline copy does not have, the "All done" screen says how many and how many MB and offers *Download them now*. Press *Done* to leave it for later: the list is kept and grows with the next sessions.
+- **Fixed: misses that never showed up in *Download what I played*** (#75). A piece the game only asked about (without downloading it) was not noted; it is now. Misses that are not texture pieces are counted apart and the summary says so ("N requests were for other files: there is nothing to download for them"); the helper's statistics, which are part of the support bundle, list what kind of files they were. A piece the server no longer has is no longer offered again and again.
+- **New for testers: the Recent requests table** (#84) on the Dashboard shows which chunk list each piece is in, keeps the last 500 requests, can be paused, and can be saved as a CSV file.
+- The guide has a section on other titles of the launcher (untested; #82).
+- The new text is translated into every language.
+
 ## 0.4.14-beta
 **Warzone textures: download just what you played, or the whole Warzone list by choice.**
 

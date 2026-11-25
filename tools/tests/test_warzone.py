@@ -192,5 +192,86 @@ class ProxyListTests(unittest.TestCase):
         self.assertIn('list=wz26_tr kept in side/', open(log, encoding='utf-8').read())
 
 
+class DiskStopTests(DownloadWhatIPlayedTests):
+    """#85: a download that stops because the drive is under the amount it keeps free says so (state 'disk'), and the estimate says it before the start."""
+    def test_it_stores_exactly_what_the_game_asked_for_warzone_and_side_files_included(self): pass      # the parent's test is not repeated here
+
+    def test_the_estimate_counts_what_the_download_keeps_free(self):
+        pl = pack.plan('sp', None, 'ultra', root=self.root, mirror_dir=self.dir); self.assertTrue(pl['fits']); self.assertEqual(pl['short_gib'], 0)
+        big = pack.plan('sp', None, 'ultra', root=self.root, mirror_dir=self.dir, reserve_gib=10**7)
+        self.assertFalse(big['fits']); self.assertGreater(big['short_gib'], 0); self.assertEqual(big['reserve_gib'], 10**7); self.assertIn('keeps 10000000 GiB free', pack.describe(big))
+        v = home.download_view(big); self.assertEqual(v['alert']['id'], 'nospace'); self.assertIn('keeps 10000000 GB free', v['alert']['text']); self.assertIsNone(v['primary'])
+
+    def test_a_run_under_the_limit_stops_before_it_fetches_and_says_why(self):
+        FakeCdn.seen.clear()
+        r = subprocess.run([sys.executable, os.path.join(TOOLS, 'ccsmirror.py'), 'run', '--scope', 'sp', '--min-free-gib', '10000000', '--upstream-ip', '127.0.0.1', '--upstream-port', str(self.srv.server_address[1]),
+                            '--progress-json', self.pj], capture_output=True, text=True, env=self.env, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr); p = json.load(open(self.pj))
+        self.assertEqual((p['state'], p['ok'], p['min_free_gib']), ('disk', 0, 10000000.0)); self.assertIn('keeps free', p['reason']); self.assertEqual(FakeCdn.seen, []); self.assertIn('FREE DISK', r.stdout)
+
+    def test_the_pack_run_uses_the_keep_free_setting(self):
+        from ccslib import config, mirrorctl, proxyctl
+        cfg = config.migrate(__import__('copy').deepcopy(config.DEFAULTS)); self.assertEqual(cfg['pack']['keep_free_gib'], 20); cfg['pack']['keep_free_gib'] = 7
+        self.assertEqual(mirrorctl.pack_kwargs(cfg)['min_free_gib'], 7.0)
+        a = proxyctl.proxy_argv(cfg); self.assertIn('--keep-played', a); self.assertEqual(a[a.index('--keep-free-gib') + 1], '7')
+        cfg['proxy']['keep'] = False; self.assertNotIn('--keep-played', proxyctl.proxy_argv(cfg))
+        cfg['proxy']['keep'] = True; config.set_offline_only(cfg, True); self.assertNotIn('--keep-played', proxyctl.proxy_argv(cfg), 'offline fetches nothing, so there is nothing to keep')
+
+
+class KeepWhatIPlayTests(ProxyListTests):
+    """#75: a piece fetched from the internet while playing is written into the offline copy; misses that are not pieces are counted apart."""
+    def test_offline_misses_are_noted_with_their_list_once(self): pass                                    # the parent's tests are not repeated here
+    def test_online_fetches_are_noted_with_their_list(self): pass
+
+    def stats(self, port):
+        c = http.client.HTTPConnection('127.0.0.1', port, timeout=10); c.request('GET', '/__ccs/stats'); return json.loads(c.getresponse().read())
+
+    def test_a_fetched_piece_is_kept_served_locally_and_reaches_the_index(self):
+        mir = tempfile.mkdtemp(prefix='keep_', dir=TMP); old = type(self).mir; type(self).mir = mir; self.addCleanup(setattr, type(self), 'mir', old)
+        port, log, req = self.run_proxy('--keep-played'); self.assertEqual(self.get(port, chunk(0x501)), 200)
+        self.assertFalse(os.path.exists(os.path.join(mir, 'objects')), 'no offline copy in the folder yet: nothing is stored'); self.assertIn('off (there is no offline copy', open(log, encoding='utf-8').read())
+        sqlite3.connect(os.path.join(mir, 'index.sqlite')).close()                                         # now there is one
+        port, log, req = self.run_proxy('--keep-played'); FakeCdn.seen.clear()
+        self.assertEqual(self.get(port, chunk(0x503)), 200); f = os.path.join(mir, 'objects', '03', f'{0x503:016x}_{W(0x503):08x}_1')
+        t0 = time.time()
+        while not os.path.exists(os.path.join(mir, 'kept.jsonl')) and time.time() - t0 < 5: time.sleep(0.1)
+        self.assertEqual(os.path.getsize(f), W(0x503)); k = pack.read_kept(mir); self.assertEqual((len(k), k[0]['id'], k[0]['cod_key'], k[0]['raw']), (1, 0x503, 'k1', MiB))
+        self.assertEqual(self.get(port, chunk(0x503)), 200); self.assertEqual(len(FakeCdn.seen), 1, 'the second request did not go to the internet')
+        d = self.stats(port); self.assertEqual((d['stat']['kept'], d['stat']['mirror'], d['keep']), (1, 1, True))
+        self.assertFalse(os.path.exists(req) and chunk(0x503) in open(req, encoding='utf-8').read(), 'a kept piece is not on the missing list')
+        self.assertEqual(pack.stored_status(mir).get(0x503), 1, 'the estimate counts it as stored at once')
+        port2, log2, _ = self.run_proxy('--offline'); c = http.client.HTTPConnection('127.0.0.1', port2, timeout=10); c.request('GET', chunk(0x503)); r = c.getresponse(); r.read()
+        self.assertEqual((r.status, r.getheader('x-amz-meta-cod-key')), (200, 'k1'), 'a later session serves it with the key it came with')
+        env = dict(os.environ, CCS_GAME_ROOT=self.root, CCS_MIRROR_DIR=mir, CCS_WORK=tempfile.mkdtemp(dir=TMP), CCS_ACCEPT_NOTICE='1')
+        r = subprocess.run([sys.executable, os.path.join(TOOLS, 'ccsmirror.py'), 'run', '--played', '--min-free-gib', '0', '--upstream-ip', '127.0.0.1', '--upstream-port', str(self.up.server_address[1])], capture_output=True, text=True, env=env, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr); self.assertIn('kept while you played', r.stdout)
+        row = sqlite3.connect(os.path.join(mir, 'index.sqlite')).execute('select status, cod_key, wire from chunks where id=?', (0x503,)).fetchone(); self.assertEqual(row, (1, 'k1', W(0x503)))
+
+    def test_misses_that_are_not_pieces_are_counted_apart_and_a_head_miss_is_noted(self):
+        port, log, req = self.run_proxy('--offline')
+        c = http.client.HTTPConnection('127.0.0.1', port, timeout=10); c.request('HEAD', chunk(0x502)); r = c.getresponse(); r.read(); self.assertEqual(r.status, 404)
+        for pth in ('/pc/iw9_3/23/manifest/0123456789abcdef0123.json', '/pc/iw9_3/23/manifest/fedcba98765432100000.json', '/other'): self.assertEqual(self.get(port, pth), 404)
+        d = self.stats(port); self.assertEqual((d['stat']['miss'], d['stat']['miss_other']), (4, 3)); self.assertIn(['/pc/iw9_3/23/manifest/<hex>.json', 2], d['miss_shapes'])
+        self.assertEqual(open(req, encoding='utf-8').read().splitlines(), [f'{chunk(0x502)} {6 * MiB} wz26'], 'the game only asked about it (HEAD), and it is still a piece the copy lacks')
+
+
+class MissingCountTests(unittest.TestCase):
+    def test_a_piece_the_cdn_no_longer_has_is_not_counted_as_missing_for_ever(self):
+        d = tempfile.mkdtemp(dir=TMP); mir = os.path.join(d, 'mirror'); os.makedirs(mir); f = os.path.join(d, 'requested.txt')
+        open(f, 'w', encoding='utf-8').write(f'{chunk(0x501)} {MiB} wz26\n{chunk(0x503)} {MiB} wz26\n')
+        c = sqlite3.connect(os.path.join(mir, 'index.sqlite')); c.execute('create table chunks(id integer primary key, wire integer, raw integer, flag integer, prio integer, status integer default 0, etag text, cod_key text, ts real, pkgs integer)')
+        c.execute('insert into chunks(id, wire, status) values (?,?,3)', (0x503, W(0x503))); c.commit(); c.close()
+        pm = played.played_missing('ultra', mir, f); self.assertEqual((pm['n'], pm['gone'], pm['items'][0]['id']), (1, 1, 0x501))
+
+    def test_home_offers_the_missing_pieces_when_the_session_ends_and_explains_other_misses(self):
+        from ccslib import guide
+        f = dict(configured=True, folder_root='C:\\g', folder_exists=True, folder_score=3, game_setup='ok', port=80, free_gib=100, hosts_ok=False, proxy_alive=False)
+        st = guide.new_state(path='quick', ms=['session', 'game', 'after'], summary=dict(req=500, mirror=450, upok=0, err=0, miss=50, secs=900), confirmed_root='C:\\g')
+        v = home.build(st, f); self.assertEqual(v['mode'], 'finished'); self.assertNotIn('pack_played', [a for a, _ in v['secondary']])
+        v = home.build(st, dict(f, played=dict(n=66, gib=0.05))); self.assertEqual(v['secondary'][0], ('pack_played', 'Download them now')); self.assertIn('66 pieces', v['sub']); self.assertIn('51 MB', v['sub'])
+        t = ' '.join(guide.explain(dict(req=500, mirror=450, upok=50, err=0, miss=129, miss_other=129, kept=50, secs=900)))
+        self.assertIn('129 requests were for other files, not texture pieces', t); self.assertIn('50 pieces from the internet were stored in your offline copy', t)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -26,7 +26,7 @@ def pack_kwargs(cfg):
     """Texture-pack run settings from the effective config (scope/level/limits); budget 0 = automatic."""
     from . import config
     e = config.effective(cfg); pk = e['pack']; m = e['mirror']
-    return dict(workers=int(pk.get('workers') or 0) or (4 if float(pk.get('limit_mbps') or 0) > 0 else int(m['workers'])), tier=m['tier'], budget_gib=0, min_free_gib=m['min_free_gib'],
+    return dict(workers=int(pk.get('workers') or 0) or (4 if float(pk.get('limit_mbps') or 0) > 0 else int(m['workers'])), tier=m['tier'], budget_gib=0, min_free_gib=float(pk.get('keep_free_gib', 20)),
                 max_rps=m['max_rps'], retries=m['retries'], scope=pk['scope'], packages=pk.get('packages'), limit_mbps=pk.get('limit_mbps') or 0, daily_gib=pk.get('daily_gib') or 0,
                 link_wait_s=pk.get('link_wait_s') or 0, line_mbps=pk.get('line_mbps') or 0)
 

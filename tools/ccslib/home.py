@@ -198,9 +198,16 @@ def _download_view(plan, prog, alive, vprog, valive, scope, level, busy, now):
     if stored: v.update(mode='paused', headline='Your download is paused', sub=line + ' It picks up where it stopped.', primary=('pack_start', 'Resume', 'play'), secondary=[('pack_verify', 'Check the files')], footer=('off', 'Offline copy  -  paused'))
     else: v.update(mode='idle', headline='Download the texture pack', sub=line + ' Pause and resume whenever you like. The pack is for use with your own copy of the game.', primary=('pack_start', 'Start the download', 'download'), footer=('off', 'Offline copy'))
     if not fits:
-        v['alert'] = dict(id='nospace', title='Not enough free space', text=f"This choice needs about {plan.get('need_gib', 0):.0f} GB and {free or 0:.0f} GB is free. Pick a smaller download below, or another drive in Advanced mode.", actions=[])
+        v['alert'] = dict(id='nospace', title='Not enough free space', text=_nospace_text(plan, free), actions=[])
         v['primary'] = None if not stored else v['primary']; v['footer'] = ('warn', 'Needs your attention')
     return v
+
+
+def _nospace_text(plan, free):
+    need, keep, short = plan.get('need_gib', 0), plan.get('reserve_gib', 0), plan.get('short_gib', 0)
+    if keep >= 1: return i18n.t('This choice needs about {0} GB, and the download keeps {1} GB free so the game has room. Only {2} GB is free. Free up about {3} GB, pick a smaller download below, or lower Keep free in Advanced mode (Texture pack).',
+                                f'{need:.0f}', f'{keep:.0f}', f'{free or 0:.0f}', f'{max(1, short):.0f}')
+    return i18n.t('This choice needs about {0} GB and {1} GB is free. Pick a smaller download below, or another drive in Advanced mode.', f'{need:.0f}', f'{free or 0:.0f}')
 
 
 def _eta_text(secs):
@@ -291,6 +298,10 @@ def build(state, f, note='', busy=False, starting=False, found=None, pick=None, 
     if 'after' in ms and st['summary'] and not lost:
         v.update(mode='finished', steps=(STEP_LABELS, 4), ring=dict(kind='ok', frac=1.0, icon='check', big='', small=''), headline='All done. Nice session.', sub=summary_text(st['summary']),
                  primary=('done', 'Done', 'check'), secondary=[('open_report', 'See the full report'), ('abtest', 'Compare before / after')], footer=('ok', 'Session finished'), cards=[])
+        pm = f.get('played') or {}
+        if pm.get('n'):                                                       # asked for, not in the offline copy: fetch now, or later (the list is kept and grows with the next sessions)
+            v['sub'] = v['sub'] + ' ' + i18n.t('{0} pieces the game asked for are not in your offline copy ({1} MB). Download them now, or later: the list is kept.', f"{pm['n']:,}", f"{max(1, round(pm['gib'] * 1024)):,}")
+            v['secondary'] = [('pack_played', 'Download them now')] + v['secondary']
         return v
     a = alert if (has_note or lost) else pre
     if a:

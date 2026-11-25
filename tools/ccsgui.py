@@ -244,10 +244,11 @@ class App(tk.Tk):
             e = ttk.Entry(form, textvariable=v, width=w); e.grid(row=r, column=c * 2 + 1, sticky='w'); self.pv[key] = v; self.pe[key] = e
         field(0, 0, 'max_raw_mib', 'Tier cap (MiB raw; set by Texture pack)'); field(0, 1, 'budget_gib', 'Upstream budget (GiB)'); field(0, 2, 'retries', 'Retries'); field(0, 3, 'port', 'Port')
         field(1, 0, 'upstream_ip', 'Upstream IP (blank=auto)', 16)
-        self.pv_origin = tk.BooleanVar(value=self.cfg['proxy']['origin']); self.pv_off = tk.BooleanVar(value=self.cfg['proxy']['offline'])
+        self.pv_origin = tk.BooleanVar(value=self.cfg['proxy']['origin']); self.pv_off = tk.BooleanVar(value=self.cfg['proxy']['offline']); self.pv_keep = tk.BooleanVar(value=self.cfg['proxy'].get('keep', True))
         ttk.Checkbutton(form, text='Serve from mirror first', variable=self.pv_origin).grid(row=1, column=2, columnspan=2, sticky='w', padx=12)
         ttk.Checkbutton(form, text='Offline: nothing goes to the internet (misses -> 404)', variable=self.pv_off).grid(row=1, column=4, columnspan=3, sticky='w')
-        b = ttk.Frame(form); b.grid(row=2, column=0, columnspan=8, sticky='w', padx=10, pady=8)
+        ttk.Checkbutton(form, text='Keep what I play: store pieces fetched from the internet in my offline copy (when there is one)', variable=self.pv_keep).grid(row=2, column=2, columnspan=6, sticky='w', padx=12)
+        b = ttk.Frame(form); b.grid(row=3, column=0, columnspan=8, sticky='w', padx=10, pady=8)
         ttk.Button(b, text='Save + restart proxy', style='Accent.TButton', command=self.do_proxy_restart).pack(side='left', padx=4)
         ttk.Button(b, text='Start proxy only', command=lambda: self.bg('proxy start', self._proxy_only, True)).pack(side='left', padx=4)
         ttk.Button(b, text='Stop proxy only', command=lambda: self.bg('proxy stop', self._proxy_only, False)).pack(side='left', padx=4)
@@ -257,8 +258,11 @@ class App(tk.Tk):
         self.hist = tk.Canvas(left, width=360, height=250, bg=PANEL, highlightthickness=0); self.hist.pack(padx=8, pady=8)
         ttk.Label(left, text='The 8M / 16M bars are the largest pieces, the ones a 4K-class texture setting asks for.', style='Dim.TLabel', wraplength=340).pack(padx=8, pady=(0, 8))
         right = ttk.LabelFrame(mid, text='Recent requests'); right.pack(side='left', fill='both', expand=True)
-        cols = ('time', 'id', 'raw', 'tier', 'src', 'status', 'bytes'); self.recent = ttk.Treeview(right, columns=cols, show='headings', height=12)
-        for c, w in zip(cols, (70, 150, 80, 60, 90, 60, 80)): self.recent.heading(c, text=c); self.recent.column(c, width=w, anchor='w')
+        rb = ttk.Frame(right); rb.pack(fill='x', padx=6, pady=(6, 0)); self.recent_pause = tk.BooleanVar(value=False); self._recent_rows = []
+        ttk.Checkbutton(rb, text='Pause the list', variable=self.recent_pause).pack(side='left'); ttk.Button(rb, text='Save as CSV...', command=self.do_recent_csv).pack(side='left', padx=8)
+        ttk.Label(rb, text='The last 500 requests: size class, where each came from, and the chunk list it is in. Pieces have ids, not names.', style='Dim.TLabel').pack(side='left', padx=4)
+        cols = ('time', 'id', 'raw', 'tier', 'src', 'status', 'bytes', 'list'); self.recent = ttk.Treeview(right, columns=cols, show='headings', height=12)
+        for c, w in zip(cols, (70, 150, 80, 60, 90, 60, 80, 90)): self.recent.heading(c, text=c); self.recent.column(c, width=w, anchor='w')
         self.recent.pack(fill='both', expand=True, padx=6, pady=6)
 
     # ---------------------------------------------------------------- Texture pack tab
@@ -291,6 +295,7 @@ class App(tk.Tk):
             ttk.Label(d, text=hint, style='Dim.TLabel').grid(row=r, column=2, sticky='w', padx=6)
         num(0, 'line_mbps', 'My line speed (Mbps)', 'only for the ETA'); num(1, 'limit_mbps', 'Download cap (Mbps)', '0 = unlimited; shared by all connections'); num(2, 'daily_gib', 'Daily limit (GiB)', '0 = none; pauses until local midnight')
         num(3, 'workers', 'Connections', '0 = automatic (4); 8 helps on long-distance links'); num(4, 'link_wait_s', 'Give up after no link (s)', '0 = wait forever, chunks stay pending')
+        num(5, 'keep_free_gib', 'Keep free on the drive (GiB)', 'a download stops before less than this is free')
         bt = ttk.Frame(f); bt.pack(fill='x', pady=(4, 0)); bt2 = ttk.Frame(f); bt2.pack(fill='x', pady=(2, 4))
         ttk.Button(bt, text='Download / resume', style='Accent.TButton', command=self.do_pack_start).pack(side='left', padx=(0, 4))
         ttk.Button(bt, text='Pause (finish in-flight)', command=self.do_mirror_pause).pack(side='left', padx=4)
@@ -317,7 +322,7 @@ class App(tk.Tk):
         pk = self.cfg['pack']; pk['scope'] = self.pk_scope.get(); pk['packages'] = [k for k, v in self.pk_pkgs.items() if v.get()]
         if pk['scope'] == 'custom' and not pk['packages'] and not soft: raise ValueError('tick at least one package')
         for key, v in self.pk_num.items():
-            try: pk[key] = float(v.get() or 0) if key in ('line_mbps', 'limit_mbps', 'daily_gib') else int(float(v.get() or 0))
+            try: pk[key] = float(v.get() or 0) if key in ('line_mbps', 'limit_mbps', 'daily_gib', 'keep_free_gib') else int(float(v.get() or 0))
             except ValueError:
                 if not soft: raise ValueError(f'{key}: not a number')
         config.save(self.cfg)
@@ -346,9 +351,9 @@ class App(tk.Tk):
         self._pack_where()
         try: self._pack_collect(soft=True)
         except Exception: pass
-        e = config.effective(self.cfg)['pack']; scope, pkgs, level, line = e['scope'], e.get('packages'), e['level'], float(e.get('line_mbps') or 0)
+        e = config.effective(self.cfg)['pack']; scope, pkgs, level, line = e['scope'], e.get('packages'), e['level'], float(e.get('line_mbps') or 0); keep = float(e.get('keep_free_gib') or 0)
         def go():
-            try: pl = pack.plan(scope, pkgs, level, line_mbps=line)
+            try: pl = pack.plan(scope, pkgs, level, line_mbps=line, reserve_gib=keep)
             except Exception as ex: pl = dict(error=str(ex))
             try: pm = played.played_missing(level); pl['played'] = dict(n=pm['n'], gib=pm['gib'], by_list=pm['by_list'])
             except Exception: pass
@@ -383,15 +388,44 @@ class App(tk.Tk):
         if procs.status('mirror')['alive']: self.say('a mirror run is already active', 'WARN'); return
         if not self._bulk_ack(): return
         e = config.effective(self.cfg)['pack']
-        try: pl = pack.plan(e['scope'], e.get('packages'), e['level'], line_mbps=float(e.get('line_mbps') or 0))
+        try: pl = pack.plan(e['scope'], e.get('packages'), e['level'], line_mbps=float(e.get('line_mbps') or 0), reserve_gib=float(e.get('keep_free_gib') or 0))
         except Exception as ex: messagebox.showerror('Texture pack', f'cannot compute the estimate: {ex}', parent=self); return
         t = pl['total']
         if not t['pending']: self.say('Texture pack: nothing to download for this scope and level', 'OK'); self._show_pack(pl); return
-        if not pl['fits']: messagebox.showerror('Texture pack', f"Not enough space on the mirror drive: need about {pl['need_gib']:.0f} GiB, {pl['free_gib']:.0f} GiB free.\nChoose a lower detail level, a smaller scope or another mirror folder (Game tab).", parent=self); return
+        if not pl['fits']: messagebox.showerror('Texture pack', f"Not enough space on the mirror drive: the download needs about {pl['need_gib']:.0f} GiB and keeps {pl['reserve_gib']:.0f} GiB free, and {pl['free_gib']:.0f} GiB is free.\n\n"
+                                                 f"Free up about {pl['short_gib']:.0f} GiB, lower 'Keep free on the drive' on this tab, or choose a lower detail level, a smaller scope or another mirror folder (Game tab).", parent=self); return
         lim = float(e.get('limit_mbps') or 0); dq = float(e.get('daily_gib') or 0)
         if not messagebox.askyesno('Download texture pack', f"Download {t['pending']:,} chunks ({t['pending_gib']:.1f} GiB) from the public texture CDN into\n{paths.MIRROR}\n\n"
                                    f"scope: {pl['scope']}   level: {pl['level']}\nfree space: {pl['free_gib']:.0f} GiB" + (f"\ncap: {lim:g} Mbps" if lim else '') + (f"\ndaily limit: {dq:g} GiB" if dq else '') + '\n\nThese files belong to the game publisher: keep them on this PC, for use with your own copy of the game, and do not share them.\nIt can be paused and resumed at any time. Start?', parent=self): return
         st = mirrorctl.start(**mirrorctl.pack_kwargs(self.cfg)); self.say(f"texture pack run started (pid {st['pid']}): scope={pl['scope']} level={pl['level']} {t['pending']:,} chunks / {t['pending_gib']:.1f} GiB", 'OK')
+
+    def do_recent_csv(self, path=None):
+        """The recent requests (up to 500, as the helper reported them last) as a CSV file: time, id, raw size, size class, source, status, bytes, list."""
+        rows = list(self._recent_rows)
+        if not rows: self.say('recent requests: nothing to save yet (start a session and play)', 'WARN'); return None
+        if path is None:
+            from tkinter import filedialog
+            path = filedialog.asksaveasfilename(parent=self, title='Save recent requests', defaultextension='.csv', initialfile=time.strftime('requests-%Y%m%d-%H%M%S.csv'), filetypes=[('CSV', '*.csv')])
+        if not path: return None
+        import csv
+        with open(path, 'w', newline='', encoding='utf-8') as f:
+            w = csv.writer(f); w.writerow(['time', 'id', 'raw_bytes', 'tier', 'source', 'status', 'bytes', 'list'])
+            for r in rows: w.writerow([time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(r['t'])), r.get('id') or '', r.get('raw') or '', r.get('tier'), r.get('src'), r.get('status'), r.get('bytes'), r.get('list') or ''])
+        self.say(f'recent requests: {len(rows)} rows saved to {path}', 'OK'); return path
+
+    def _played_now(self):
+        """What the game asked for that the offline copy lacks, for the Home screen: dict(n, gib) or None when there is no offline copy. Worked out again only when requested.txt
+        changed, the detail level changed or a download ended."""
+        if not os.path.isfile(os.path.join(paths.MIRROR, 'index.sqlite')): return None
+        f = played.requested_file(); level = config.effective(self.cfg)['pack']['level']
+        try: st = os.stat(f); key = (st.st_mtime, st.st_size, level, getattr(self, '_played_gen', 0), paths.MIRROR)
+        except OSError: return None
+        c = getattr(self, '_played_cache', None)
+        if not c or c[0] != key:
+            try: pm = played.played_missing(level); c = (key, dict(n=pm['n'], gib=pm['gib']))
+            except Exception: c = (key, None)
+            self._played_cache = c
+        return c[1]
 
     def do_pack_played(self):
         """Download what I played (#75): only the pieces the game asked for that the copy lacked (any list, Warzone included), at the chosen detail level."""
@@ -519,6 +553,8 @@ class App(tk.Tk):
             via = f"  via {p['edge']}" if p.get('edge') else ''
             warn = f"  [{p['edge_note']}]" if p.get('edge_note') else ''
             return bar, f"{head}: {done:,}/{p['queued']:,} ({p['ok']:,} ok, {p['fail']} failed, {p['retry']} retries)  {p['bytes'] / 2**30:.2f}/{p['budget_gib']:.1f} GiB  {sp:.1f} MiB/s ({sp * 8.388608:.0f} Mbps){lim}{via}{warn}  ETA {eta}  free {p['free_gib']:.0f} GiB"
+        if p and p.get('state') == 'disk':
+            return (1000 * (p['ok'] + p['fail']) / max(1, p['queued']) if p['queued'] else 0), f"STOPPED, the drive is almost full: {p.get('free_gib', 0):.0f} GiB free and the download keeps {p.get('min_free_gib', 0):g} GiB free. Free up space or lower 'Keep free on the drive' (Texture pack tab). {p['ok']:,} pieces were stored in this run."
         if p:
             return (1000 * (p['ok'] + p['fail']) / max(1, p['queued']) if p['queued'] else 0), f"last run {p['state']}: {p['ok']:,} ok, {p['fail']} failed, {p['bytes'] / 2**30:.2f} GiB downloaded"
         return 0, 'no run in progress'
@@ -528,7 +564,7 @@ class App(tk.Tk):
         bar, text = self._prog_view(p, alive, vp, valive)
         self.m_bar['value'] = bar; self.m_lbl.configure(text=text); self.p_bar['value'] = bar; self.p_lbl.configure(text=text)
         prev = getattr(self, '_m_was_alive', False)
-        if prev and not alive: self.refresh_mirror(); self.pack_refresh()
+        if prev and not alive: self.refresh_mirror(); self.pack_refresh(); self._played_gen = getattr(self, '_played_gen', 0) + 1
         self._m_was_alive = bool(alive)
         pv = getattr(self, '_v_was_alive', False)
         if pv and not valive: self.refresh_mirror(); self.pack_refresh()
@@ -764,8 +800,8 @@ class App(tk.Tk):
             ex = os.path.isdir(root); gs, gfs = gamefix.state_fs(root) if ex else ('na', ''); fc = (now, root, ex, guide.score_folder(root) if ex else 0, gs, gfs); self._gfc = fc
         tot = (getattr(self, '_pack_plan', None) or {}).get('total') or {}; rs = s.get('resolve') or {}
         if ps and ps.get('stat'):                                                    # what the proxy has done so far; kept after it stops, for the "what happened" text
-            c = ps['stat']; g = lambda k: c.get(k) or 0; self._guide_peak = dict(req=g('req'), mirror=g('mirror') + g('side'), upok=g('ok') - g('mirror') - g('side'), err=g('err'), skip=g('skip'), miss=g('miss'), secs=(ps.get('now') or 0) - (ps.get('started') or 0))
-        return dict(configured=paths.CONFIGURED, offline_only=config.offline_only(self.cfg), folder_root=root, folder_exists=fc[2], folder_score=fc[3], game_setup=fc[4], game_fs=fc[5], blocked_by=blocked, port=port, free_gib=s.get('free'),
+            c = ps['stat']; g = lambda k: c.get(k) or 0; self._guide_peak = dict(req=g('req'), mirror=g('mirror') + g('side'), upok=g('ok') - g('mirror') - g('side'), err=g('err'), skip=g('skip'), miss=g('miss'), miss_other=g('miss_other'), kept=g('kept'), secs=(ps.get('now') or 0) - (ps.get('started') or 0))
+        return dict(configured=paths.CONFIGURED, played=None if pp.get('alive') else self._played_now(), offline_only=config.offline_only(self.cfg), folder_root=root, folder_exists=fc[2], folder_score=fc[3], game_setup=fc[4], game_fs=fc[5], blocked_by=blocked, port=port, free_gib=s.get('free'),
                     game_running=bool(s.get('game')), game_names=list(s.get('game') or []), proxy_ready=bool(ps), proxy_alive=bool(pp.get('alive')), hosts_ok=s.get('hosts') in ('OK', 'FOREIGN', 'MIXED'),
                     resolve_ok=bool(rs.get('ok')), hosts_state=s.get('hosts', '?'), requests=int(ps['stat']['req']) if ps and ps.get('stat') else 0,
                     pack_total=tot.get('chunks'), pack_stored=tot.get('stored'), mirror_alive=bool((s.get('mproc') or {}).get('alive')),
@@ -1227,9 +1263,11 @@ class App(tk.Tk):
         c['err'].configure(text=str(st['err'])); c['retry'].configure(text=str(st['retry'])); c['cliabort'].configure(text=str(st['cliabort'])); c['skip'].configure(text=str(st['skip'])); c['miss'].configure(text=str(st['miss']))
         c['mgib'].configure(text=f"{st.get('mbytes', 0) / 2**30:.2f}"); c['ugib'].configure(text=f"{st['bytes'] / 2**30:.2f}"); c['rps'].configure(text=f'{rps:.1f}')
         c['sess'].configure(text=fmt_dur(ps['now'] - ps['started'])); self._draw_hist(ps['hist'])
-        for iid in self.recent.get_children(): self.recent.delete(iid)
-        for r in reversed(ps['recent'][-30:]):
-            raw = r['raw']; self.recent.insert('', 'end', values=(time.strftime('%H:%M:%S', time.localtime(r['t'])), r['id'] or '-', f'{raw / 2**20:.2f}M' if raw else '?', r['tier'], r['src'], r['status'], r['bytes']))
+        if not self.recent_pause.get():
+            self._recent_rows = list(ps['recent'])
+            for iid in self.recent.get_children(): self.recent.delete(iid)
+            for r in reversed(ps['recent'][-100:]):
+                raw = r['raw']; self.recent.insert('', 'end', values=(time.strftime('%H:%M:%S', time.localtime(r['t'])), r['id'] or '-', f'{raw / 2**20:.2f}M' if raw else '?', r['tier'], r['src'], r['status'], r['bytes'], r.get('list') or '-'))
 
     def _draw_spark(self):
         cv = self.spark; cv.delete('all'); w = max(cv.winfo_width(), 300); h = int(cv['height']); pts = list(self.series)[-180:]
@@ -1596,7 +1634,7 @@ class App(tk.Tk):
             if k == 'upstream_ip': p[k] = raw
             elif k in ('max_raw_mib', 'budget_gib'): p[k] = float(raw) if raw else p[k]
             else: p[k] = int(raw)
-        p['origin'] = self.pv_origin.get(); p['offline'] = self.pv_off.get(); config.save(self.cfg)
+        p['origin'] = self.pv_origin.get(); p['offline'] = self.pv_off.get(); p['keep'] = self.pv_keep.get(); config.save(self.cfg)
 
     def do_proxy_restart(self):
         try: self._read_proxy_form()

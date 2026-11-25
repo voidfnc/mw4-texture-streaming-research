@@ -119,7 +119,7 @@ def check_pack(cfg):
     try:
         e = config.effective(cfg); pk = e['pack']; mib = pack.level_mib(pk['level']); lab = pack.LEVEL_LABELS.get(pk['level'], f"{mib:g} MiB")
         if not os.path.exists(os.path.join(paths.MIRROR, 'index.sqlite')): return [_c('Texture pack', 'info', f"{pk['scope']} / {lab}: no mirror index yet (Texture pack tab -> Download)")]
-        pl = pack.plan(pk['scope'], pk.get('packages'), pk['level'], line_mbps=0); t = pl['total']
+        pl = pack.plan(pk['scope'], pk.get('packages'), pk['level'], line_mbps=0, reserve_gib=float(pk.get('keep_free_gib') or 0)); t = pl['total']
         base = f"scope {pk['scope']} / {lab}: {t['stored']:,} of {t['chunks']:,} chunks stored"
         if pl['missing']: out.append(_c('Texture pack lists', 'warn', 'chunk lists missing on this install: ' + ', '.join(pl['missing'])))
         if pack.lists_changed(): out.append(_c('Chunk lists', 'info', "the game's chunk lists changed since the mirror was last loaded (a game update); Texture pack -> Download adds the new chunks and keeps the ones you have"))
@@ -127,7 +127,7 @@ def check_pack(cfg):
         else:
             off = bool(e['proxy'].get('offline')); lvl = 'warn' if off else 'info'
             out.append(_c('Texture pack', lvl, base + f"; {t['pending']:,} chunks ({t['pending_gib']:.1f} GiB) not mirrored yet" + (' - OFFLINE profile: these will 404' if off else ' - they come from the internet until the mirror is complete')))
-            if not pl['fits']: out.append(_c('Texture pack disk', 'fail', f"needs ~{pl['need_gib']:.0f} GiB, only {pl['free_gib']:.0f} GiB free on the mirror drive"))
+            if not pl['fits']: out.append(_c('Texture pack disk', 'fail', f"the download needs ~{pl['need_gib']:.0f} GiB and keeps {pl['reserve_gib']:.0f} GiB free, but only {pl['free_gib']:.0f} GiB is free on the mirror drive: it would stop early. Free up about {pl['short_gib']:.0f} GiB or lower 'Keep free on the drive' (Texture pack tab)"))
         if pk['level'] == 'ultra' and pl['levels']['ultra']['gib'] > 64: out.append(_c('Texture pack vs engine cache', 'info', f"the full set is {pl['levels']['ultra']['gib']:.0f} GiB; the engine cache is capped by the in-game 'Allocated texture cache size' setting, so it may not keep it all - Standard HD fits more easily"))
         s = proxyctl.fetch_stats(e['proxy']['port'])
         if s:

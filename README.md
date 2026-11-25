@@ -1,6 +1,6 @@
 # MW4 Texture Streaming Toolkit
 
-Beta 0.4.14 · Windows · 12 languages · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
+Beta 0.4.15 · Windows · 12 languages · installer or portable zip (no Python needed) · from source: Python 3.10+, standard library only
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/E4E029CR36) [![Discord](https://img.shields.io/badge/Discord-Join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/rcNfF5AvMn)
 
@@ -77,7 +77,7 @@ make one small change in it (the game setup).
 
 ![The Settings panel](docs/images/settings.png)
 
-**The offline copy** has its own page: how much of the texture pack is on the PC, pause and resume, and two choices (campaign only or everything but Warzone, and how detailed). *Download what I played* stores just the pieces your game asked for that the copy did not have, Warzone included.
+**The offline copy** has its own page: how much of the texture pack is on the PC, pause and resume, and two choices (campaign only or everything but Warzone, and how detailed). *Download what I played* stores just the pieces your game asked for that the copy did not have, Warzone included, and with an offline copy on the PC pieces fetched while you play are kept in it by themselves.
 
 ![The offline copy page while a download runs](docs/images/offline-copy.png)
 

@@ -18,7 +18,7 @@ IPv6 loopback lets the unmodified game reach this proxy; the proxy relays to the
 * stats line: req ok skip miss err retry cliabort bytes
 * logs every request to tools/work/ccsproxy.log; nothing is written to the game folders
 """
-import argparse, array, bisect, collections, glob, http.client, json, os, re, socket, sys, threading, time
+import argparse, array, bisect, collections, glob, hashlib, http.client, json, os, re, shutil, socket, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cdnxpak
@@ -33,7 +33,10 @@ SIDE = re.compile(r'^/pc/iw9_3/23/tr/([0-9a-f]{32})/([0-9a-f]{16})_([0-9a-f]{8})
 CONNECT_SECS = 8          # an edge that does not accept a connection in this time is treated as dead (the body read keeps its own, longer limit)
 EDGE_LOCK = threading.Lock(); EDGE_TRIED = 0.0
 NOSTAT = collections.defaultdict(int)     # where a probe's counts go
-lock = threading.Lock(); stat = dict(req=0, ok=0, skip=0, miss=0, err=0, retry=0, cliabort=0, mirror=0, side=0, other=0, bytes=0, mbytes=0)   # side = small files served from side/; other = replies from the internet that are not chunks
+lock = threading.Lock(); stat = dict(req=0, ok=0, skip=0, miss=0, err=0, retry=0, cliabort=0, mirror=0, side=0, other=0, bytes=0, mbytes=0, miss_other=0, kept=0)   # side = small files served from side/; other = replies from the internet that are not chunks;
+# miss_other = misses that were not texture pieces (nothing to download for them); kept = pieces from the internet written into the offline copy while playing
+SHAPES = collections.Counter()     # the non-piece paths that missed, with their hex runs masked: what else the game asks this host for (stats, support bundle)
+KEEP = dict(on=False, free_gib=20.0, checked=0.0, room=True, lock=threading.Lock())      # --keep-played: see keep_chunk
 RAW = {}
 UNLISTED = set()      # chunk paths the game asked for that are in no chunk list on this PC (new content): served from the CDN and noted for `ccsmirror fetch-requested`
 LISTS = []            # [(list name, sorted array of its ids)]: which list a piece is in (list_of)
@@ -42,7 +45,7 @@ def REQ_FILE(): return os.path.join(os.path.dirname(LOG), 'requested.txt')
 SKIPS = collections.Counter()      # tier-withheld ids -> how often the engine asked again (does a 404 cause a retry storm?)
 # observability for the GUI (ccsgui.py): per-tier request histogram + last requests, exposed via GET /__ccs/stats and --stats-json
 TIERS = [('<=64K', 2**16), ('<=256K', 2**18), ('<=1M', 2**20), ('<=4M', 2**22), ('<=8M', 2**23), ('<=16M', 2**24), ('>16M', None)]
-HIST = {t[0]: 0 for t in TIERS}; RECENT = collections.deque(maxlen=50); SVC = collections.deque(maxlen=2000); T0 = time.time(); ARGS = {}
+HIST = {t[0]: 0 for t in TIERS}; RECENT = collections.deque(maxlen=500); SVC = collections.deque(maxlen=2000); T0 = time.time(); ARGS = {}
 def tier_of(raw):
     if raw is None: return 'unknown'
     for n, lim in TIERS:
@@ -63,7 +66,7 @@ def skip_summary():
 
 def snapshot():
     with lock:
-        return dict(pid=os.getpid(), skips=skip_summary(), started=T0, now=time.time(), stat=dict(stat), hist=dict(HIST), recent=list(RECENT), svc_ms=svc_summary(), args=ARGS, mirror_ids=len(MKEY), index_ids=len(RAW))
+        return dict(pid=os.getpid(), skips=skip_summary(), started=T0, now=time.time(), stat=dict(stat), hist=dict(HIST), recent=list(RECENT), svc_ms=svc_summary(), args=ARGS, mirror_ids=len(MKEY), index_ids=len(RAW), miss_shapes=SHAPES.most_common(20), keep=KEEP['on'])
 def write_stats(path):
     tmp = path + '.tmp'
     with open(tmp, 'w', encoding='utf-8') as f: json.dump(snapshot(), f)
@@ -81,12 +84,53 @@ def load_mirror(origin):
             MKEY[sid & (2**64 - 1)] = ((et or '').split(':')[0] or None, ck)
     except sqlite3.Error as e: log(f"mirror: index unreadable ({e}) - chunks that are not on disk come from the CDN")
     finally: c.close()
+    try:                                                             # pieces kept while playing that the index does not know yet: their ETag and key
+        with open(os.path.join(origin, 'kept.jsonl'), encoding='utf-8', errors='replace') as fh:
+            for ln in fh:
+                try: k = json.loads(ln); MKEY.setdefault(int(k['id'], 16), (k.get('etag'), k.get('cod_key')))
+                except (ValueError, KeyError, TypeError): pass
+    except OSError: pass
     log(f"mirror: {len(MKEY)} stored chunks indexed from {origin}")
 
 def log(m):
     l = f"{time.strftime('%H:%M:%S')} {m}"
     with lock:
         print(l, flush=True); open(LOG, 'a', encoding='utf-8').write(l + '\n')
+
+def note_shape(path):
+    """Count a missed path that is not a texture piece by its shape (/pc/x/<hex>/y.json), so a miss count can be explained without the whole log."""
+    s = re.sub(r'[0-9a-fA-F]{8,}', '<hex>', path)[:120]
+    with lock:
+        if s in SHAPES or len(SHAPES) < 60: SHAPES[s] += 1
+
+
+def keep_chunk(origin, m, body, r, cid, raw):
+    """Keep what I play: a whole piece that just came from the internet is written into the offline copy (objects/xx/<name>, tmp + replace), so the next request - this session
+    or any later one - is served from this PC. Only a body of the size in its name whose md5 matches a plain ETag; not when the drive has less free than the copy may leave.
+    Its ETag and key go to <mirror>/kept.jsonl (the index is the downloader's to write; it reads that file at its next run). -> True when kept."""
+    et = (r.getheader('ETag') or '').strip('"').split(':')[0] or None; ck = r.getheader('x-amz-meta-cod-key'); wire = int(m.group(3), 16)
+    if len(body) != wire or (et and '-' not in et and hashlib.md5(body).hexdigest() != et): return False
+    now = time.time()
+    if now - KEEP['checked'] > 10:
+        KEEP['checked'] = now
+        try: room = shutil.disk_usage(origin).free / 2**30 > KEEP['free_gib']
+        except OSError: room = False
+        if room != KEEP['room']: KEEP['room'] = room; log('KEEP resumed: there is room on the drive again' if room else f"KEEP paused: less than {KEEP['free_gib']:g} GiB free on the drive of the offline copy - pieces still reach the game, they are just not stored")
+    if not KEEP['room']: return False
+    p = os.path.join(origin, 'objects', m.group(1), f'{cid:016x}_{wire:08x}_{m.group(4)}'); tmp = f'{p}.{threading.get_ident()}.part'
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(tmp, 'wb') as fh: fh.write(body)
+        os.replace(tmp, p)
+        with KEEP['lock']:
+            with open(os.path.join(origin, 'kept.jsonl'), 'a', encoding='utf-8') as fh: fh.write(json.dumps(dict(id=f'{cid:016x}', wire=wire, flag=int(m.group(4)), raw=raw or 0, etag=et, cod_key=ck)) + chr(10))
+    except OSError:
+        try: os.remove(tmp)
+        except OSError: pass
+        return False
+    MKEY[cid] = (et, ck)
+    return True
+
 
 def note_unlisted(path):
     """Remember one live-served chunk that no chunk list knows (one line per path, in unlisted.txt beside the log)."""
@@ -240,9 +284,10 @@ class H(BaseHTTPRequestHandler):
         pid_ = int(m.group(2), 16) if m else (int(sm.group(2), 16) if sm else None)       # the piece's id (chunk or side file): which list names it
         lst = list_of(pid_) if pid_ is not None else None; lnote = f" list={lst or 'none'}" if pid_ is not None else ''
         if getattr(a, 'offline', False):      # offline: nothing leaves this PC - a chunk missing from the mirror, a side file not kept yet or any other path is a 404, never a silent fetch
-            with lock: st['miss'] += 1
+            with lock: st['miss'] += 1; st['miss_other'] += 1 if pid_ is None else 0
             rec(path, cid if m else None, raw if m else None, 'offline-miss', 404, 0, ms=self.ms(), lst=lst)
-            if pid_ is not None and self.command == 'GET' and not probe: note_requested(path, RAW.get(pid_), lst)
+            if pid_ is not None and not probe: note_requested(path, RAW.get(pid_), lst)          # GET or HEAD: a piece the game asked about and the copy lacks
+            elif not probe: note_shape(path)
             lg(f"MISS-OFFLINE {self.command} {path}" + (f" raw={raw}{lnote}" if m else (lnote + ' (side file)' if sm else ' (not a chunk)'))); return self.reply(404)
         if m: note = f"raw={raw}{lnote}"
         elif sm: note = lnote.strip()
@@ -291,10 +336,15 @@ class H(BaseHTTPRequestHandler):
         with lock:
             st['bytes'] += len(body) if self.command == 'GET' else 0
             if r.status in (200, 206): st['ok'] += 1; st['other'] += 0 if m else 1
-            else: st['miss'] += 1
+            else: st['miss'] += 1; st['miss_other'] += 1 if pid_ is None else 0
+        if pid_ is None and r.status not in (200, 206) and not probe: note_shape(path)
         if m: rec(path, int(m.group(2), 16), RAW.get(int(m.group(2), 16)), 'upstream', r.status, len(body), ms=self.ms(), lst=lst)
         if m and r.status == 200 and self.command == 'GET' and not probe and int(m.group(2), 16) not in RAW: note_unlisted(path)
-        if pid_ is not None and r.status in (200, 206) and self.command == 'GET' and not probe: note_requested(path, RAW.get(pid_), lst)      # not from the copy: Download what I played can store it
+        kept = False
+        if m and KEEP['on'] and want is not None and r.status == 200 and not probe and keep_chunk(a.origin, m, body, r, pid_, RAW.get(pid_)):
+            kept = True; note += ' kept in the copy'
+            with lock: st['kept'] += 1
+        if pid_ is not None and r.status in (200, 206) and self.command == 'GET' and not probe and not kept: note_requested(path, RAW.get(pid_), lst)      # not from the copy: Download what I played can store it
         if sm and a.origin and r.status == 200 and self.command == 'GET' and not probe and side_store(a.origin, sm, body, extra): note = (note + ' kept in side/').strip()
         lg(f"{self.command} {path} -> {r.status} {len(body)}B {note} range={self.headers.get('Range','-')} total={st['bytes']/2**30:.3f}GiB")
 
@@ -312,6 +362,8 @@ if __name__ == '__main__':
     ap.add_argument('--origin', help='mirror dir (e.g. mirror/): serve stored chunks from disk first, upstream only for misses')
     ap.add_argument('--upstream-ip')
     ap.add_argument('--offline', action='store_true', help='nothing goes to the internet: chunks missing from --origin, side files not kept yet and any other path get 404')
+    ap.add_argument('--keep-played', action='store_true', help='write pieces that come from the internet into --origin while playing (only when --origin already holds an offline copy, and never with --offline)')
+    ap.add_argument('--keep-free-gib', type=float, default=20, help='--keep-played stops storing while the drive of --origin has less free than this')
     ap.add_argument('--port', type=int, default=80, help='listen port on ::1 and 127.0.0.1 (80 for the game; other values for tests)')
     ap.add_argument('--log', help='log file (default tools/work/ccsproxy.log)')
     ap.add_argument('--stats-json', help='write a stats snapshot here every 2 s (atomic); also served at GET /__ccs/stats')
@@ -322,6 +374,8 @@ if __name__ == '__main__':
     a.pinned = bool(a.upstream_ip)
     if not a.upstream_ip: a.upstream_ip = upstream.resolve(check=not a.offline, port=a.upstream_port)       # an edge that answers: a remembered one that no longer does is skipped (the hosts override points the name at us)
     if a.origin: a.origin = os.path.abspath(a.origin); load_mirror(a.origin)
+    KEEP['free_gib'] = a.keep_free_gib; KEEP['on'] = bool(a.keep_played and a.origin and not a.offline and os.path.isfile(os.path.join(a.origin, 'index.sqlite')))
+    if a.keep_played: log('keep what I play: ' + ('on - pieces fetched from the internet are stored in the offline copy' if KEEP['on'] else 'off (there is no offline copy in the mirror folder yet)'))
     load_index(); load_requested(); log(f"upstream {a.upstream_ip}  tier<={a.max_raw_mib}MiB  budget={a.budget_gib}GiB")
     for cls, addr in ((S6, ('::1', a.port)), (S4, ('127.0.0.1', a.port))):
         try: srv = cls(addr, H)
