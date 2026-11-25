@@ -15,6 +15,7 @@ def proxy_argv(cfg):
          '--retries', str(p['retries']), '--port', str(p['port']), '--log', PROXY_LOG, '--stats-json', PROXY_STATS]
     if p['origin']: a += ['--origin', paths.MIRROR]
     if p['offline']: a += ['--offline']
+    elif p['origin'] and p.get('keep', True): a += ['--keep-played', '--keep-free-gib', str(config.effective(cfg)['pack'].get('keep_free_gib', 20))]
     if p['upstream_ip']: a += ['--upstream-ip', p['upstream_ip']]
     return a
 

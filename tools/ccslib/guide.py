@@ -412,6 +412,9 @@ def explain(summary):
            (f'{mir:,} came from your offline copy and {up:,} from the internet.' if mir else f'{up:,} were fetched from the internet.')]
     bits = ['No failed requests.' if not err else f'{err:,} requests failed (the game asks again, a few are normal).']
     if skip: bits.append(f'{skip:,} pieces were left out on purpose by your detail level.')
+    mo, kept = int(s.get('miss_other', 0)), int(s.get('kept', 0))
+    if mo: bits.append(f'{mo:,} requests were for other files, not texture pieces: there is nothing to download for them.')
+    if kept: bits.append(f'{kept:,} pieces from the internet were stored in your offline copy.')
     out.append(' '.join(bits))
     if req < 300 and 0 < s.get('secs', 0) < 1800: out.append(SHORT_SESSION)
     out.append('That is what the tool can see: which pieces the game asked for and that they were delivered. How the picture looks is decided by the game, so to judge it on your PC use the before/after test.')

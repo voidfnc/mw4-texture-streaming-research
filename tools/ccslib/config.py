@@ -9,13 +9,13 @@ from . import pack, paths
 DEFAULTS = dict(
     profile='Default',
     paths=dict(game_root='', cache_dir='', mirror_dir='', player_cfg='', game_exes='', kill_exes=''),   # '' = not set / derived (see paths.py)
-    proxy=dict(max_raw_mib=4096, budget_gib=120, retries=3, origin=True, offline=False, upstream_ip='', port=80),
+    proxy=dict(max_raw_mib=4096, budget_gib=120, retries=3, origin=True, offline=False, upstream_ip='', port=80, keep=True),   # keep = pieces fetched while playing are written into the offline copy (when there is one)
     guard=dict(enabled=True, limit_gib=100, action='kill', interval=5),
     hosts=dict(on_exit='ask'),            # ask | keep | remove  (what to do with the hosts override when the session is stopped / GUI closed)
     watchers=dict(netwatch=False),
     mirror=dict(workers=4, tier=4096, budget_gib=0, min_free_gib=40, max_rps=50, retries=4),
     # texture pack (Texture pack tab): scope = which chunk lists, level = detail cut-off; with link_caps the level also sets mirror.tier and proxy.max_raw_mib (see effective())
-    pack=dict(scope='sp', packages=['sp'], level='ultra', link_caps=True, limit_mbps=0, daily_gib=0, workers=0, line_mbps=50, link_wait_s=0),
+    pack=dict(scope='sp', packages=['sp'], level='ultra', link_caps=True, limit_mbps=0, daily_gib=0, workers=0, line_mbps=50, link_wait_s=0, keep_free_gib=20),   # keep_free_gib: a download stops (and says so) before the drive has less than this free
     profiles={},                          # user-defined profiles (name -> overrides), saved from the Dashboard
     log_max_mb=25,                        # rotate a log at session start when it is larger (0 = never); 3 old copies are kept
     keep_running_on_close=False,

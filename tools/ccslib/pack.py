@@ -142,8 +142,25 @@ def stored_status(mirror_dir=None):
     db = os.path.join(mirror_dir or paths.MIRROR, 'index.sqlite')
     if not os.path.exists(db): return {}
     c = mirrordb.connect_read(db, timeout=10)
-    try: return {(i & (2**64 - 1)): s for i, s in c.execute('select id, status from chunks')}
+    try: out = {(i & (2**64 - 1)): s for i, s in c.execute('select id, status from chunks')}
+    except sqlite3.OperationalError: out = {}                        # an index that was only just created has no table yet
     finally: c.close()
+    for r in read_kept(mirror_dir): out[r['id']] = 1                 # pieces the proxy stored while you played (the index learns of them at the next download run)
+    return out
+
+
+def kept_file(mirror_dir=None): return os.path.join(mirror_dir or paths.MIRROR, 'kept.jsonl')
+
+
+def read_kept(mirror_dir=None):
+    """Pieces the proxy wrote into the copy while the game fetched them: [dict(id, wire, flag, raw, etag, cod_key)] from <mirror>/kept.jsonl (bad lines are skipped)."""
+    out = []
+    try: lines = open(kept_file(mirror_dir), encoding='utf-8', errors='replace').read().splitlines()
+    except OSError: return out
+    for ln in lines:
+        try: r = json.loads(ln); out.append(dict(id=int(r['id'], 16), wire=int(r['wire']), flag=int(r['flag']), raw=int(r.get('raw') or 0), etag=r.get('etag'), cod_key=r.get('cod_key')))
+        except (ValueError, KeyError, TypeError): continue
+    return out
 
 
 def free_gib(mirror_dir=None):
@@ -166,10 +183,11 @@ def _add(b, wire, st):
     elif st in (None, 0, 2): b['pending'] += 1; b['pending_gib'] += wire / GiB          # status 3 (CDN 404) is neither stored nor downloadable
 
 
-def plan(scope='sp', packages=None, level='ultra', root=None, mirror_dir=None, line_mbps=0.0, cat=None, status=None):
+def plan(scope='sp', packages=None, level='ultra', root=None, mirror_dir=None, line_mbps=0.0, cat=None, status=None, reserve_gib=0.0):
     """Size estimate for a scope + level, no network. Returns a JSON-able dict:
       packages / missing (unavailable lists) / level / tier_mib, total + stored + pending (chunks, GiB), levels{standard,high,ultra} (same buckets for every level),
-      by_pkg{pkg: bucket} (ids attributed to their first package), free_gib, need_gib (pending of the chosen level + 2 %), eta_h (at line_mbps) and fits (free > need)."""
+      by_pkg{pkg: bucket} (ids attributed to their first package), free_gib, need_gib (pending of the chosen level + 2 %), eta_h (at line_mbps), reserve_gib (what a download keeps free:
+      it stops below that), short_gib (how much has to be freed, 0 when it fits) and fits (free > need + reserve)."""
     pk = scope_packages(scope, packages); mask = scope_mask(scope, packages); root = root or paths.GAME_ROOT
     cat = cat if cat is not None else catalogue(mask, root); status = status if status is not None else stored_status(mirror_dir)
     av = available(root); missing = [k for k in pk if not av.get(k)]
@@ -184,16 +202,16 @@ def plan(scope='sp', packages=None, level='ultra', root=None, mirror_dir=None, l
         sel = _bucket()
         for i, c in cat.items():
             if c['raw'] <= cap: _add(sel, c['wire'], status.get(i))
-    need = sel['pending_gib'] * 1.02; fr = free_gib(mirror_dir)
+    need = sel['pending_gib'] * 1.02; fr = free_gib(mirror_dir); res = max(0.5, float(reserve_gib or 0)); short = max(0.0, need + res - fr) if sel['pending'] else 0.0
     eta = (sel['pending_gib'] * 8 * 1024 / line_mbps / 3600) if line_mbps and line_mbps > 0 else None
     return dict(scope=scope, packages=list(pk), missing=missing, level=level, tier_mib=level_mib(level), total=sel, levels=levels, by_pkg=by_pkg,
-                free_gib=round(fr, 1), need_gib=round(need, 2), eta_h=None if eta is None else round(eta, 2), fits=fr > need + 0.5)
+                free_gib=round(fr, 1), need_gib=round(need, 2), eta_h=None if eta is None else round(eta, 2), fits=short <= 0, reserve_gib=round(float(reserve_gib or 0), 1), short_gib=round(short, 1))
 
 
 def describe(pl):
     """One-paragraph text of a plan() result for the GUI / CLI."""
     t = pl['total']; s = f"{t['chunks']:,} chunks, {t['gib']:.1f} GiB; stored {t['stored']:,} ({t['stored_gib']:.1f} GiB); to download {t['pending']:,} chunks, {t['pending_gib']:.1f} GiB"
-    s += f"; free on the mirror drive {pl['free_gib']:.0f} GiB" + ('' if pl['fits'] else '  - NOT ENOUGH SPACE')
+    s += f"; free on the mirror drive {pl['free_gib']:.0f} GiB" + ('' if pl['fits'] else f"  - NOT ENOUGH SPACE: a download keeps {pl.get('reserve_gib', 0):.0f} GiB free, so about {pl.get('short_gib', 0):.0f} GiB more is needed")
     if pl['eta_h'] is not None: s += f"; ETA {pl['eta_h']:.1f} h at the entered line speed"
     if pl['missing']: s += '; chunk lists missing on this install for: ' + ', '.join(pl['missing'])
     return s

@@ -4,7 +4,7 @@ The proxy notes every piece it could not serve from the copy in requested.txt: o
 Chunks live at /pc/iw9_3/23/<xx>/<id>_<wire>_<flag>, Warzone's small side files at /pc/iw9_3/23/tr/<32 hex>/<id>_<wire>_<flag>.
 """
 import os, re
-from . import paths
+from . import mirrordb, paths
 from .pack import GiB, LEVELS, MiB, cdnxpak, level_mib, list_kind, package_of
 
 _REPORT_CACHE = {}
@@ -62,17 +62,30 @@ def local_file(r, mirror_dir=None):
     return os.path.join(d, 'side', 'tr', r['folder'], name) if r['side'] else os.path.join(d, 'objects', f"{r['id'] & 0xff:02x}", name)
 
 
+def gone_ids(mirror_dir=None):
+    """Ids the CDN answered 404 for in an earlier download (index status 3): there is nothing to fetch for them."""
+    db = os.path.join(mirror_dir or paths.MIRROR, 'index.sqlite')
+    if not os.path.exists(db): return set()
+    try:
+        c = mirrordb.connect_read(db, timeout=10)
+        try: return {i & (2**64 - 1) for (i,) in c.execute('select id from chunks where status=3')}
+        finally: c.close()
+    except Exception: return set()
+
+
 def played_missing(level='ultra', mirror_dir=None, path=None):
-    """Pieces the game asked for that the copy does not have (and that the detail level allows) -> dict(n, gib, items, by_list={name: n})."""
-    cap = level_mib(level) * MiB; items = []
+    """Pieces the game asked for that the copy does not have (and that the detail level allows) -> dict(n, gib, items, by_list={name: n}, gone).
+    gone = pieces left out because the CDN no longer has them (an earlier download got a 404)."""
+    cap = level_mib(level) * MiB; items = []; gone = gone_ids(mirror_dir); ng = 0
     for r in read_requested(path):
         if r['raw'] is not None and r['raw'] > cap: continue
         p = local_file(r, mirror_dir)
         try:
             if os.path.getsize(p) == r['wire']: continue
         except OSError: pass
+        if not r['side'] and r['id'] in gone: ng += 1; continue
         items.append(r)
     by = {}
     for r in items:
         k = r['list'] or ('side files' if r['side'] else 'in no list'); by[k] = by.get(k, 0) + 1
-    return dict(n=len(items), gib=sum(r['wire'] for r in items) / GiB, items=items, by_list=by)
+    return dict(n=len(items), gib=sum(r['wire'] for r in items) / GiB, items=items, by_list=by, gone=ng)

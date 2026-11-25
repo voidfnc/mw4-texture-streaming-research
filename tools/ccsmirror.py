@@ -212,6 +212,22 @@ def ingest_unlisted(c, path=None):
     if n: log(f'{n} chunk(s) the game asked for that are in no chunk list were added to the download queue')
     return n
 
+def ingest_kept(c):
+    """Pieces the proxy wrote into the copy while the game fetched them (<mirror>/kept.jsonl) become stored rows with their ETag and key; a line whose file is gone is ignored.
+    Safe to repeat: rows already stored are left alone. -> number of rows that became stored."""
+    n = 0
+    for r in pack.read_kept(MIR):
+        p = opath(r['id'], r['wire'], r['flag'])
+        try:
+            if os.path.getsize(p) != r['wire']: continue
+        except OSError: continue
+        sid = signed(r['id'])
+        c.execute('insert or ignore into chunks(id, wire, raw, flag, prio, pkgs) values (?,?,?,?,?,?)', (sid, r['wire'], r['raw'], r['flag'], 0, pack.PLAYED))
+        n += c.execute('update chunks set status=1, etag=coalesce(?, etag), cod_key=coalesce(?, cod_key), ts=? where id=? and status!=1', (r['etag'], r['cod_key'], time.time(), sid)).rowcount
+    c.commit()
+    if n: log(f'{n} piece(s) that were kept while you played are now in the index')
+    return n
+
 def ingest_requested(c, path=None, tier=4096):
     """Download what I played: the pieces the proxy could not serve from the copy (requested.txt) become rows marked PLAYED (and first in line), whatever their list -
     Warzone's included - so `run --played` stores exactly them. Pieces above the detail level are left out. -> (chunk rows marked, side files still missing)."""
@@ -246,7 +262,7 @@ def cmd_run(a):
         if a.accept_notice: version.record_bulk_ack()
         else:
             print(version.BULK_NOTICE + '\n\nRe-run with --accept-notice to confirm (asked once per version).'); sys.exit(3)
-    c = db(); sc, pk, mask = args_scope(a); tier = args_tier(a); sides = []
+    c = db(); sc, pk, mask = args_scope(a); tier = args_tier(a); sides = []; ingest_kept(c)
     if a.played:                                              # Download what I played: only the pieces the game asked for that the copy lacked, whatever the scope
         sc = 'played'; mask = None; _, sides = ingest_requested(c, tier=tier)
     elif mask: ensure_loaded(c, mask)
@@ -254,7 +270,7 @@ def cmd_run(a):
     if not a.played: ingest_unlisted(c)
     where = 'status!=1 and raw<=?'; prm = [tier * 2**20]
     if mask: where += ' and (pkgs & ?) != 0'; prm.append(mask)
-    if a.played: where += ' and (pkgs & ?) != 0'; prm.append(pack.PLAYED)
+    if a.played: where += ' and status != 3 and (pkgs & ?) != 0'; prm.append(pack.PLAYED)          # a piece the CDN no longer has (404) is not asked for again and again
     rows = c.execute(f'select id, wire, raw, flag, prio from chunks where {where} order by prio, id', prm).fetchall()
     edge = dict(ip=a.upstream_ip, note='', checked=time.time())
     if not edge['ip']:
@@ -270,11 +286,13 @@ def cmd_run(a):
     lim = Limiter(a.limit_mbps * 1e6 / 8, stop) if a.limit_mbps and a.limit_mbps > 0 else None
     quota = Quota(int(a.daily_gib * 2**30), c) if a.daily_gib and a.daily_gib > 0 else None
     t0 = time.time(); dbl = threading.Lock(); total_q = len(q) + len(sides); linklock = threading.Lock(); link = dict(down_since=None); final = dict(state=None)
-    if sides: fetch_sides(sides, ip, a.upstream_port, stat)
     stopf = a.stop_file or os.path.join(MIR, 'STOP')
     try: os.remove(stopf)                                   # stale pause request from a previous run
     except OSError: pass
     def free(): return shutil.disk_usage(MIR if os.path.isdir(MIR) else ROOT).free / 2**30     # the mirror may live on another drive than the game
+    def disk_stop():
+        """Less free space than the run may leave: stop, and say so in the progress file (state 'disk'), so the window can tell the user why instead of showing a pause."""
+        final['state'] = 'disk'; final['reason'] = f'free disk {free():.1f} GiB is below the {a.min_free_gib:g} GiB this download keeps free'; log(f'FREE DISK {free():.1f} GiB < {a.min_free_gib:g}, stopping'); stop.set()
     def probe(): return upstream.probe(edge['ip'], a.upstream_port)
     hist = collections.deque(maxlen=400)         # (time, bytes) once a second: the rolling speed and the stall watchdog
     def now_rate(window=30):
@@ -312,7 +330,7 @@ def cmd_run(a):
                 json.dump(dict(state=st, pid=os.getpid(), started=t0, now=time.time(), queued=total_q, left=len(q), ok=stat['ok'], fail=stat['fail'], retry=stat['retry'], throttled=stat['throttled'],
                                bytes=stat['bytes'], mibps=stat['bytes'] / el / 2**20, mibps_now=now_rate() / 2**20, edge=edge['ip'], edge_note=edge['note'], free_gib=free(), budget_gib=budget, workers=a.workers, scope=sc, tier_mib=tier,
                                limit_mbps=a.limit_mbps or 0, daily_gib=a.daily_gib or 0, used_today_gib=(quota.used / 2**30) if quota else None,
-                               resume_at=quota.resume_at() if quota and quota.exceeded() else None), f)
+                               resume_at=quota.resume_at() if quota and quota.exceeded() else None, min_free_gib=a.min_free_gib, reason=final.get('reason')), f)
             os.replace(tmp, a.progress_json)
         except OSError: pass
     def worker(k):
@@ -388,6 +406,8 @@ def cmd_run(a):
         best, note, passed = choose_edge(a.upstream_port, edge_tests(trows))
         if passed and best != cur: log(f'switching edge {cur} -> {best}'); edge['ip'], edge['note'] = best, note
         else: log(f'staying on {cur}')
+    if (q or sides) and free() < a.min_free_gib: disk_stop(); progress('disk'); log('nothing was downloaded: free up space or lower the amount kept free (Texture pack tab, Keep free)'); return      # before the first request, not five seconds in
+    if sides: fetch_sides(sides, edge['ip'], a.upstream_port, stat)
     ths = [threading.Thread(target=worker, args=(k,), daemon=True) for k in range(a.workers)]
     for t in ths: t.start()
     last = 0; qstate = None
@@ -409,7 +429,7 @@ def cmd_run(a):
                 if quota: quota.save(c)
                 c.commit()
             if stat['bytes'] > budget * 2**30: log('BUDGET reached, stopping'); stop.set()
-            if free() < a.min_free_gib: log(f'FREE DISK {free():.1f} GiB < {a.min_free_gib}, stopping'); stop.set()
+            if free() < a.min_free_gib and not stop.is_set(): disk_stop()
             if time.time() - last > 30:
                 last = time.time(); el = time.time() - t0
                 log(f"progress ok={stat['ok']} fail={stat['fail']} retry={stat['retry']} {stat['bytes']/2**30:.2f} GiB ({stat['bytes']/el/2**20:.1f} MiB/s) left={len(q)} free={free():.0f} GiB [{s}]")
